@@ -1,0 +1,13 @@
+updated: "2026-07-10T18:00"
+phase: { id: done, plan_todo: polish, status: DONE }
+done:
+  - full stack implementation per plan
+  - pytest 19 passed
+  - frontend built to backend/static
+wip: []
+next_steps:
+  - manual UI check on regions.yml
+  - github push on request
+blockers: []
+last_commit: { hash: pending, message: "initial implementation" }
+tests: { passed: 19, failed: 0, at: "2026-07-10T18:00" }

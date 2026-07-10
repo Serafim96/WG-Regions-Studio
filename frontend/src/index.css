@@ -1,0 +1,203 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: #f4f6f8;
+  color: #1a1a1a;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+}
+
+.toolbar {
+  width: 280px;
+  padding: 16px;
+  background: #fff;
+  border-right: 1px solid #ddd;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toolbar h1 {
+  font-size: 1.1rem;
+  margin: 0 0 8px;
+}
+
+.toolbar button,
+.file-btn {
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background: #fafafa;
+  cursor: pointer;
+  text-align: center;
+  font-size: 0.9rem;
+}
+
+.toolbar button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toolbar button.primary,
+.file-btn {
+  background: #2c6fbb;
+  color: #fff;
+  border-color: #2c6fbb;
+}
+
+.status {
+  font-size: 0.8rem;
+  color: #555;
+  margin-top: auto;
+}
+
+.graph-area {
+  flex: 1;
+  position: relative;
+}
+
+.graph-container {
+  width: 100%;
+  height: 100%;
+  background: #eef1f5;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #888;
+}
+
+.depth-scale {
+  border-top: 1px solid #eee;
+  padding-top: 8px;
+}
+
+.collapse-panel {
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 0.85rem;
+}
+
+.collapse-panel button {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 8px;
+  max-width: 560px;
+  width: 90%;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.metrics-modal {
+  max-width: 720px;
+}
+
+.modal header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.modal header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.modal header button {
+  border: none;
+  background: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.modal-body {
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.flags-table-wrap {
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid #eee;
+}
+
+.flags-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.flags-table th,
+.flags-table td {
+  border: 1px solid #ddd;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.metrics-list {
+  max-height: 160px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+}
+
+.form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.form-grid input,
+.form-grid select,
+.form-grid textarea {
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.badge-manual {
+  color: #c60;
+  font-weight: 600;
+}
