@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import cytoscape, { Core } from 'cytoscape';
 import type { Scheme } from '../types';
 import { buildStylesheet } from '../cytoscape/styles';
@@ -10,6 +10,15 @@ interface GraphViewProps {
   depthScale: number;
   baseSize: number;
   onNodeClick: (regionId: string) => void;
+  onCopyName: (regionId: string) => void;
+  onCollapseChildren: (regionId: string) => void;
+  onExpandChildren: (regionId: string) => void;
+}
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  nodeId: string;
 }
 
 function buildDepthMap(scheme: Scheme): Map<string, number> {
@@ -22,9 +31,25 @@ function buildDepthMap(scheme: Scheme): Map<string, number> {
   return depths;
 }
 
-export function GraphView({ scheme, hiddenNodes, depthScale, baseSize, onNodeClick }: GraphViewProps) {
+export function GraphView({
+  scheme,
+  hiddenNodes,
+  depthScale,
+  baseSize,
+  onNodeClick,
+  onCopyName,
+  onCollapseChildren,
+  onExpandChildren,
+}: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+
+  useEffect(() => {
+    const close = () => setContextMenu(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -104,6 +129,19 @@ export function GraphView({ scheme, hiddenNodes, depthScale, baseSize, onNodeCli
       if (!hiddenNodes.has(id)) onNodeClick(id);
     });
 
+    cy.on('cxttap', 'node', (evt) => {
+      const id = evt.target.id();
+      if (hiddenNodes.has(id)) return;
+      const rendered = evt.renderedPosition || evt.target.renderedPosition();
+      const rect = containerRef.current!.getBoundingClientRect();
+      setContextMenu({
+        x: rect.left + rendered.x,
+        y: rect.top + rendered.y,
+        nodeId: id,
+      });
+      evt.originalEvent.preventDefault();
+    });
+
     cyRef.current = cy;
 
     return () => {
@@ -112,5 +150,26 @@ export function GraphView({ scheme, hiddenNodes, depthScale, baseSize, onNodeCli
     };
   }, [scheme, hiddenNodes, depthScale, baseSize, onNodeClick]);
 
-  return <div ref={containerRef} className="graph-container" />;
+  return (
+    <>
+      <div ref={containerRef} className="graph-container" />
+      {contextMenu && (
+        <div
+          className="node-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button type="button" onClick={() => { onCopyName(contextMenu.nodeId); setContextMenu(null); }}>
+            Копировать имя
+          </button>
+          <button type="button" onClick={() => { onCollapseChildren(contextMenu.nodeId); setContextMenu(null); }}>
+            − Скрыть детей
+          </button>
+          <button type="button" onClick={() => { onExpandChildren(contextMenu.nodeId); setContextMenu(null); }}>
+            + Показать детей
+          </button>
+        </div>
+      )}
+    </>
+  );
 }

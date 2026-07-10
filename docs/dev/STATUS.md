@@ -1,33 +1,31 @@
-# STATUS — обновлено 2026-07-10 18:00
+# STATUS — обновлено 2026-07-10 18:50
 
 ## Текущая фаза
-завершено [DONE]
+этап-7 polish [DONE]
 
 ## Завершено (кратко)
-- каркас, rules, AGENTS.md, git
-- парсер + flags catalog (403 региона)
-- draw.io → reference (21 confirmed intersects)
-- геометрия, дерево, layout, scheme I/O, метрики
-- React + Cytoscape UI (полный функционал по ТЗ)
-- pytest: 19 passed
-- docs/ИНСТРУКЦИЯ.md (13 разделов)
+- полный стек по плану (backend + UI + тесты + docs)
+- интеграционные тесты на 403 региона (0.7s build)
+- REFERENCE_DIFF: 108 algorithm-only пар
+- UI polish: sourceHash warning, localStorage, ПКМ-меню
+- agent-autonomy rules + settings.json
+- pytest: 22 passed
 
 ## В работе
 - нет
 
 ## Следующие 3 шага
-1. Ручная проверка UI на regions.yml
-2. push на GitHub (по запросу)
-3. —
+1. push на GitHub (по запросу)
+2. —
 
 ## Блокеры
 - нет
 
 ## Последний коммит
-(см. git log)
+см. git log
 
 ## Тесты
-pytest: 19 passed, 0 failed (2026-07-10)
+pytest: 22 passed, 0 failed (2026-07-10)
 
 ## Инструкция
-13 разделов готово
+13 разделов, обновлены sourceHash/localStorage/ПКМ

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addManualRegion,
   buildScheme,
@@ -13,6 +13,7 @@ import { MetricsPanel } from './components/MetricsPanel';
 import { RegionPanel } from './components/RegionPanel';
 import type { FlagInfo, ForestNode, RegionData, Scheme } from './types';
 import { collectDescendants } from './utils/graph';
+import { loadViewState, saveViewState } from './utils/viewState';
 
 function findForestNode(scheme: Scheme, id: string): ForestNode | null {
   function search(nodes: ForestNode[]): ForestNode | null {
@@ -38,10 +39,37 @@ export default function App() {
   const [appliedDepthScale, setAppliedDepthScale] = useState(0.85);
   const [baseSize] = useState(60);
   const [collapseTarget, setCollapseTarget] = useState<string | null>(null);
+  const [loadedYamlHash, setLoadedYamlHash] = useState<string | null>(null);
+  const [hashWarning, setHashWarning] = useState<string | null>(null);
+  const schemeKeyRef = useRef('default');
 
   useEffect(() => {
     fetchFlags().then(setFlagsCatalog);
   }, []);
+
+  // Restore view state when scheme changes
+  useEffect(() => {
+    if (!scheme) return;
+    const key = scheme.sourceHash || 'default';
+    schemeKeyRef.current = key;
+    const saved = loadViewState(key);
+    if (saved) {
+      setHiddenNodes(new Set(saved.hiddenNodes));
+      setDepthScale(saved.depthScale);
+      setAppliedDepthScale(saved.depthScale);
+      setCollapseTarget(saved.collapseTarget);
+    }
+  }, [scheme?.sourceHash]);
+
+  // Persist view state
+  useEffect(() => {
+    if (!scheme) return;
+    saveViewState(schemeKeyRef.current, {
+      hiddenNodes: Array.from(hiddenNodes),
+      depthScale: appliedDepthScale,
+      collapseTarget,
+    });
+  }, [scheme, hiddenNodes, appliedDepthScale, collapseTarget]);
 
   const selectedRegion: RegionData | null = useMemo(() => {
     if (!scheme || !selectedId) return null;
@@ -58,6 +86,17 @@ export default function App() {
     if (!file) return;
     try {
       const preview = await parseYaml(file);
+      const newHash = preview.source_hash;
+
+      if (scheme && scheme.sourceHash && scheme.sourceHash !== newHash) {
+        setHashWarning(
+          `Внимание: загруженный YAML отличается от схемы (hash ${scheme.sourceHash} → ${newHash}). Постройте схему заново.`,
+        );
+      } else {
+        setHashWarning(null);
+      }
+
+      setLoadedYamlHash(newHash);
       setStatus(`Загружено ${preview.count} регионов из ${preview.source_path}`);
       setScheme(null);
       setHiddenNodes(new Set());
@@ -73,7 +112,10 @@ export default function App() {
       const result = await buildScheme();
       setScheme(result.scheme);
       setHiddenNodes(new Set());
-      setStatus(`Схема готова: ${result.scheme.regions.length} узлов, ${result.scheme.spatialEdges.length} spatial-рёбер`);
+      setHashWarning(null);
+      setStatus(
+        `Схема готова: ${result.scheme.regions.length} узлов, ${result.scheme.spatialEdges.length} spatial-рёбер`,
+      );
     } catch (err) {
       setStatus(`Ошибка: ${err}`);
     }
@@ -97,13 +139,22 @@ export default function App() {
       const loaded = await loadScheme(path);
       setScheme(loaded);
       setHiddenNodes(new Set());
+
+      if (loadedYamlHash && loaded.sourceHash !== loadedYamlHash) {
+        setHashWarning(
+          `Внимание: схема построена из другого YAML (hash схемы ${loaded.sourceHash}, текущий YAML ${loadedYamlHash}).`,
+        );
+      } else {
+        setHashWarning(null);
+      }
+
       setStatus(`Схема загружена: ${loaded.regions.length} узлов`);
     } catch (err) {
       setStatus(`Ошибка: ${err}`);
     }
   };
 
-  const toggleChildren = (regionId: string, hide: boolean) => {
+  const toggleChildren = useCallback((regionId: string, hide: boolean) => {
     if (!scheme) return;
     const node = findForestNode(scheme, regionId);
     if (!node) return;
@@ -116,9 +167,9 @@ export default function App() {
       }
       return next;
     });
-  };
+  }, [scheme]);
 
-  const toggleRecursive = (regionId: string, hide: boolean) => {
+  const toggleRecursive = useCallback((regionId: string, hide: boolean) => {
     if (!scheme) return;
     const node = findForestNode(scheme, regionId);
     if (!node) return;
@@ -131,7 +182,7 @@ export default function App() {
       }
       return next;
     });
-  };
+  }, [scheme]);
 
   const handleAddManual = async (data: {
     id: string;
@@ -154,6 +205,16 @@ export default function App() {
     setSelectedId(id);
     setCollapseTarget(id);
   }, []);
+
+  const onCopyName = useCallback((id: string) => {
+    navigator.clipboard.writeText(id);
+    setStatus(`Скопировано: ${id}`);
+  }, []);
+
+  const onContextCollapse = useCallback((id: string, hide: boolean) => {
+    setCollapseTarget(id);
+    toggleChildren(id, hide);
+  }, [toggleChildren]);
 
   return (
     <div className="app">
@@ -188,6 +249,8 @@ export default function App() {
           <button type="button" onClick={() => setAppliedDepthScale(depthScale)}>Применить</button>
         </div>
 
+        {hashWarning && <p className="hash-warning">{hashWarning}</p>}
+
         {collapseTarget && scheme && (
           <div className="collapse-panel">
             <p>Сворачивание: <strong>{collapseTarget}</strong></p>
@@ -199,6 +262,7 @@ export default function App() {
         )}
 
         <p className="status">{status}</p>
+        <p className="hint">ПКМ по узлу: копировать имя, ± дети</p>
       </aside>
 
       <main className="graph-area">
@@ -209,6 +273,9 @@ export default function App() {
             depthScale={appliedDepthScale}
             baseSize={baseSize}
             onNodeClick={onNodeClick}
+            onCopyName={onCopyName}
+            onCollapseChildren={(id) => onContextCollapse(id, true)}
+            onExpandChildren={(id) => onContextCollapse(id, false)}
           />
         ) : (
           <div className="placeholder">Загрузите YAML и нажмите «Построить схему»</div>

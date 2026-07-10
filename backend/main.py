@@ -16,7 +16,7 @@ from backend.flags.catalog import parse_flags_file
 from backend.geometry.intersections import compute_spatial_edges
 from backend.models.region import Region
 from backend.parser.wg_parser import ParseError, parse_regions_yaml, validate_parent_links
-from backend.scheme.io import build_scheme, load_scheme, save_scheme
+from backend.scheme.io import build_scheme, load_scheme, save_scheme, source_hash
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = PROJECT_ROOT / "backend" / "static"
@@ -106,6 +106,7 @@ async def parse_yaml(file: UploadFile = File(...)) -> dict[str, Any]:
         "count": len(regions),
         "by_type": type_counts,
         "source_path": _session["source_path"],
+        "source_hash": source_hash(content),
     }
 
 

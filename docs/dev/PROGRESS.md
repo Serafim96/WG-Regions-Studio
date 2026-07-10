@@ -12,3 +12,11 @@
 - [TEST] pytest: 19 passed
 - [DOC] `docs/ИНСТРУКЦИЯ.md` — 13 разделов
 - [DECISION] см. DECISIONS.md — reference validation excludes stale/false-positive pairs
+
+## 2026-07-10 18:50 | polish | stage-7
+
+- [DONE] `backend/tests/test_full_dataset.py` — 403 regions, historical_center_main
+- [DONE] `backend/tools/update_reference_diff.py` — 108 algorithm-only pairs
+- [DONE] UI: sourceHash warning, localStorage view state, ПКМ на узлах
+- [TEST] pytest: 22 passed
+- [DOC] docs/ИНСТРУКЦИЯ.md — sourceHash, localStorage, ПКМ

@@ -7,7 +7,12 @@ export async function parseYaml(file: File) {
   form.append('file', file);
   const res = await fetch(`${API}/parse`, { method: 'POST', body: form });
   if (!res.ok) throw new Error(await res.text());
-  return res.json() as Promise<{ count: number; by_type: Record<string, number>; source_path: string }>;
+  return res.json() as Promise<{
+    count: number;
+    by_type: Record<string, number>;
+    source_path: string;
+    source_hash: string;
+  }>;
 }
 
 export async function buildScheme(): Promise<{ scheme: Scheme }> {

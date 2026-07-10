@@ -1,13 +1,14 @@
-updated: "2026-07-10T18:00"
-phase: { id: done, plan_todo: polish, status: DONE }
+updated: "2026-07-10T18:50"
+phase: { id: polish, plan_todo: polish, status: DONE }
 done:
-  - full stack implementation per plan
-  - pytest 19 passed
-  - frontend built to backend/static
+  - stage 7 polish complete
+  - integration tests 403 regions
+  - REFERENCE_DIFF 108 pairs
+  - UI sourceHash localStorage context menu
+  - agent autonomy rules
 wip: []
 next_steps:
-  - manual UI check on regions.yml
   - github push on request
 blockers: []
-last_commit: { hash: pending, message: "initial implementation" }
-tests: { passed: 19, failed: 0, at: "2026-07-10T18:00" }
+last_commit: { hash: pending, message: "stage 7 polish" }
+tests: { passed: 22, failed: 0, at: "2026-07-10T18:50" }
