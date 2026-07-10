@@ -1,25 +1,28 @@
+import type { Locale } from '../i18n/translations';
+
 /** Global UI settings (persisted in localStorage). */
 
 export interface AppSettings {
   collapseThreshold: number;
-  depthScale: number;
+  locale: Locale;
 }
 
 const STORAGE_KEY = 'mrv.settings';
 
 export const DEFAULT_SETTINGS: AppSettings = {
   collapseThreshold: 40,
-  depthScale: 0.85,
+  locale: 'ru',
 };
 
 export function loadAppSettings(): AppSettings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
-    const parsed = JSON.parse(raw) as Partial<AppSettings>;
+    const parsed = JSON.parse(raw) as Partial<AppSettings & { depthScale?: number }>;
+    const locale = parsed.locale === 'en' || parsed.locale === 'ru' ? parsed.locale : DEFAULT_SETTINGS.locale;
     return {
       collapseThreshold: parsed.collapseThreshold ?? DEFAULT_SETTINGS.collapseThreshold,
-      depthScale: parsed.depthScale ?? DEFAULT_SETTINGS.depthScale,
+      locale,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

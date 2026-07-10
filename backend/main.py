@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import threading
+import webbrowser
 from pathlib import Path
 from typing import Any
 
@@ -29,6 +32,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _maybe_open_browser() -> None:
+    if os.environ.get("MRV_OPEN_BROWSER", "").lower() in ("1", "true", "yes"):
+        webbrowser.open("http://127.0.0.1:8000")
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    threading.Timer(1.2, _maybe_open_browser).start()
 
 # In-memory session state
 _session: dict[str, Any] = {

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useI18n } from '../i18n/I18nContext';
 
 interface AddRegionDialogProps {
   parentOptions: string[];
@@ -12,6 +13,7 @@ interface AddRegionDialogProps {
 }
 
 export function AddRegionDialog({ parentOptions, onAdd, onClose }: AddRegionDialogProps) {
+  const { t } = useI18n();
   const [id, setId] = useState('');
   const [parent, setParent] = useState('');
   const [priority, setPriority] = useState(0);
@@ -42,7 +44,7 @@ export function AddRegionDialog({ parentOptions, onAdd, onClose }: AddRegionDial
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <header>
-          <h2>Добавить временный регион</h2>
+          <h2>{t('addRegion.title')}</h2>
           <button type="button" onClick={onClose}>×</button>
         </header>
         <div className="modal-body form-grid">
@@ -51,23 +53,23 @@ export function AddRegionDialog({ parentOptions, onAdd, onClose }: AddRegionDial
             <input value={id} onChange={(e) => setId(e.target.value)} />
           </label>
           <label>
-            Родитель
+            {t('addRegion.parent')}
             <select value={parent} onChange={(e) => setParent(e.target.value)}>
-              <option value="">— корень —</option>
+              <option value="">{t('addRegion.rootOption')}</option>
               {parentOptions.map((p) => (
                 <option key={p} value={p}>{p}</option>
               ))}
             </select>
           </label>
           <label>
-            Приоритет
+            {t('addRegion.priority')}
             <input type="number" value={priority} onChange={(e) => setPriority(Number(e.target.value))} />
           </label>
           <label>
-            Флаги (key=value, по строке)
+            {t('addRegion.flags')}
             <textarea rows={4} value={flagsText} onChange={(e) => setFlagsText(e.target.value)} />
           </label>
-          <button type="button" className="primary" onClick={submit}>Добавить</button>
+          <button type="button" className="primary" onClick={submit}>{t('addRegion.submit')}</button>
         </div>
       </div>
     </div>

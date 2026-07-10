@@ -9,15 +9,28 @@ import {
 } from './api';
 import { AddRegionDialog } from './components/AddRegionDialog';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import { GraphView } from './components/GraphView';
+import { GraphView, type GraphViewHandle } from './components/GraphView';
 import { LegendPanel } from './components/LegendPanel';
 import { MetricsPanel } from './components/MetricsPanel';
+import { OrphanWarningPanel } from './components/OrphanWarningPanel';
 import { RegionPanel } from './components/RegionPanel';
+import { SearchPanel } from './components/SearchPanel';
 import type { FlagInfo, ForestNode, RegionData, Scheme } from './types';
-import { collectDescendants } from './utils/graph';
-import { computeDefaultHiddenNodes } from './utils/layout';
+import {
+  buildParentMap,
+  collectDescendants,
+  findOrphanRegionIds,
+  getSpatialRelationsGrouped,
+  revealPathToNode,
+} from './utils/graph';
+import {
+  computeCollapseAllHidden,
+  computeDefaultHiddenNodes,
+  computeExpandAllHidden,
+} from './utils/layout';
 import { loadAppSettings, saveAppSettings } from './utils/settings';
 import { loadViewState, saveViewState } from './utils/viewState';
+import { useI18n } from './i18n/I18nContext';
 
 function findForestNode(scheme: Scheme, id: string): ForestNode | null {
   function search(nodes: ForestNode[]): ForestNode | null {
@@ -33,22 +46,30 @@ function findForestNode(scheme: Scheme, id: string): ForestNode | null {
 
 export default function App() {
   const initialSettings = loadAppSettings();
+  const { t, locale, setLocale } = useI18n();
+  const graphRef = useRef<GraphViewHandle>(null);
+  const focusSeqRef = useRef(0);
+  const centerSeqRef = useRef(0);
+
   const [scheme, setScheme] = useState<Scheme | null>(null);
-  const [status, setStatus] = useState('Загрузите regions.yml');
+  const [status, setStatus] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [hiddenNodes, setHiddenNodes] = useState<Set<string>>(new Set());
+  const [orphanIds, setOrphanIds] = useState<Set<string>>(new Set());
+  const [showOrphanWarning, setShowOrphanWarning] = useState(false);
   const [flagsCatalog, setFlagsCatalog] = useState<FlagInfo[]>([]);
   const [showMetrics, setShowMetrics] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [collapseThreshold, setCollapseThreshold] = useState(initialSettings.collapseThreshold);
-  const [depthScale, setDepthScale] = useState(initialSettings.depthScale);
-  const [appliedDepthScale, setAppliedDepthScale] = useState(initialSettings.depthScale);
   const [baseSize] = useState(60);
   const [collapseTarget, setCollapseTarget] = useState<string | null>(null);
   const [loadedYamlHash, setLoadedYamlHash] = useState<string | null>(null);
   const [hashWarning, setHashWarning] = useState<string | null>(null);
+  const [focusRequest, setFocusRequest] = useState<{ id: string; seq: number } | null>(null);
+  const [centerRequest, setCenterRequest] = useState<{ id: string; seq: number } | null>(null);
   const schemeKeyRef = useRef('default');
   const isFreshSchemeRef = useRef(false);
 
@@ -57,8 +78,23 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    saveAppSettings({ collapseThreshold, depthScale });
-  }, [collapseThreshold, depthScale]);
+    if (!scheme) setStatus(t('status.loadYaml'));
+  }, [locale, t, scheme]);
+
+  useEffect(() => {
+    saveAppSettings({ ...loadAppSettings(), collapseThreshold });
+  }, [collapseThreshold]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 'f') {
+        e.preventDefault();
+        if (scheme) setShowSearch(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [scheme]);
 
   useEffect(() => {
     if (!scheme) return;
@@ -69,7 +105,6 @@ export default function App() {
       isFreshSchemeRef.current = false;
     } else if (saved) {
       setHiddenNodes(new Set(saved.hiddenNodes));
-      setAppliedDepthScale(saved.depthScale);
       setCollapseTarget(saved.collapseTarget);
     }
   }, [scheme?.sourceHash]);
@@ -78,24 +113,43 @@ export default function App() {
     if (!scheme) return;
     saveViewState(schemeKeyRef.current, {
       hiddenNodes: Array.from(hiddenNodes),
-      depthScale: appliedDepthScale,
       collapseTarget,
     });
-  }, [scheme, hiddenNodes, appliedDepthScale, collapseTarget]);
+  }, [scheme, hiddenNodes, collapseTarget]);
 
   const detailsRegion: RegionData | null = useMemo(() => {
     if (!scheme || !detailsId) return null;
     return scheme.regions.find((r) => r.id === detailsId) ?? null;
   }, [scheme, detailsId]);
 
-  const detailsChildCount = useMemo(() => {
-    if (!scheme || !detailsId) return 0;
+  const detailsChildIds = useMemo(() => {
+    if (!scheme || !detailsId) return [];
     const node = findForestNode(scheme, detailsId);
-    return node?.children.length ?? 0;
+    if (!node) return [];
+    return node.children.map((c) => c.id).sort();
   }, [scheme, detailsId]);
+
+  const detailsSpatialRelations = useMemo(() => {
+    if (!scheme || !detailsId) {
+      return { intersects: [], containedIn: [], contains: [] };
+    }
+    return getSpatialRelationsGrouped(scheme, detailsId);
+  }, [scheme, detailsId]);
+
+  const regionIdList = useMemo(
+    () => (scheme ? scheme.regions.map((r) => r.id).sort() : []),
+    [scheme],
+  );
+
+  const applyOrphans = useCallback((next: Scheme) => {
+    const orphans = findOrphanRegionIds(next.regions);
+    setOrphanIds(new Set(orphans));
+    setShowOrphanWarning(orphans.length > 0);
+  }, []);
 
   const applyScheme = useCallback((next: Scheme, fresh: boolean, threshold: number) => {
     isFreshSchemeRef.current = fresh;
+    applyOrphans(next);
     if (fresh) {
       const defaults = computeDefaultHiddenNodes(next, threshold);
       setHiddenNodes(defaults);
@@ -104,12 +158,27 @@ export default function App() {
     }
     setScheme(next);
     return 0;
-  }, []);
+  }, [applyOrphans]);
 
   const parentOptions = useMemo(
     () => (scheme ? scheme.regions.map((r) => r.id).sort() : []),
     [scheme],
   );
+
+  const requestCenterOn = useCallback((regionId: string) => {
+    centerSeqRef.current += 1;
+    setCenterRequest({ id: regionId, seq: centerSeqRef.current });
+  }, []);
+
+  const focusRegion = useCallback((regionId: string) => {
+    if (!scheme) return;
+    const parentMap = buildParentMap(scheme.regions);
+    setHiddenNodes((prev) => revealPathToNode(regionId, prev, parentMap));
+    setSelectedId(regionId);
+    setCollapseTarget(regionId);
+    focusSeqRef.current += 1;
+    setFocusRequest({ id: regionId, seq: focusSeqRef.current });
+  }, [scheme]);
 
   const handleYamlUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -120,53 +189,59 @@ export default function App() {
 
       if (scheme && scheme.sourceHash && scheme.sourceHash !== newHash) {
         setHashWarning(
-          `Внимание: загруженный YAML отличается от схемы (hash ${scheme.sourceHash} → ${newHash}). Постройте схему заново.`,
+          t('warn.yamlMismatch', { oldHash: scheme.sourceHash, newHash }),
         );
       } else {
         setHashWarning(null);
       }
 
       setLoadedYamlHash(newHash);
-      setStatus(`Загружено ${preview.count} регионов из ${preview.source_path}`);
+      setStatus(t('status.loaded', { count: preview.count, path: preview.source_path }));
       setScheme(null);
       setHiddenNodes(new Set());
+      setOrphanIds(new Set());
+      setShowOrphanWarning(false);
       setSelectedId(null);
       setDetailsId(null);
       isFreshSchemeRef.current = true;
     } catch (err) {
-      setStatus(`Ошибка: ${err}`);
+      setStatus(t('status.error', { msg: String(err) }));
     }
     e.target.value = '';
   };
 
   const handleBuild = async () => {
     try {
-      setStatus('Построение схемы…');
+      setStatus(t('status.building'));
       const result = await buildScheme();
       const collapsed = applyScheme(result.scheme, true, collapseThreshold);
-      setAppliedDepthScale(depthScale);
       setHashWarning(null);
-      let msg = `Схема готова: ${result.scheme.regions.length} узлов, ${result.scheme.spatialEdges.length} spatial-рёбер`;
-      if (collapsed > 0) msg += ` | Авто-свёрнуто ${collapsed} узлов (порог >${collapseThreshold})`;
+      let msg = t('status.schemeReady', {
+        nodes: result.scheme.regions.length,
+        edges: result.scheme.spatialEdges.length,
+      });
+      if (collapsed > 0) {
+        msg += t('status.autoCollapsed', { count: collapsed, threshold: collapseThreshold });
+      }
       setStatus(msg);
     } catch (err) {
-      setStatus(`Ошибка: ${err}`);
+      setStatus(t('status.error', { msg: String(err) }));
     }
   };
 
   const handleSaveScheme = async () => {
-    const path = prompt('Путь для сохранения (.mrv.json):', 'scheme.mrv.json');
+    const path = prompt(t('prompt.saveScheme'), 'scheme.mrv.json');
     if (!path) return;
     try {
       await saveScheme(path);
-      setStatus(`Схема сохранена: ${path}`);
+      setStatus(t('status.schemeSaved', { path }));
     } catch (err) {
-      setStatus(`Ошибка: ${err}`);
+      setStatus(t('status.error', { msg: String(err) }));
     }
   };
 
   const handleLoadScheme = async () => {
-    const path = prompt('Путь к схеме (.mrv.json):', 'scheme.mrv.json');
+    const path = prompt(t('prompt.loadScheme'), 'scheme.mrv.json');
     if (!path) return;
     try {
       const loaded = await loadScheme(path);
@@ -174,15 +249,17 @@ export default function App() {
 
       if (loadedYamlHash && loaded.sourceHash !== loadedYamlHash) {
         setHashWarning(
-          `Внимание: схема построена из другого YAML (hash схемы ${loaded.sourceHash}, текущий YAML ${loadedYamlHash}).`,
+          t('warn.schemeMismatch', { schemeHash: loaded.sourceHash, yamlHash: loadedYamlHash }),
         );
       } else {
         setHashWarning(null);
       }
 
-      setStatus(`Схема загружена: ${loaded.regions.length} узлов${collapsed > 0 ? ` | авто-свёрнуто ${collapsed}` : ''}`);
+      let msg = t('status.schemeLoaded', { nodes: loaded.regions.length });
+      if (collapsed > 0) msg += t('status.autoCollapsedShort', { count: collapsed });
+      setStatus(msg);
     } catch (err) {
-      setStatus(`Ошибка: ${err}`);
+      setStatus(t('status.error', { msg: String(err) }));
     }
   };
 
@@ -202,7 +279,8 @@ export default function App() {
       }
       return next;
     });
-  }, [scheme]);
+    requestCenterOn(regionId);
+  }, [scheme, requestCenterOn]);
 
   const toggleRecursive = useCallback((regionId: string, hide: boolean) => {
     if (!scheme) return;
@@ -217,7 +295,21 @@ export default function App() {
       }
       return next;
     });
-  }, [scheme]);
+    requestCenterOn(regionId);
+  }, [scheme, requestCenterOn]);
+
+  const handleCollapseAll = useCallback(() => {
+    if (!scheme) return;
+    setHiddenNodes(computeCollapseAllHidden(scheme));
+    if (collapseTarget) requestCenterOn(collapseTarget);
+    setStatus(t('status.collapseAll'));
+  }, [scheme, collapseTarget, requestCenterOn, t]);
+
+  const handleExpandAll = useCallback(() => {
+    setHiddenNodes(computeExpandAllHidden());
+    if (collapseTarget) requestCenterOn(collapseTarget);
+    setStatus(t('status.expandAll'));
+  }, [collapseTarget, requestCenterOn, t]);
 
   const handleAddManual = async (data: {
     id: string;
@@ -230,9 +322,9 @@ export default function App() {
       const result = await buildScheme();
       applyScheme(result.scheme, true, collapseThreshold);
       setShowAddDialog(false);
-      setStatus(`Добавлен временный регион: ${data.id}`);
+      setStatus(t('status.manualAdded', { id: data.id }));
     } catch (err) {
-      setStatus(`Ошибка: ${err}`);
+      setStatus(t('status.error', { msg: String(err) }));
     }
   };
 
@@ -249,8 +341,8 @@ export default function App() {
 
   const onCopyName = useCallback((id: string) => {
     navigator.clipboard.writeText(id);
-    setStatus(`Скопировано: ${id}`);
-  }, []);
+    setStatus(t('status.copied', { id }));
+  }, [t]);
 
   const onContextCollapse = useCallback((id: string, hide: boolean) => {
     setCollapseTarget(id);
@@ -265,29 +357,56 @@ export default function App() {
   return (
     <div className="app">
       <aside className="toolbar">
-        <h1>Regions Viewer</h1>
+        <h1>{t('app.title')}</h1>
+
+        <div className="lang-switch">
+          <span className="lang-switch-label">{t('app.language')}:</span>
+          <button
+            type="button"
+            className={locale === 'ru' ? 'lang-btn active' : 'lang-btn'}
+            onClick={() => setLocale('ru')}
+          >
+            RU
+          </button>
+          <button
+            type="button"
+            className={locale === 'en' ? 'lang-btn active' : 'lang-btn'}
+            onClick={() => setLocale('en')}
+          >
+            EN
+          </button>
+        </div>
+
         <label className="file-btn">
-          Открыть YAML
+          {t('app.openYaml')}
           <input type="file" accept=".yml,.yaml" onChange={handleYamlUpload} hidden />
         </label>
-        <button type="button" onClick={handleBuild}>Построить схему</button>
-        <button type="button" onClick={handleSaveScheme} disabled={!scheme}>Сохранить схему</button>
-        <button type="button" onClick={handleLoadScheme}>Открыть схему</button>
+        <button type="button" onClick={handleBuild}>{t('app.buildScheme')}</button>
+        <button type="button" onClick={handleLoadScheme}>{t('app.loadScheme')}</button>
+        <button type="button" onClick={handleSaveScheme} disabled={!scheme}>{t('app.saveScheme')}</button>
         <button type="button" onClick={() => setShowAddDialog(true)} disabled={!scheme}>
-          + Временный регион
+          {t('app.addManual')}
+        </button>
+        <button type="button" onClick={() => setShowSearch(true)} disabled={!scheme}>
+          {t('app.search')}
         </button>
         <button type="button" onClick={() => setShowMetrics(true)} disabled={!scheme}>
-          Метрики
+          {t('app.metrics')}
         </button>
-        <button type="button" onClick={() => setShowLegend(true)}>Легенда</button>
+        <button type="button" onClick={() => setShowLegend(true)}>{t('app.legend')}</button>
+
+        {scheme && (
+          <div className="collapse-all-block">
+            <button type="button" onClick={handleCollapseAll}>{t('app.collapseAll')}</button>
+            <button type="button" onClick={handleExpandAll}>{t('app.expandAll')}</button>
+          </div>
+        )}
 
         <div className="settings-block">
-          <p className="depth-scale-title">Авто-сворачивание</p>
-          <p className="depth-scale-hint">
-            При построении схемы скрывать поддеревья узлов, у которых больше N прямых детей.
-          </p>
+          <p className="depth-scale-title">{t('app.autoCollapse')}</p>
+          <p className="depth-scale-hint">{t('app.autoCollapseHint')}</p>
           <label>
-            Порог (N): {collapseThreshold}
+            {t('app.threshold')}: {collapseThreshold}
             <input
               type="range"
               min={0}
@@ -299,51 +418,34 @@ export default function App() {
           </label>
         </div>
 
-        <div className="depth-scale">
-          <p className="depth-scale-title">Размер кружков по уровню вложенности</p>
-          <p className="depth-scale-hint">
-            Коэффициент уменьшения узла и текста на каждом уровне глубины.
-            Применяется кнопкой «Применить» или при построении схемы.
-          </p>
-          <label>
-            Коэффициент: {depthScale.toFixed(2)}
-            <input
-              type="range"
-              min={0.5}
-              max={1}
-              step={0.05}
-              value={depthScale}
-              onChange={(e) => setDepthScale(Number(e.target.value))}
-            />
-          </label>
-          <button type="button" onClick={() => setAppliedDepthScale(depthScale)}>Применить</button>
-        </div>
-
         {hashWarning && <p className="hash-warning">{hashWarning}</p>}
 
         {collapseTarget && scheme && (
           <div className="collapse-panel">
-            <p>Выбран: <strong>{collapseTarget}</strong></p>
-            <button type="button" onClick={() => toggleChildren(collapseTarget, true)}>− Скрыть детей</button>
-            <button type="button" onClick={() => toggleChildren(collapseTarget, false)}>+ Показать детей</button>
-            <button type="button" onClick={() => toggleRecursive(collapseTarget, true)}>Свернуть рекурсивно</button>
-            <button type="button" onClick={() => toggleRecursive(collapseTarget, false)}>Развернуть рекурсивно</button>
+            <p>{t('app.selected')}: <strong>{collapseTarget}</strong></p>
+            <button type="button" onClick={() => toggleChildren(collapseTarget, true)}>{t('app.hideChildren')}</button>
+            <button type="button" onClick={() => toggleChildren(collapseTarget, false)}>{t('app.showChildren')}</button>
+            <button type="button" onClick={() => toggleRecursive(collapseTarget, true)}>{t('app.collapseRecursive')}</button>
+            <button type="button" onClick={() => toggleRecursive(collapseTarget, false)}>{t('app.expandRecursive')}</button>
           </div>
         )}
 
         <p className="status">{status}</p>
-        <p className="hint">Клик — выбор, двойной клик — карточка, ПКМ — меню</p>
+        <p className="hint">{t('app.hint')}</p>
       </aside>
 
       <main className="graph-area" onContextMenu={blockBrowserMenu}>
         {scheme ? (
           <ErrorBoundary>
             <GraphView
+              ref={graphRef}
               scheme={scheme}
               hiddenNodes={hiddenNodes}
+              orphanIds={orphanIds}
               selectedId={selectedId}
-              depthScale={appliedDepthScale}
               baseSize={baseSize}
+              focusRequest={focusRequest}
+              centerRequest={centerRequest}
               onNodeSelect={onNodeSelect}
               onNodeOpen={onNodeOpen}
               onCopyName={onCopyName}
@@ -352,22 +454,37 @@ export default function App() {
             />
           </ErrorBoundary>
         ) : (
-          <div className="placeholder">Загрузите YAML и нажмите «Построить схему»</div>
+          <div className="placeholder">{t('app.placeholder')}</div>
         )}
       </main>
 
       {detailsRegion && (
         <RegionPanel
           region={detailsRegion}
-          childCount={detailsChildCount}
+          childIds={detailsChildIds}
+          spatialRelations={detailsSpatialRelations}
           flagsCatalog={flagsCatalog}
           onClose={() => setDetailsId(null)}
+          onFocusRegion={focusRegion}
         />
       )}
       {showMetrics && scheme && (
         <MetricsPanel metrics={scheme.metrics} onClose={() => setShowMetrics(false)} />
       )}
       {showLegend && <LegendPanel onClose={() => setShowLegend(false)} />}
+      {showSearch && scheme && (
+        <SearchPanel
+          regionIds={regionIdList}
+          onClose={() => setShowSearch(false)}
+          onSelect={focusRegion}
+        />
+      )}
+      {showOrphanWarning && orphanIds.size > 0 && (
+        <OrphanWarningPanel
+          orphanIds={Array.from(orphanIds).sort()}
+          onClose={() => setShowOrphanWarning(false)}
+        />
+      )}
       {showAddDialog && (
         <AddRegionDialog
           parentOptions={parentOptions}

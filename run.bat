@@ -18,5 +18,6 @@ if not exist backend\static\index.html (
     cd ..
 )
 
-echo Starting server at http://127.0.0.1:8000
+set MRV_OPEN_BROWSER=1
+echo Starting Regions Viewer — browser will open automatically...
 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000

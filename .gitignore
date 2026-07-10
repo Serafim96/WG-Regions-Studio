@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -7,10 +8,33 @@ env/
 *.egg-info/
 dist/
 build/
+
+# Node / frontend build
 node_modules/
 frontend/dist/
 backend/static/
+
+# OS / IDE
 .DS_Store
-*.mrv.view.json
+Thumbs.db
 .idea/
 .vscode/
+
+# Local runtime / secrets
+.env
+.env.*
+*.mrv.json
+*.mrv.view.json
+*.log
+
+# Dev-only (not needed to run the app)
+.cursor/
+task.txt
+AGENTS.md
+docs/dev/
+backend/tools/
+замечания/
+
+# Draw.io diagrams
+*.drawio
+Приватные регионы иерархия

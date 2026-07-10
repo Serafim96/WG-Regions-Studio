@@ -2,7 +2,6 @@
 
 export interface ViewState {
   hiddenNodes: string[];
-  depthScale: number;
   collapseTarget: string | null;
 }
 
@@ -16,7 +15,11 @@ export function loadViewState(schemeKey: string): ViewState | null {
   try {
     const raw = localStorage.getItem(storageKey(schemeKey));
     if (!raw) return null;
-    return JSON.parse(raw) as ViewState;
+    const parsed = JSON.parse(raw) as ViewState & { depthScale?: number };
+    return {
+      hiddenNodes: parsed.hiddenNodes ?? [],
+      collapseTarget: parsed.collapseTarget ?? null,
+    };
   } catch {
     return null;
   }
