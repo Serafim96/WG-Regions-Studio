@@ -27,6 +27,7 @@ Thumbs.db
 *.mrv.view.json
 *.log
 regions.yml
+all_flags.txt
 
 # Dev-only (not needed to run the app)
 .cursor/
