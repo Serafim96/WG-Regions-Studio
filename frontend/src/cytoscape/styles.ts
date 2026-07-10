@@ -1,6 +1,23 @@
 /** Cytoscape stylesheet helpers. */
 
-export function buildStylesheet() {
+import type { Theme } from '../utils/settings';
+
+export function regionNodeShape(regionType: string): 'ellipse' | 'rectangle' {
+  return regionType === 'manual' ? 'rectangle' : 'ellipse';
+}
+
+export function buildStylesheet(theme: Theme = 'light') {
+  const isDark = theme === 'dark';
+  const textColor = isDark ? '#e8eaed' : '#222';
+  const borderColor = isDark ? '#aaa' : '#333';
+  const globalBg = isDark ? '#3a3f47' : '#f5f5f5';
+  const globalBorder = isDark ? '#9aa0a6' : '#888';
+  const manualBorder = isDark ? '#ff9933' : '#c60';
+  const orphanBg = isDark ? '#4a2020' : '#ffdddd';
+  const orphanBorder = isDark ? '#ff6666' : '#cc0000';
+  const orphanText = isDark ? '#ffb3b3' : '#900';
+  const hierarchyColor = isDark ? '#d0d0d0' : '#222';
+
   return [
     {
       selector: 'node',
@@ -9,38 +26,56 @@ export function buildStylesheet() {
         'text-valign': 'center',
         'text-halign': 'center',
         'font-size': 'data(fontSize)',
-        color: '#222',
+        color: textColor,
         'text-wrap': 'wrap',
         'text-max-width': 'data(textMaxWidth)',
         width: 'data(width)',
         height: 'data(height)',
         'background-color': 'data(color)',
-        shape: 'ellipse',
         'border-width': 2,
-        'border-color': '#333',
+        'border-color': borderColor,
       },
     },
     {
-      selector: 'node.global',
+      selector: 'node[nodeShape = "ellipse"]',
       style: {
-        'background-color': '#f5f5f5',
-        'border-color': '#888',
+        shape: 'ellipse',
       },
     },
     {
-      selector: 'node.manual',
+      selector: 'node[nodeShape = "rectangle"]',
       style: {
-        'background-color': '#f5f5f5',
+        shape: 'rectangle',
+      },
+    },
+    {
+      selector: 'node[regionType = "global"]',
+      style: {
+        'background-color': globalBg,
+        'border-color': globalBorder,
+      },
+    },
+    {
+      selector: 'node[regionType = "manual"]',
+      style: {
+        'background-color': globalBg,
+        'border-color': manualBorder,
         'border-style': 'dashed',
-        'border-color': '#c60',
+      },
+    },
+    {
+      selector: 'node.draft',
+      style: {
+        'border-style': 'dashed',
+        'border-color': manualBorder,
       },
     },
     {
       selector: 'node.orphan',
       style: {
-        'background-color': '#ffdddd',
-        'border-color': '#cc0000',
-        color: '#900',
+        'background-color': orphanBg,
+        'border-color': orphanBorder,
+        color: orphanText,
       },
     },
     {
@@ -63,8 +98,8 @@ export function buildStylesheet() {
       selector: 'edge.hierarchy',
       style: {
         width: 6,
-        'line-color': '#222',
-        'target-arrow-color': '#222',
+        'line-color': hierarchyColor,
+        'target-arrow-color': hierarchyColor,
         'target-arrow-shape': 'triangle',
         'arrow-scale': 1.4,
         'curve-style': 'bezier',

@@ -8,6 +8,7 @@ interface AddRegionDialogProps {
     parent: string | null;
     priority: number;
     flags: Record<string, string>;
+    isGlobal: boolean;
   }) => void;
   onClose: () => void;
 }
@@ -17,6 +18,7 @@ export function AddRegionDialog({ parentOptions, onAdd, onClose }: AddRegionDial
   const [id, setId] = useState('');
   const [parent, setParent] = useState('');
   const [priority, setPriority] = useState(0);
+  const [isGlobal, setIsGlobal] = useState(false);
   const [flagsText, setFlagsText] = useState('');
 
   const parseFlags = (): Record<string, string> => {
@@ -37,6 +39,7 @@ export function AddRegionDialog({ parentOptions, onAdd, onClose }: AddRegionDial
       parent: parent || null,
       priority,
       flags: parseFlags(),
+      isGlobal,
     });
   };
 
@@ -65,6 +68,15 @@ export function AddRegionDialog({ parentOptions, onAdd, onClose }: AddRegionDial
             {t('addRegion.priority')}
             <input type="number" value={priority} onChange={(e) => setPriority(Number(e.target.value))} />
           </label>
+          <label className="checkbox-label">
+            <input
+              type="checkbox"
+              checked={isGlobal}
+              onChange={(e) => setIsGlobal(e.target.checked)}
+            />
+            {t('addRegion.global')}
+          </label>
+          <p className="hint">{t('addRegion.globalHint')}</p>
           <label>
             {t('addRegion.flags')}
             <textarea rows={4} value={flagsText} onChange={(e) => setFlagsText(e.target.value)} />

@@ -176,7 +176,7 @@ def add_manual_region(req: ManualRegionRequest) -> dict[str, Any]:
 
     region = Region(
         id=req.id,
-        type="manual",
+        type="global" if req.type == "global" else "manual",
         parent=req.parent,
         priority=req.priority,
         flags=req.flags,

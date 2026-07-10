@@ -7,7 +7,7 @@ import {
 } from 'react';
 import cytoscape, { Core } from 'cytoscape';
 import type { Scheme } from '../types';
-import { buildStylesheet } from '../cytoscape/styles';
+import { buildStylesheet, regionNodeShape } from '../cytoscape/styles';
 import {
   buildHiddenDescendantCount,
   buildHierarchyDepthMap,
@@ -18,6 +18,7 @@ import {
 } from '../utils/graph';
 import { layoutVisibleForest, type NodeDimensions } from '../utils/layout';
 import { useI18n } from '../i18n/I18nContext';
+import { useTheme } from '../theme/ThemeContext';
 
 export interface GraphViewHandle {
   focusNode: (regionId: string) => boolean;
@@ -42,6 +43,15 @@ interface ContextMenuState {
   x: number;
   y: number;
   nodeId: string;
+}
+
+function applyRegionNodeStyles(cy: Core): void {
+  cy.nodes().forEach((node) => {
+    const shape = node.data('nodeShape') as string;
+    if (shape === 'rectangle' || shape === 'ellipse') {
+      node.style('shape', shape);
+    }
+  });
 }
 
 function centerNodeOnCy(cy: Core, regionId: string): boolean {
@@ -99,6 +109,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
   ref,
 ) {
   const { t, locale } = useI18n();
+  const { theme } = useTheme();
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -154,23 +165,31 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       const hiddenSuffix = hiddenN > 0 ? `\n${t('graph.hiddenCount', { count: hiddenN })}` : '';
       const label = `${region.id}\np:${region.priority} d:${hd}${hiddenSuffix}`;
       const metrics = nodeLabelMetrics(label, hd, baseSize);
+      const nodeShape = regionNodeShape(region.type);
+      let { width, height } = metrics;
+      if (region.type === 'manual') {
+        width = Math.max(metrics.width, metrics.height * 1.4);
+        height = Math.max(metrics.height * 0.72, metrics.width * 0.5);
+      }
+
       const classes: string[] = [];
-      if (region.type === 'global') classes.push('global');
-      if (region.type === 'manual' || region.is_manual) classes.push('manual');
       if (orphanIds.has(region.id)) classes.push('orphan');
       if (hiddenN > 0) classes.push('has-collapsed');
+      if (region.is_manual) classes.push('draft');
 
       elements.push({
         data: {
           id: region.id,
           label,
           color: orphanIds.has(region.id) ? '#ffdddd' : depthColor(hd),
-          width: metrics.width,
-          height: metrics.height,
+          width,
+          height,
           fontSize: metrics.fontSize,
           textMaxWidth: metrics.textMaxWidth,
           depth: hd,
           hiddenCount: hiddenN,
+          regionType: region.type,
+          nodeShape,
         },
         position: pos,
         classes: classes.join(' '),
@@ -217,7 +236,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     const cy = cytoscape({
       container: containerRef.current,
       elements,
-      style: buildStylesheet() as cytoscape.StylesheetStyle[],
+      style: buildStylesheet(theme) as cytoscape.StylesheetStyle[],
       layout: { name: 'preset' },
       minZoom: 0.02,
       maxZoom: 12,
@@ -266,6 +285,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       cy.pan(viewStateRef.current.pan);
     }
 
+    applyRegionNodeStyles(cy);
     cyRef.current = cy;
 
     return () => {
@@ -273,7 +293,14 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       cy.destroy();
       cyRef.current = null;
     };
-  }, [scheme, hiddenNodes, orphanIds, baseSize, locale, t, onNodeSelect, onNodeOpen]);
+  }, [scheme, hiddenNodes, orphanIds, baseSize, locale, theme, t, onNodeSelect, onNodeOpen]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.style().fromJson(buildStylesheet(theme) as cytoscape.StylesheetStyle[]);
+    applyRegionNodeStyles(cy);
+  }, [theme]);
 
   // Selection highlight without full rebuild
   useEffect(() => {

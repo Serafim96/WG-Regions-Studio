@@ -31,6 +31,7 @@ import {
 import { loadAppSettings, saveAppSettings } from './utils/settings';
 import { loadViewState, saveViewState } from './utils/viewState';
 import { useI18n } from './i18n/I18nContext';
+import { useTheme } from './theme/ThemeContext';
 
 function findForestNode(scheme: Scheme, id: string): ForestNode | null {
   function search(nodes: ForestNode[]): ForestNode | null {
@@ -47,6 +48,7 @@ function findForestNode(scheme: Scheme, id: string): ForestNode | null {
 export default function App() {
   const initialSettings = loadAppSettings();
   const { t, locale, setLocale } = useI18n();
+  const { theme, toggleTheme } = useTheme();
   const graphRef = useRef<GraphViewHandle>(null);
   const focusSeqRef = useRef(0);
   const centerSeqRef = useRef(0);
@@ -316,9 +318,18 @@ export default function App() {
     parent: string | null;
     priority: number;
     flags: Record<string, string>;
+    isGlobal: boolean;
   }) => {
     try {
-      await addManualRegion({ ...data, type: 'manual', owners: {}, members: {} });
+      await addManualRegion({
+        id: data.id,
+        parent: data.parent,
+        priority: data.priority,
+        flags: data.flags,
+        type: data.isGlobal ? 'manual' : 'global',
+        owners: {},
+        members: {},
+      });
       const result = await buildScheme();
       applyScheme(result.scheme, true, collapseThreshold);
       setShowAddDialog(false);
@@ -359,21 +370,32 @@ export default function App() {
       <aside className="toolbar">
         <h1>{t('app.title')}</h1>
 
-        <div className="lang-switch">
-          <span className="lang-switch-label">{t('app.language')}:</span>
+        <div className="preferences-row">
+          <div className="lang-switch">
+            <span className="lang-switch-label">{t('app.language')}:</span>
+            <button
+              type="button"
+              className={locale === 'ru' ? 'lang-btn active' : 'lang-btn'}
+              onClick={() => setLocale('ru')}
+            >
+              RU
+            </button>
+            <button
+              type="button"
+              className={locale === 'en' ? 'lang-btn active' : 'lang-btn'}
+              onClick={() => setLocale('en')}
+            >
+              EN
+            </button>
+          </div>
           <button
             type="button"
-            className={locale === 'ru' ? 'lang-btn active' : 'lang-btn'}
-            onClick={() => setLocale('ru')}
+            className="theme-toggle"
+            onClick={toggleTheme}
+            title={theme === 'light' ? t('app.themeToDark') : t('app.themeToLight')}
+            aria-label={theme === 'light' ? t('app.themeToDark') : t('app.themeToLight')}
           >
-            RU
-          </button>
-          <button
-            type="button"
-            className={locale === 'en' ? 'lang-btn active' : 'lang-btn'}
-            onClick={() => setLocale('en')}
-          >
-            EN
+            {theme === 'light' ? '🌙' : '☀️'}
           </button>
         </div>
 
