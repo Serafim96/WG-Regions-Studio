@@ -96,6 +96,36 @@ body {
   line-height: 1.35;
 }
 
+.settings-block {
+  border-top: 1px solid #eee;
+  padding-top: 8px;
+  margin-top: 4px;
+}
+
+.legend-modal {
+  max-width: 640px;
+}
+
+.legend-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.legend-table th,
+.legend-table td {
+  border: 1px solid #ddd;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.legend-table td:first-child {
+  white-space: nowrap;
+  font-weight: 600;
+  width: 38%;
+}
+
 .collapse-panel {
   border: 1px solid #ddd;
   border-radius: 6px;

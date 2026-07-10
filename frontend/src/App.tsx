@@ -10,11 +10,13 @@ import {
 import { AddRegionDialog } from './components/AddRegionDialog';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { GraphView } from './components/GraphView';
+import { LegendPanel } from './components/LegendPanel';
 import { MetricsPanel } from './components/MetricsPanel';
 import { RegionPanel } from './components/RegionPanel';
 import type { FlagInfo, ForestNode, RegionData, Scheme } from './types';
 import { collectDescendants } from './utils/graph';
 import { computeDefaultHiddenNodes } from './utils/layout';
+import { loadAppSettings, saveAppSettings } from './utils/settings';
 import { loadViewState, saveViewState } from './utils/viewState';
 
 function findForestNode(scheme: Scheme, id: string): ForestNode | null {
@@ -30,15 +32,19 @@ function findForestNode(scheme: Scheme, id: string): ForestNode | null {
 }
 
 export default function App() {
+  const initialSettings = loadAppSettings();
   const [scheme, setScheme] = useState<Scheme | null>(null);
   const [status, setStatus] = useState('Загрузите regions.yml');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
   const [hiddenNodes, setHiddenNodes] = useState<Set<string>>(new Set());
   const [flagsCatalog, setFlagsCatalog] = useState<FlagInfo[]>([]);
   const [showMetrics, setShowMetrics] = useState(false);
+  const [showLegend, setShowLegend] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [depthScale, setDepthScale] = useState(0.85);
-  const [appliedDepthScale, setAppliedDepthScale] = useState(0.85);
+  const [collapseThreshold, setCollapseThreshold] = useState(initialSettings.collapseThreshold);
+  const [depthScale, setDepthScale] = useState(initialSettings.depthScale);
+  const [appliedDepthScale, setAppliedDepthScale] = useState(initialSettings.depthScale);
   const [baseSize] = useState(60);
   const [collapseTarget, setCollapseTarget] = useState<string | null>(null);
   const [loadedYamlHash, setLoadedYamlHash] = useState<string | null>(null);
@@ -50,7 +56,10 @@ export default function App() {
     fetchFlags().then(setFlagsCatalog);
   }, []);
 
-  // Restore view state when scheme changes (or apply defaults)
+  useEffect(() => {
+    saveAppSettings({ collapseThreshold, depthScale });
+  }, [collapseThreshold, depthScale]);
+
   useEffect(() => {
     if (!scheme) return;
     const key = scheme.sourceHash || 'default';
@@ -60,13 +69,11 @@ export default function App() {
       isFreshSchemeRef.current = false;
     } else if (saved) {
       setHiddenNodes(new Set(saved.hiddenNodes));
-      setDepthScale(saved.depthScale);
       setAppliedDepthScale(saved.depthScale);
       setCollapseTarget(saved.collapseTarget);
     }
   }, [scheme?.sourceHash]);
 
-  // Persist view state
   useEffect(() => {
     if (!scheme) return;
     saveViewState(schemeKeyRef.current, {
@@ -76,23 +83,26 @@ export default function App() {
     });
   }, [scheme, hiddenNodes, appliedDepthScale, collapseTarget]);
 
-  const selectedRegion: RegionData | null = useMemo(() => {
-    if (!scheme || !selectedId) return null;
-    return scheme.regions.find((r) => r.id === selectedId) ?? null;
-  }, [scheme, selectedId]);
+  const detailsRegion: RegionData | null = useMemo(() => {
+    if (!scheme || !detailsId) return null;
+    return scheme.regions.find((r) => r.id === detailsId) ?? null;
+  }, [scheme, detailsId]);
 
-  const applyScheme = useCallback((next: Scheme, fresh: boolean) => {
+  const detailsChildCount = useMemo(() => {
+    if (!scheme || !detailsId) return 0;
+    const node = findForestNode(scheme, detailsId);
+    return node?.children.length ?? 0;
+  }, [scheme, detailsId]);
+
+  const applyScheme = useCallback((next: Scheme, fresh: boolean, threshold: number) => {
     isFreshSchemeRef.current = fresh;
     if (fresh) {
-      const defaults = computeDefaultHiddenNodes(next);
+      const defaults = computeDefaultHiddenNodes(next, threshold);
       setHiddenNodes(defaults);
       setScheme(next);
-      if (defaults.size > 0) {
-        return defaults.size;
-      }
-    } else {
-      setScheme(next);
+      return defaults.size;
     }
+    setScheme(next);
     return 0;
   }, []);
 
@@ -120,6 +130,8 @@ export default function App() {
       setStatus(`Загружено ${preview.count} регионов из ${preview.source_path}`);
       setScheme(null);
       setHiddenNodes(new Set());
+      setSelectedId(null);
+      setDetailsId(null);
       isFreshSchemeRef.current = true;
     } catch (err) {
       setStatus(`Ошибка: ${err}`);
@@ -131,10 +143,11 @@ export default function App() {
     try {
       setStatus('Построение схемы…');
       const result = await buildScheme();
-      const collapsed = applyScheme(result.scheme, true);
+      const collapsed = applyScheme(result.scheme, true, collapseThreshold);
+      setAppliedDepthScale(depthScale);
       setHashWarning(null);
       let msg = `Схема готова: ${result.scheme.regions.length} узлов, ${result.scheme.spatialEdges.length} spatial-рёбер`;
-      if (collapsed > 0) msg += ` | Авто-свёрнуто ${collapsed} узлов`;
+      if (collapsed > 0) msg += ` | Авто-свёрнуто ${collapsed} узлов (порог >${collapseThreshold})`;
       setStatus(msg);
     } catch (err) {
       setStatus(`Ошибка: ${err}`);
@@ -157,7 +170,7 @@ export default function App() {
     if (!path) return;
     try {
       const loaded = await loadScheme(path);
-      const collapsed = applyScheme(loaded, true);
+      const collapsed = applyScheme(loaded, true, collapseThreshold);
 
       if (loadedYamlHash && loaded.sourceHash !== loadedYamlHash) {
         setHashWarning(
@@ -215,7 +228,7 @@ export default function App() {
     try {
       await addManualRegion({ ...data, type: 'manual', owners: {}, members: {} });
       const result = await buildScheme();
-      setScheme(result.scheme);
+      applyScheme(result.scheme, true, collapseThreshold);
       setShowAddDialog(false);
       setStatus(`Добавлен временный регион: ${data.id}`);
     } catch (err) {
@@ -223,9 +236,15 @@ export default function App() {
     }
   };
 
-  const onNodeClick = useCallback((id: string) => {
+  const onNodeSelect = useCallback((id: string) => {
     setSelectedId(id);
     setCollapseTarget(id);
+  }, []);
+
+  const onNodeOpen = useCallback((id: string) => {
+    setSelectedId(id);
+    setCollapseTarget(id);
+    setDetailsId(id);
   }, []);
 
   const onCopyName = useCallback((id: string) => {
@@ -235,8 +254,13 @@ export default function App() {
 
   const onContextCollapse = useCallback((id: string, hide: boolean) => {
     setCollapseTarget(id);
+    setSelectedId(id);
     toggleChildren(id, hide);
   }, [toggleChildren]);
+
+  const blockBrowserMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+  };
 
   return (
     <div className="app">
@@ -255,13 +279,31 @@ export default function App() {
         <button type="button" onClick={() => setShowMetrics(true)} disabled={!scheme}>
           Метрики
         </button>
+        <button type="button" onClick={() => setShowLegend(true)}>Легенда</button>
+
+        <div className="settings-block">
+          <p className="depth-scale-title">Авто-сворачивание</p>
+          <p className="depth-scale-hint">
+            При построении схемы скрывать поддеревья узлов, у которых больше N прямых детей.
+          </p>
+          <label>
+            Порог (N): {collapseThreshold}
+            <input
+              type="range"
+              min={0}
+              max={200}
+              step={1}
+              value={collapseThreshold}
+              onChange={(e) => setCollapseThreshold(Number(e.target.value))}
+            />
+          </label>
+        </div>
 
         <div className="depth-scale">
           <p className="depth-scale-title">Размер кружков по уровню вложенности</p>
           <p className="depth-scale-hint">
-            На каждом уровне глубины узел умножается на этот коэффициент.
-            Например, 0.85 — дети на 15% меньше родителя, внуки ещё меньше.
-            Не влияет на масштаб колёсиком мыши.
+            Коэффициент уменьшения узла и текста на каждом уровне глубины.
+            Применяется кнопкой «Применить» или при построении схемы.
           </p>
           <label>
             Коэффициент: {depthScale.toFixed(2)}
@@ -281,7 +323,7 @@ export default function App() {
 
         {collapseTarget && scheme && (
           <div className="collapse-panel">
-            <p>Сворачивание: <strong>{collapseTarget}</strong></p>
+            <p>Выбран: <strong>{collapseTarget}</strong></p>
             <button type="button" onClick={() => toggleChildren(collapseTarget, true)}>− Скрыть детей</button>
             <button type="button" onClick={() => toggleChildren(collapseTarget, false)}>+ Показать детей</button>
             <button type="button" onClick={() => toggleRecursive(collapseTarget, true)}>Свернуть рекурсивно</button>
@@ -290,38 +332,42 @@ export default function App() {
         )}
 
         <p className="status">{status}</p>
-        <p className="hint">ПКМ по узлу: копировать имя, ± дети</p>
+        <p className="hint">Клик — выбор, двойной клик — карточка, ПКМ — меню</p>
       </aside>
 
-      <main className="graph-area">
+      <main className="graph-area" onContextMenu={blockBrowserMenu}>
         {scheme ? (
           <ErrorBoundary>
             <GraphView
-            scheme={scheme}
-            hiddenNodes={hiddenNodes}
-            depthScale={appliedDepthScale}
-            baseSize={baseSize}
-            onNodeClick={onNodeClick}
-            onCopyName={onCopyName}
-            onCollapseChildren={(id) => onContextCollapse(id, true)}
-            onExpandChildren={(id) => onContextCollapse(id, false)}
-          />
+              scheme={scheme}
+              hiddenNodes={hiddenNodes}
+              selectedId={selectedId}
+              depthScale={appliedDepthScale}
+              baseSize={baseSize}
+              onNodeSelect={onNodeSelect}
+              onNodeOpen={onNodeOpen}
+              onCopyName={onCopyName}
+              onCollapseChildren={(id) => onContextCollapse(id, true)}
+              onExpandChildren={(id) => onContextCollapse(id, false)}
+            />
           </ErrorBoundary>
         ) : (
           <div className="placeholder">Загрузите YAML и нажмите «Построить схему»</div>
         )}
       </main>
 
-      {selectedRegion && (
+      {detailsRegion && (
         <RegionPanel
-          region={selectedRegion}
+          region={detailsRegion}
+          childCount={detailsChildCount}
           flagsCatalog={flagsCatalog}
-          onClose={() => setSelectedId(null)}
+          onClose={() => setDetailsId(null)}
         />
       )}
       {showMetrics && scheme && (
         <MetricsPanel metrics={scheme.metrics} onClose={() => setShowMetrics(false)} />
       )}
+      {showLegend && <LegendPanel onClose={() => setShowLegend(false)} />}
       {showAddDialog && (
         <AddRegionDialog
           parentOptions={parentOptions}

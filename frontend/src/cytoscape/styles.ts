@@ -9,7 +9,7 @@ export const CLOUD_BG =
     </svg>`,
   );
 
-export function buildStylesheet(baseSize: number, depthScale: number) {
+export function buildStylesheet() {
   return [
     {
       selector: 'node',
@@ -17,12 +17,12 @@ export function buildStylesheet(baseSize: number, depthScale: number) {
         label: 'data(label)',
         'text-valign': 'center',
         'text-halign': 'center',
-        'font-size': 10,
+        'font-size': 'data(fontSize)',
         color: '#222',
         'text-wrap': 'wrap',
-        'text-max-width': 120,
-        width: 'data(size)',
-        height: 'data(size)',
+        'text-max-width': 'data(textMaxWidth)',
+        width: 'data(width)',
+        height: 'data(height)',
         'background-color': 'data(color)',
         shape: 'ellipse',
         'border-width': 2,
@@ -47,8 +47,11 @@ export function buildStylesheet(baseSize: number, depthScale: number) {
       },
     },
     {
-      selector: 'node.hidden-node',
-      style: { display: 'none' },
+      selector: 'node.selected',
+      style: {
+        'border-width': 4,
+        'border-color': '#2980b9',
+      },
     },
     {
       selector: 'edge.hierarchy',
@@ -79,13 +82,6 @@ export function buildStylesheet(baseSize: number, depthScale: number) {
         'target-arrow-shape': 'triangle',
         opacity: 0.8,
         'curve-style': 'bezier',
-      },
-    },
-    {
-      selector: ':selected',
-      style: {
-        'border-width': 4,
-        'border-color': '#2980b9',
       },
     },
   ];

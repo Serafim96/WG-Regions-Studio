@@ -81,3 +81,26 @@ export function depthColor(depth: number): string {
 export function nodeSize(depth: number, baseSize: number, depthScale: number): number {
   return baseSize * Math.pow(depthScale, depth);
 }
+
+const BASE_FONT = 11;
+const CHAR_WIDTH_EM = 0.58;
+const LINE_HEIGHT_EM = 1.25;
+
+/** Node box and font scale together with depthScale. */
+export function nodeLabelMetrics(
+  label: string,
+  depth: number,
+  baseSize: number,
+  depthScale: number,
+): { width: number; height: number; fontSize: number; textMaxWidth: number } {
+  const scale = Math.pow(depthScale, depth);
+  const fontSize = Math.max(7, BASE_FONT * scale);
+  const lines = label.split('\n');
+  const longest = Math.max(...lines.map((l) => l.length), 1);
+  const textW = longest * fontSize * CHAR_WIDTH_EM;
+  const textH = lines.length * fontSize * LINE_HEIGHT_EM;
+  const minBox = baseSize * scale;
+  const width = Math.max(minBox, textW + 20);
+  const height = Math.max(minBox * 0.72, textH + 16);
+  return { width, height, fontSize, textMaxWidth: width - 12 };
+}

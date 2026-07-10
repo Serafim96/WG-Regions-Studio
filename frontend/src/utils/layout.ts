@@ -48,7 +48,7 @@ export function layoutVisibleForest(
 }
 
 /** Auto-hide entire subtrees under nodes with more than threshold direct children. */
-export function computeDefaultHiddenNodes(scheme: Scheme, threshold = 10): Set<string> {
+export function computeDefaultHiddenNodes(scheme: Scheme, threshold = 40): Set<string> {
   const hidden = new Set<string>();
 
   function hideSubtree(node: ForestNode) {

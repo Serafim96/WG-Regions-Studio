@@ -2,15 +2,14 @@ import { useState } from 'react';
 import type { FlagInfo, RegionData } from '../types';
 
 interface RegionPanelProps {
-  region: RegionData | null;
+  region: RegionData;
+  childCount: number;
   flagsCatalog: FlagInfo[];
   onClose: () => void;
 }
 
-export function RegionPanel({ region, flagsCatalog, onClose }: RegionPanelProps) {
+export function RegionPanel({ region, childCount, flagsCatalog, onClose }: RegionPanelProps) {
   const [showFlags, setShowFlags] = useState(false);
-
-  if (!region) return null;
 
   const copyName = () => {
     navigator.clipboard.writeText(region.id);
@@ -30,6 +29,7 @@ export function RegionPanel({ region, flagsCatalog, onClose }: RegionPanelProps)
           <p><strong>Тип:</strong> {region.type}</p>
           <p><strong>Родитель:</strong> {region.parent ?? '—'}</p>
           <p><strong>Приоритет:</strong> {region.priority}</p>
+          <p><strong>Детей:</strong> {childCount}</p>
           {region.is_manual && <p className="badge-manual">Временный регион (без координат)</p>}
 
           {region.min && region.max && (

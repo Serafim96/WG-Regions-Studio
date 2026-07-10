@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import cytoscape, { Core } from 'cytoscape';
 import type { Scheme } from '../types';
 import { buildStylesheet } from '../cytoscape/styles';
-import { depthColor, nodeSize, remapSpatialEdges } from '../utils/graph';
+import { depthColor, nodeLabelMetrics, remapSpatialEdges } from '../utils/graph';
 import { layoutVisibleForest } from '../utils/layout';
 
 interface GraphViewProps {
   scheme: Scheme;
   hiddenNodes: Set<string>;
+  selectedId: string | null;
   depthScale: number;
   baseSize: number;
-  onNodeClick: (regionId: string) => void;
+  onNodeSelect: (regionId: string) => void;
+  onNodeOpen: (regionId: string) => void;
   onCopyName: (regionId: string) => void;
   onCollapseChildren: (regionId: string) => void;
   onExpandChildren: (regionId: string) => void;
@@ -35,15 +37,18 @@ function buildDepthMap(scheme: Scheme): Map<string, number> {
 export function GraphView({
   scheme,
   hiddenNodes,
+  selectedId,
   depthScale,
   baseSize,
-  onNodeClick,
+  onNodeSelect,
+  onNodeOpen,
   onCopyName,
   onCollapseChildren,
   onExpandChildren,
 }: GraphViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const fitOnNextLayout = useRef(true);
 
@@ -70,18 +75,29 @@ export function GraphView({
       const pos = visiblePositions.get(region.id);
       if (!pos) continue;
       const depth = depths.get(region.id) ?? 0;
+      const label = `${region.id}\np:${region.priority} d:${depth}`;
+      const metrics = nodeLabelMetrics(label, depth, baseSize, depthScale);
       const isCloud = region.type === 'global' || region.type === 'manual';
 
       elements.push({
         data: {
           id: region.id,
-          label: `${region.id}\np:${region.priority} d:${depth}`,
+          label,
           color: depthColor(depth),
-          size: nodeSize(depth, baseSize, depthScale),
+          width: metrics.width,
+          height: metrics.height,
+          fontSize: metrics.fontSize,
+          textMaxWidth: metrics.textMaxWidth,
           depth,
         },
         position: pos,
-        classes: [isCloud ? 'cloud' : '', region.is_manual ? 'manual' : ''].filter(Boolean).join(' '),
+        classes: [
+          isCloud ? 'cloud' : '',
+          region.is_manual ? 'manual' : '',
+          selectedId === region.id ? 'selected' : '',
+        ]
+          .filter(Boolean)
+          .join(' '),
       });
     }
 
@@ -121,19 +137,33 @@ export function GraphView({
     const cy = cytoscape({
       container: containerRef.current,
       elements,
-      style: buildStylesheet(baseSize, depthScale) as cytoscape.StylesheetStyle[],
+      style: buildStylesheet() as cytoscape.StylesheetStyle[],
       layout: { name: 'preset' },
       minZoom: 0.02,
       maxZoom: 12,
-      // Higher value = faster zoom per wheel tick (default 1; was 0.3 — too slow)
       wheelSensitivity: 3.5,
     });
 
     cy.on('tap', 'node', (evt) => {
-      onNodeClick(evt.target.id());
+      const id = evt.target.id();
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = setTimeout(() => {
+        onNodeSelect(id);
+        clickTimerRef.current = null;
+      }, 220);
+    });
+
+    cy.on('dbltap', 'node', (evt) => {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+      onNodeOpen(evt.target.id());
     });
 
     cy.on('cxttap', 'node', (evt) => {
+      evt.originalEvent.preventDefault();
+      evt.originalEvent.stopPropagation();
       const id = evt.target.id();
       const rendered = evt.renderedPosition || evt.target.renderedPosition();
       const rect = containerRef.current!.getBoundingClientRect();
@@ -142,7 +172,6 @@ export function GraphView({
         y: rect.top + rendered.y,
         nodeId: id,
       });
-      evt.originalEvent.preventDefault();
     });
 
     if (fitOnNextLayout.current) {
@@ -153,12 +182,12 @@ export function GraphView({
     cyRef.current = cy;
 
     return () => {
+      if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
       cy.destroy();
       cyRef.current = null;
     };
-  }, [scheme, hiddenNodes, depthScale, baseSize, onNodeClick]);
+  }, [scheme, hiddenNodes, selectedId, depthScale, baseSize, onNodeSelect, onNodeOpen]);
 
-  // Re-fit when collapse changes (not on every depthScale tweak if already fit)
   useEffect(() => {
     const cy = cyRef.current;
     if (cy && cy.nodes().length > 0) {
@@ -166,14 +195,23 @@ export function GraphView({
     }
   }, [hiddenNodes]);
 
+  const blockBrowserMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+  };
+
   return (
     <>
-      <div ref={containerRef} className="graph-container" />
+      <div
+        ref={containerRef}
+        className="graph-container"
+        onContextMenu={blockBrowserMenu}
+      />
       {contextMenu && (
         <div
           className="node-context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}
+          onContextMenu={blockBrowserMenu}
         >
           <button type="button" onClick={() => { onCopyName(contextMenu.nodeId); setContextMenu(null); }}>
             Копировать имя
