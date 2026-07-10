@@ -1,22 +1,27 @@
-# Minecraft Regions Viewer
+# WorldGuard Region Viewer
 
-Визуализатор иерархии регионов WorldGuard с отображением пересечений и вхождений.
+Visualize WorldGuard region hierarchies with spatial overlaps (intersects) and full containment (contains).
 
-## Установка
+Load your own `regions.yml`, explore the tree, collapse large subtrees, search regions, and inspect flags and metrics in the browser.
 
-1. Python 3.11+
-2. Node.js 18+ (для сборки UI)
+## Requirements
+
+- Python 3.11+
+- Node.js 18+ (to build the UI on first run)
+
+## Setup
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate        # Windows
+.venv\Scripts\activate          # Windows
+# source .venv/bin/activate     # Linux/macOS
 pip install -r requirements.txt
 cd frontend && npm install && npm run build && cd ..
 ```
 
-## Запуск
+## Run
 
-**Windows:** двойной клик `run.bat` или:
+**Windows:** double-click `run.bat` or:
 
 ```bash
 run.bat
@@ -28,20 +33,39 @@ run.bat
 chmod +x run.sh && ./run.sh
 ```
 
-Откройте в браузере: http://127.0.0.1:8000
+The launcher creates a virtual environment, installs dependencies, builds the frontend if needed, and opens http://127.0.0.1:8000 in your browser.
 
-## Тесты
+## Usage
+
+1. Place your WorldGuard **`regions.yml`** in the project folder (or pick any path via the file dialog).
+2. Optionally add **`all_flags.txt`** next to the app for flag type hints in the region panel.
+3. Click **Open YAML**, then **Build scheme**.
+4. Use the toolbar for search, legend, metrics, collapse/expand, and scheme save/load (`.mrv.json`).
+
+The UI supports **Russian** and **English** (language switcher in the sidebar).
+
+## Tests
 
 ```bash
 pytest
 ```
 
-## Документация
+Integration tests expect `regions.yml` in the project root; they are skipped if the file is missing.
 
-Полное руководство пользователя: [docs/ИНСТРУКЦИЯ.md](docs/ИНСТРУКЦИЯ.md)
+## Documentation
 
-Dev-логи: [docs/dev/STATUS.md](docs/dev/STATUS.md)
+Full user guide (Russian): [docs/ИНСТРУКЦИЯ.md](docs/ИНСТРУКЦИЯ.md)
 
-## Эталонные файлы (только чтение)
+## Data files (not in this repository)
 
-- `task.txt`, `all_flags.txt`, `regions.yml` — не изменять
+These files are local-only (see `.gitignore`):
+
+| File | Purpose |
+|------|---------|
+| `regions.yml` | Your WorldGuard regions export |
+| `all_flags.txt` | WorldGuard flags reference for the UI |
+| `*.mrv.json` | Saved scheme snapshots |
+
+## License
+
+Use and modify as needed for your server administration workflow.
