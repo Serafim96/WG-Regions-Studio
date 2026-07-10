@@ -253,3 +253,15 @@ body {
 .node-context-menu button:hover {
   background: #f0f4f8;
 }
+
+.graph-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+  color: #842029;
+  background: #f8d7da;
+}

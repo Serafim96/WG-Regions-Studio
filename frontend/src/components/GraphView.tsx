@@ -28,7 +28,7 @@ function buildDepthMap(scheme: Scheme): Map<string, number> {
     depths.set(node.id, node.depth);
     node.children.forEach(walk);
   }
-  scheme.forest.roots.forEach(walk);
+  scheme.forest?.roots?.forEach(walk);
   return depths;
 }
 
@@ -61,6 +61,7 @@ export function GraphView({
     scheme.regions.forEach((r) => parentMap.set(r.id, r.parent));
 
     const visiblePositions = layoutVisibleForest(scheme, hiddenNodes);
+    const visibleIds = new Set(visiblePositions.keys());
     const visibleSpatial = remapSpatialEdges(scheme.spatialEdges, hiddenNodes, parentMap);
 
     const elements: cytoscape.ElementDefinition[] = [];
@@ -85,7 +86,7 @@ export function GraphView({
     }
 
     for (const edge of scheme.hierarchyEdges) {
-      if (hiddenNodes.has(edge.source) || hiddenNodes.has(edge.target)) continue;
+      if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) continue;
       elements.push({
         data: {
           id: `h-${edge.source}-${edge.target}`,
@@ -97,6 +98,7 @@ export function GraphView({
     }
 
     for (const edge of visibleSpatial) {
+      if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) continue;
       elements.push({
         data: {
           id: `s-${edge.relation}-${edge.source}-${edge.target}`,
@@ -109,6 +111,11 @@ export function GraphView({
 
     if (cyRef.current) {
       cyRef.current.destroy();
+    }
+
+    if (elements.length === 0) {
+      cyRef.current = null;
+      return;
     }
 
     const cy = cytoscape({

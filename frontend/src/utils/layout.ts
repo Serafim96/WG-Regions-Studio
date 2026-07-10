@@ -38,7 +38,7 @@ export function layoutVisibleForest(
   }
 
   let xOffset = 0;
-  for (const root of scheme.forest.roots) {
+  for (const root of scheme.forest?.roots ?? []) {
     if (hiddenNodes.has(root.id)) continue;
     const w = layoutSubtree(root, xOffset, 0);
     xOffset += w * H_SPACING + H_SPACING;
@@ -47,19 +47,22 @@ export function layoutVisibleForest(
   return positions;
 }
 
-/** Auto-hide direct children of nodes with more than threshold children. */
+/** Auto-hide entire subtrees under nodes with more than threshold direct children. */
 export function computeDefaultHiddenNodes(scheme: Scheme, threshold = 10): Set<string> {
   const hidden = new Set<string>();
 
+  function hideSubtree(node: ForestNode) {
+    hidden.add(node.id);
+    node.children.forEach(hideSubtree);
+  }
+
   function walk(node: ForestNode) {
     if (node.children.length > threshold) {
-      for (const child of node.children) {
-        hidden.add(child.id);
-      }
+      node.children.forEach(hideSubtree);
     }
     node.children.forEach(walk);
   }
 
-  scheme.forest.roots.forEach(walk);
+  scheme.forest?.roots?.forEach(walk);
   return hidden;
 }

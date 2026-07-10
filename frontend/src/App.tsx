@@ -8,6 +8,7 @@ import {
   saveScheme,
 } from './api';
 import { AddRegionDialog } from './components/AddRegionDialog';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { GraphView } from './components/GraphView';
 import { MetricsPanel } from './components/MetricsPanel';
 import { RegionPanel } from './components/RegionPanel';
@@ -55,18 +56,13 @@ export default function App() {
     const key = scheme.sourceHash || 'default';
     schemeKeyRef.current = key;
     const saved = loadViewState(key);
-    if (saved && !isFreshSchemeRef.current) {
+    if (isFreshSchemeRef.current) {
+      isFreshSchemeRef.current = false;
+    } else if (saved) {
       setHiddenNodes(new Set(saved.hiddenNodes));
       setDepthScale(saved.depthScale);
       setAppliedDepthScale(saved.depthScale);
       setCollapseTarget(saved.collapseTarget);
-    } else {
-      const defaults = computeDefaultHiddenNodes(scheme);
-      setHiddenNodes(defaults);
-      isFreshSchemeRef.current = false;
-      if (defaults.size > 0) {
-        setStatus((s) => `${s} | Авто-свёрнуто ${defaults.size} узлов (родители с >10 детьми)`);
-      }
     }
   }, [scheme?.sourceHash]);
 
@@ -84,6 +80,21 @@ export default function App() {
     if (!scheme || !selectedId) return null;
     return scheme.regions.find((r) => r.id === selectedId) ?? null;
   }, [scheme, selectedId]);
+
+  const applyScheme = useCallback((next: Scheme, fresh: boolean) => {
+    isFreshSchemeRef.current = fresh;
+    if (fresh) {
+      const defaults = computeDefaultHiddenNodes(next);
+      setHiddenNodes(defaults);
+      setScheme(next);
+      if (defaults.size > 0) {
+        return defaults.size;
+      }
+    } else {
+      setScheme(next);
+    }
+    return 0;
+  }, []);
 
   const parentOptions = useMemo(
     () => (scheme ? scheme.regions.map((r) => r.id).sort() : []),
@@ -120,12 +131,11 @@ export default function App() {
     try {
       setStatus('Построение схемы…');
       const result = await buildScheme();
-      isFreshSchemeRef.current = true;
-      setScheme(result.scheme);
+      const collapsed = applyScheme(result.scheme, true);
       setHashWarning(null);
-      setStatus(
-        `Схема готова: ${result.scheme.regions.length} узлов, ${result.scheme.spatialEdges.length} spatial-рёбер`,
-      );
+      let msg = `Схема готова: ${result.scheme.regions.length} узлов, ${result.scheme.spatialEdges.length} spatial-рёбер`;
+      if (collapsed > 0) msg += ` | Авто-свёрнуто ${collapsed} узлов`;
+      setStatus(msg);
     } catch (err) {
       setStatus(`Ошибка: ${err}`);
     }
@@ -147,8 +157,7 @@ export default function App() {
     if (!path) return;
     try {
       const loaded = await loadScheme(path);
-      isFreshSchemeRef.current = true;
-      setScheme(loaded);
+      const collapsed = applyScheme(loaded, true);
 
       if (loadedYamlHash && loaded.sourceHash !== loadedYamlHash) {
         setHashWarning(
@@ -158,7 +167,7 @@ export default function App() {
         setHashWarning(null);
       }
 
-      setStatus(`Схема загружена: ${loaded.regions.length} узлов`);
+      setStatus(`Схема загружена: ${loaded.regions.length} узлов${collapsed > 0 ? ` | авто-свёрнуто ${collapsed}` : ''}`);
     } catch (err) {
       setStatus(`Ошибка: ${err}`);
     }
@@ -169,9 +178,12 @@ export default function App() {
     const node = findForestNode(scheme, regionId);
     if (!node) return;
     const childIds = node.children.map((c: ForestNode) => c.id);
+    const allIds = hide
+      ? node.children.flatMap((c) => [c.id, ...collectDescendants(c)])
+      : childIds;
     setHiddenNodes((prev) => {
       const next = new Set(prev);
-      for (const cid of childIds) {
+      for (const cid of allIds) {
         if (hide) next.add(cid);
         else next.delete(cid);
       }
@@ -283,7 +295,8 @@ export default function App() {
 
       <main className="graph-area">
         {scheme ? (
-          <GraphView
+          <ErrorBoundary>
+            <GraphView
             scheme={scheme}
             hiddenNodes={hiddenNodes}
             depthScale={appliedDepthScale}
@@ -293,6 +306,7 @@ export default function App() {
             onCollapseChildren={(id) => onContextCollapse(id, true)}
             onExpandChildren={(id) => onContextCollapse(id, false)}
           />
+          </ErrorBoundary>
         ) : (
           <div className="placeholder">Загрузите YAML и нажмите «Построить схему»</div>
         )}
