@@ -83,6 +83,19 @@ body {
   padding-top: 8px;
 }
 
+.depth-scale-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.depth-scale-hint {
+  font-size: 0.75rem;
+  color: #666;
+  margin: 0 0 8px;
+  line-height: 1.35;
+}
+
 .collapse-panel {
   border: 1px solid #ddd;
   border-radius: 6px;

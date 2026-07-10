@@ -68,6 +68,11 @@ export function collectDescendants(node: ForestNode): string[] {
   return ids;
 }
 
+/** Hide node and all descendants. */
+export function collectSubtreeIds(node: ForestNode): string[] {
+  return [node.id, ...collectDescendants(node)];
+}
+
 export function depthColor(depth: number): string {
   const hue = (depth * 137.5) % 360;
   return `hsl(${hue}, 65%, 55%)`;

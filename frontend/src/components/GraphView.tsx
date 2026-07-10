@@ -3,6 +3,7 @@ import cytoscape, { Core } from 'cytoscape';
 import type { Scheme } from '../types';
 import { buildStylesheet } from '../cytoscape/styles';
 import { depthColor, nodeSize, remapSpatialEdges } from '../utils/graph';
+import { layoutVisibleForest } from '../utils/layout';
 
 interface GraphViewProps {
   scheme: Scheme;
@@ -44,6 +45,7 @@ export function GraphView({
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const fitOnNextLayout = useRef(true);
 
   useEffect(() => {
     const close = () => setContextMenu(null);
@@ -58,21 +60,16 @@ export function GraphView({
     const parentMap = new Map<string, string | null>();
     scheme.regions.forEach((r) => parentMap.set(r.id, r.parent));
 
+    const visiblePositions = layoutVisibleForest(scheme, hiddenNodes);
     const visibleSpatial = remapSpatialEdges(scheme.spatialEdges, hiddenNodes, parentMap);
 
     const elements: cytoscape.ElementDefinition[] = [];
 
     for (const region of scheme.regions) {
+      const pos = visiblePositions.get(region.id);
+      if (!pos) continue;
       const depth = depths.get(region.id) ?? 0;
-      const pos = scheme.layout[region.id] ?? { x: 0, y: 0 };
       const isCloud = region.type === 'global' || region.type === 'manual';
-      const classes = [
-        isCloud ? 'cloud' : '',
-        region.is_manual ? 'manual' : '',
-        hiddenNodes.has(region.id) ? 'hidden-node' : '',
-      ]
-        .filter(Boolean)
-        .join(' ');
 
       elements.push({
         data: {
@@ -83,7 +80,7 @@ export function GraphView({
           depth,
         },
         position: pos,
-        classes,
+        classes: [isCloud ? 'cloud' : '', region.is_manual ? 'manual' : ''].filter(Boolean).join(' '),
       });
     }
 
@@ -119,19 +116,18 @@ export function GraphView({
       elements,
       style: buildStylesheet(baseSize, depthScale) as cytoscape.StylesheetStyle[],
       layout: { name: 'preset' },
-      minZoom: 0.05,
-      maxZoom: 4,
-      wheelSensitivity: 0.3,
+      minZoom: 0.02,
+      maxZoom: 12,
+      // Higher value = faster zoom per wheel tick (default 1; was 0.3 — too slow)
+      wheelSensitivity: 3.5,
     });
 
     cy.on('tap', 'node', (evt) => {
-      const id = evt.target.id();
-      if (!hiddenNodes.has(id)) onNodeClick(id);
+      onNodeClick(evt.target.id());
     });
 
     cy.on('cxttap', 'node', (evt) => {
       const id = evt.target.id();
-      if (hiddenNodes.has(id)) return;
       const rendered = evt.renderedPosition || evt.target.renderedPosition();
       const rect = containerRef.current!.getBoundingClientRect();
       setContextMenu({
@@ -142,6 +138,11 @@ export function GraphView({
       evt.originalEvent.preventDefault();
     });
 
+    if (fitOnNextLayout.current) {
+      cy.fit(undefined, 40);
+      fitOnNextLayout.current = false;
+    }
+
     cyRef.current = cy;
 
     return () => {
@@ -149,6 +150,14 @@ export function GraphView({
       cyRef.current = null;
     };
   }, [scheme, hiddenNodes, depthScale, baseSize, onNodeClick]);
+
+  // Re-fit when collapse changes (not on every depthScale tweak if already fit)
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (cy && cy.nodes().length > 0) {
+      cy.fit(undefined, 40);
+    }
+  }, [hiddenNodes]);
 
   return (
     <>

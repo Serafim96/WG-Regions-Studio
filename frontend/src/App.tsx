@@ -13,6 +13,7 @@ import { MetricsPanel } from './components/MetricsPanel';
 import { RegionPanel } from './components/RegionPanel';
 import type { FlagInfo, ForestNode, RegionData, Scheme } from './types';
 import { collectDescendants } from './utils/graph';
+import { computeDefaultHiddenNodes } from './utils/layout';
 import { loadViewState, saveViewState } from './utils/viewState';
 
 function findForestNode(scheme: Scheme, id: string): ForestNode | null {
@@ -42,22 +43,30 @@ export default function App() {
   const [loadedYamlHash, setLoadedYamlHash] = useState<string | null>(null);
   const [hashWarning, setHashWarning] = useState<string | null>(null);
   const schemeKeyRef = useRef('default');
+  const isFreshSchemeRef = useRef(false);
 
   useEffect(() => {
     fetchFlags().then(setFlagsCatalog);
   }, []);
 
-  // Restore view state when scheme changes
+  // Restore view state when scheme changes (or apply defaults)
   useEffect(() => {
     if (!scheme) return;
     const key = scheme.sourceHash || 'default';
     schemeKeyRef.current = key;
     const saved = loadViewState(key);
-    if (saved) {
+    if (saved && !isFreshSchemeRef.current) {
       setHiddenNodes(new Set(saved.hiddenNodes));
       setDepthScale(saved.depthScale);
       setAppliedDepthScale(saved.depthScale);
       setCollapseTarget(saved.collapseTarget);
+    } else {
+      const defaults = computeDefaultHiddenNodes(scheme);
+      setHiddenNodes(defaults);
+      isFreshSchemeRef.current = false;
+      if (defaults.size > 0) {
+        setStatus((s) => `${s} | Авто-свёрнуто ${defaults.size} узлов (родители с >10 детьми)`);
+      }
     }
   }, [scheme?.sourceHash]);
 
@@ -100,6 +109,7 @@ export default function App() {
       setStatus(`Загружено ${preview.count} регионов из ${preview.source_path}`);
       setScheme(null);
       setHiddenNodes(new Set());
+      isFreshSchemeRef.current = true;
     } catch (err) {
       setStatus(`Ошибка: ${err}`);
     }
@@ -110,8 +120,8 @@ export default function App() {
     try {
       setStatus('Построение схемы…');
       const result = await buildScheme();
+      isFreshSchemeRef.current = true;
       setScheme(result.scheme);
-      setHiddenNodes(new Set());
       setHashWarning(null);
       setStatus(
         `Схема готова: ${result.scheme.regions.length} узлов, ${result.scheme.spatialEdges.length} spatial-рёбер`,
@@ -137,8 +147,8 @@ export default function App() {
     if (!path) return;
     try {
       const loaded = await loadScheme(path);
+      isFreshSchemeRef.current = true;
       setScheme(loaded);
-      setHiddenNodes(new Set());
 
       if (loadedYamlHash && loaded.sourceHash !== loadedYamlHash) {
         setHashWarning(
@@ -235,8 +245,14 @@ export default function App() {
         </button>
 
         <div className="depth-scale">
+          <p className="depth-scale-title">Размер кружков по уровню вложенности</p>
+          <p className="depth-scale-hint">
+            На каждом уровне глубины узел умножается на этот коэффициент.
+            Например, 0.85 — дети на 15% меньше родителя, внуки ещё меньше.
+            Не влияет на масштаб колёсиком мыши.
+          </p>
           <label>
-            Масштаб по глубине: {depthScale.toFixed(2)}
+            Коэффициент: {depthScale.toFixed(2)}
             <input
               type="range"
               min={0.5}
