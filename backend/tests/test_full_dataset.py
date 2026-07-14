@@ -3,22 +3,24 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 import pytest
 
 from backend.geometry.intersections import compute_spatial_edges, poly2d_volume, region_volume
 from backend.parser.wg_parser import parse_regions_yaml, validate_parent_links
 from backend.scheme.io import build_scheme
-
-REGIONS_YML = Path(__file__).resolve().parents[2] / "regions.yml"
+from backend.tests.conftest import (
+    WG_REGIONS_REFERENCE_COUNT,
+    WG_REGIONS_REFERENCE_TYPES,
+    WG_REGIONS_REFERENCE_YML,
+)
 
 
 @pytest.fixture(scope="module")
 def full_regions():
-    if not REGIONS_YML.exists():
-        pytest.skip("regions.yml not found")
-    content = REGIONS_YML.read_text(encoding="utf-8")
+    if not WG_REGIONS_REFERENCE_YML.exists():
+        pytest.skip("wg_regions_reference.yml fixture not found")
+    content = WG_REGIONS_REFERENCE_YML.read_text(encoding="utf-8")
     regions = parse_regions_yaml(content)
     validate_parent_links(regions)
     return content, regions
@@ -26,13 +28,11 @@ def full_regions():
 
 def test_full_dataset_region_count(full_regions):
     _, regions = full_regions
-    assert len(regions) == 403
+    assert len(regions) == WG_REGIONS_REFERENCE_COUNT
     types = {}
     for r in regions:
         types[r.type] = types.get(r.type, 0) + 1
-    assert types["cuboid"] == 308
-    assert types["poly2d"] == 34
-    assert types["global"] == 61
+    assert types == WG_REGIONS_REFERENCE_TYPES
 
 
 def test_full_dataset_build_performance(full_regions):

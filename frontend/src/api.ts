@@ -62,3 +62,16 @@ export async function addManualRegion(data: Partial<RegionData> & { id: string }
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
+
+export async function deleteManualRegion(
+  id: string,
+  childrenMode: 'detach' | 'cascade' = 'detach',
+) {
+  const res = await fetch(`${API}/regions/manual/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id, children_mode: childrenMode }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}

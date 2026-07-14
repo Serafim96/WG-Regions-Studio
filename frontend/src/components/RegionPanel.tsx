@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo, RegionData } from '../types';
 import type { SpatialRelationsGrouped } from '../utils/graph';
+import { isTemporaryRegion } from '../utils/regions';
 
 interface RegionPanelProps {
   region: RegionData;
@@ -10,6 +11,8 @@ interface RegionPanelProps {
   flagsCatalog: FlagInfo[];
   onClose: () => void;
   onFocusRegion: (regionId: string) => void;
+  onDeleteManual?: (regionId: string) => void;
+  canDelete?: boolean;
 }
 
 function PartnerList({
@@ -40,6 +43,8 @@ export function RegionPanel({
   flagsCatalog,
   onClose,
   onFocusRegion,
+  onDeleteManual,
+  canDelete = false,
 }: RegionPanelProps) {
   const { t } = useI18n();
   const [showFlags, setShowFlags] = useState(false);
@@ -87,7 +92,7 @@ export function RegionPanel({
             />
           </div>
 
-          {region.is_manual && <p className="badge-manual">{t('region.manualBadge')}</p>}
+          {isTemporaryRegion(region) && <p className="badge-manual">{t('region.manualBadge')}</p>}
 
           {region.min && region.max && (
             <p>
@@ -148,6 +153,11 @@ export function RegionPanel({
             <button type="button" onClick={() => setShowFlags(!showFlags)}>
               {showFlags ? t('region.hideFlags') : t('region.flags')}
             </button>
+            {(canDelete || isTemporaryRegion(region)) && onDeleteManual && (
+              <button type="button" className="danger" onClick={() => onDeleteManual(region.id)}>
+                {t('region.deleteManual')}
+              </button>
+            )}
           </div>
 
           {showFlags && (

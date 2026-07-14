@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 
 from backend.parser.wg_parser import ParseError, parse_regions_yaml, validate_parent_links
+from backend.tests.conftest import WG_REGIONS_REFERENCE_COUNT, WG_REGIONS_REFERENCE_YML
 
 FIXTURES = Path(__file__).parent / "fixtures"
-REGIONS_YML = Path(__file__).resolve().parents[2] / "regions.yml"
 
 
 def test_parse_cuboid():
@@ -110,11 +110,11 @@ regions:
 
 
 def test_parse_full_regions_yml():
-    if not REGIONS_YML.exists():
-        pytest.skip("regions.yml not found")
-    content = REGIONS_YML.read_text(encoding="utf-8")
+    if not WG_REGIONS_REFERENCE_YML.exists():
+        pytest.skip("wg_regions_reference.yml fixture not found")
+    content = WG_REGIONS_REFERENCE_YML.read_text(encoding="utf-8")
     regions = parse_regions_yaml(content)
     validate_parent_links(regions)
-    assert len(regions) == 403
+    assert len(regions) == WG_REGIONS_REFERENCE_COUNT
     types = {r.type for r in regions}
     assert types == {"cuboid", "poly2d", "global"}

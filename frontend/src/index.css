@@ -247,8 +247,51 @@ body {
 
 .modal-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin: 12px 0;
+}
+
+button.danger,
+.modal-actions button.danger {
+  background: var(--color-error-bg);
+  color: var(--color-error-text);
+  border: 1px solid var(--color-error-text);
+}
+
+button.danger:hover,
+.modal-actions button.danger:hover {
+  filter: brightness(0.95);
+}
+
+.node-context-menu button.danger-menu-item {
+  color: var(--color-error-text);
+}
+
+.node-context-menu button.danger-menu-item:hover {
+  background: var(--color-error-bg);
+}
+
+.delete-manual-modal {
+  max-width: 520px;
+}
+
+.delete-manual-children {
+  margin: 8px 0 12px;
+  padding-left: 20px;
+  font-size: 0.85rem;
+  color: var(--color-text-hint);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.delete-manual-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.delete-manual-actions button {
+  width: 100%;
 }
 
 .flags-table-wrap {
@@ -299,6 +342,11 @@ body {
   color: var(--color-text);
 }
 
+.readonly-input {
+  opacity: 0.85;
+  cursor: default;
+}
+
 .checkbox-label {
   flex-direction: row !important;
   align-items: center;
@@ -330,6 +378,35 @@ body {
 .hint {
   font-size: 0.75rem;
   color: var(--color-text-placeholder);
+}
+
+.inline-toggle-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  padding: 2px 0;
+  border: none;
+  background: none;
+  color: var(--color-text-hint);
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.inline-toggle-btn:hover {
+  color: var(--color-text);
+}
+
+.flags-example {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 4px;
+  background: var(--color-bg-input);
+  color: var(--color-text-hint);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  font-family: ui-monospace, Consolas, monospace;
 }
 
 .node-context-menu {

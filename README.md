@@ -81,11 +81,11 @@ pytest
 
 ### 3. Optional: full dataset tests
 
-Some tests read **`regions.yml`** from the project root (same file you use in the UI). If the file is missing, those tests are **skipped**; the rest still run.
+Some integration tests read **`backend/tests/fixtures/wg_regions_reference.yml`** — a frozen copy for pytest. The **`regions.yml`** in the project root is only for your viewing in the UI; tests do not depend on it.
 
 ```text
 WorldGuard-Region-Viewer/
-├── regions.yml          ← optional, for integration tests
+├── backend/tests/fixtures/wg_regions_reference.yml  ← frozen YAML for integration tests
 ├── pytest.ini
 ├── backend/tests/       ← test files
 └── ...

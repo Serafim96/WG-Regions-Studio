@@ -12,6 +12,7 @@ export interface RegionData {
   max_y?: number;
   points?: { x: number; z: number }[];
   is_manual?: boolean;
+  deletable?: boolean;
 }
 
 export interface SpatialEdge {

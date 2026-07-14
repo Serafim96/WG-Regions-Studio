@@ -64,6 +64,7 @@ class Region:
             "owners": self.owners,
             "members": self.members,
             "is_manual": self.is_manual,
+            "deletable": self.is_manual,
         }
         if self.min is not None:
             data["min"] = self.min.to_dict()

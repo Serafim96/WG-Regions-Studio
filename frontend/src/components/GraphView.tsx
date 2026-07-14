@@ -17,6 +17,7 @@ import {
   remapSpatialEdges,
 } from '../utils/graph';
 import { layoutVisibleForest, type NodeDimensions } from '../utils/layout';
+import { isTemporaryRegion } from '../utils/regions';
 import { useI18n } from '../i18n/I18nContext';
 import { useTheme } from '../theme/ThemeContext';
 
@@ -32,9 +33,12 @@ interface GraphViewProps {
   baseSize: number;
   focusRequest: { id: string; seq: number } | null;
   centerRequest: { id: string; seq: number } | null;
+  deletableRegionIds: Set<string>;
   onNodeSelect: (regionId: string) => void;
   onNodeOpen: (regionId: string) => void;
   onCopyName: (regionId: string) => void;
+  onAddDescendant: (regionId: string) => void;
+  onDeleteManual: (regionId: string) => void;
   onCollapseChildren: (regionId: string) => void;
   onExpandChildren: (regionId: string) => void;
 }
@@ -43,6 +47,7 @@ interface ContextMenuState {
   x: number;
   y: number;
   nodeId: string;
+  hasDraftClass: boolean;
 }
 
 function applyRegionNodeStyles(cy: Core): void {
@@ -100,9 +105,12 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     baseSize,
     focusRequest,
     centerRequest,
+    deletableRegionIds,
     onNodeSelect,
     onNodeOpen,
     onCopyName,
+    onAddDescendant,
+    onDeleteManual,
     onCollapseChildren,
     onExpandChildren,
   },
@@ -116,6 +124,8 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const fitOnNextLayout = useRef(true);
   const viewStateRef = useRef<{ zoom: number; pan: { x: number; y: number } } | null>(null);
+  const centerRequestRef = useRef(centerRequest);
+  centerRequestRef.current = centerRequest;
 
   useImperativeHandle(ref, () => ({
     focusNode(regionId: string) {
@@ -176,6 +186,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       if (orphanIds.has(region.id)) classes.push('orphan');
       if (hiddenN > 0) classes.push('has-collapsed');
       if (region.is_manual) classes.push('draft');
+      const manual = isTemporaryRegion(region);
 
       elements.push({
         data: {
@@ -190,6 +201,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
           hiddenCount: hiddenN,
           regionType: region.type,
           nodeShape,
+          isManual: manual,
         },
         position: pos,
         classes: classes.join(' '),
@@ -263,13 +275,15 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     cy.on('cxttap', 'node', (evt) => {
       evt.originalEvent.preventDefault();
       evt.originalEvent.stopPropagation();
-      const id = evt.target.id();
-      const rendered = evt.renderedPosition || evt.target.renderedPosition();
+      const node = evt.target;
+      const id = node.id();
+      const rendered = evt.renderedPosition || node.renderedPosition();
       const rect = containerRef.current!.getBoundingClientRect();
       setContextMenu({
         x: rect.left + rendered.x,
         y: rect.top + rendered.y,
         nodeId: id,
+        hasDraftClass: node.hasClass('draft'),
       });
     });
 
@@ -287,6 +301,15 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
 
     applyRegionNodeStyles(cy);
     cyRef.current = cy;
+
+    const pendingCenter = centerRequestRef.current;
+    if (pendingCenter) {
+      requestAnimationFrame(() => {
+        if (cyRef.current) {
+          centerNodeOnCy(cyRef.current, pendingCenter.id);
+        }
+      });
+    }
 
     return () => {
       if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
@@ -346,6 +369,20 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
           <button type="button" onClick={() => { onCopyName(contextMenu.nodeId); setContextMenu(null); }}>
             {t('graph.copyName')}
           </button>
+          <button type="button" onClick={() => { onAddDescendant(contextMenu.nodeId); setContextMenu(null); }}>
+            {t('graph.addDescendant')}
+          </button>
+          {(deletableRegionIds.has(contextMenu.nodeId)
+            || contextMenu.hasDraftClass
+            || isTemporaryRegion(scheme.regions.find((region) => region.id === contextMenu.nodeId))) && (
+            <button
+              type="button"
+              className="danger-menu-item"
+              onClick={() => { onDeleteManual(contextMenu.nodeId); setContextMenu(null); }}
+            >
+              {t('graph.deleteManual')}
+            </button>
+          )}
           <button type="button" onClick={() => { onCollapseChildren(contextMenu.nodeId); setContextMenu(null); }}>
             {t('graph.hideChildren')}
           </button>

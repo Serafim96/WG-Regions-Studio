@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from backend.flags.catalog import parse_flags_file
 from backend.geometry.intersections import compute_spatial_edges
+from backend.manual_regions import ChildrenMode, delete_manual_region
 from backend.models.region import Region
 from backend.parser.wg_parser import ParseError, parse_regions_yaml, validate_parent_links
 from backend.scheme.io import build_scheme, load_scheme, save_scheme, source_hash
@@ -60,6 +61,11 @@ class ManualRegionRequest(BaseModel):
     flags: dict[str, Any] = {}
     owners: dict[str, Any] = {}
     members: dict[str, Any] = {}
+
+
+class DeleteManualRegionRequest(BaseModel):
+    id: str
+    children_mode: ChildrenMode = "detach"
 
 
 class SchemeSaveRequest(BaseModel):
@@ -191,6 +197,22 @@ def add_manual_region(req: ManualRegionRequest) -> dict[str, Any]:
         _rebuild_scheme()
 
     return region.to_dict()
+
+
+@app.post("/api/regions/manual/delete")
+def remove_manual_region(req: DeleteManualRegionRequest) -> dict[str, Any]:
+    regions: list[Region] = list(_session.get("regions") or [])
+    try:
+        updated = delete_manual_region(regions, req.id, req.children_mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    _session["regions"] = updated
+
+    if _session.get("scheme"):
+        _rebuild_scheme()
+
+    return {"deleted": req.id, "children_mode": req.children_mode}
 
 
 # Serve frontend static files when built

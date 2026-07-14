@@ -2,12 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   addManualRegion,
   buildScheme,
+  deleteManualRegion,
   fetchFlags,
   loadScheme,
   parseYaml,
   saveScheme,
 } from './api';
 import { AddRegionDialog } from './components/AddRegionDialog';
+import { DeleteManualRegionDialog, type DeleteChildrenMode } from './components/DeleteManualRegionDialog';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { GraphView, type GraphViewHandle } from './components/GraphView';
 import { LegendPanel } from './components/LegendPanel';
@@ -23,6 +25,7 @@ import {
   getSpatialRelationsGrouped,
   revealPathToNode,
 } from './utils/graph';
+import { collectDeletableRegionIds, isTemporaryRegion } from './utils/regions';
 import {
   computeCollapseAllHidden,
   computeDefaultHiddenNodes,
@@ -65,6 +68,9 @@ export default function App() {
   const [showLegend, setShowLegend] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [addDialogLockedParent, setAddDialogLockedParent] = useState<string | undefined>(undefined);
+  const [deleteTarget, setDeleteTarget] = useState<{ regionId: string; childIds: string[] } | null>(null);
+  const [deletableRegionIds, setDeletableRegionIds] = useState<Set<string>>(new Set());
   const [collapseThreshold, setCollapseThreshold] = useState(initialSettings.collapseThreshold);
   const [baseSize] = useState(60);
   const [collapseTarget, setCollapseTarget] = useState<string | null>(null);
@@ -143,15 +149,36 @@ export default function App() {
     [scheme],
   );
 
-  const applyOrphans = useCallback((next: Scheme) => {
+  useEffect(() => {
+    if (!scheme) {
+      setDeletableRegionIds(new Set());
+      return;
+    }
+    setDeletableRegionIds((prev) => {
+      const next = collectDeletableRegionIds(scheme);
+      for (const id of prev) {
+        if (scheme.regions.some((region) => region.id === id)) {
+          next.add(id);
+        }
+      }
+      return next;
+    });
+  }, [scheme]);
+
+  const applyOrphans = useCallback((next: Scheme, showWarning = true) => {
     const orphans = findOrphanRegionIds(next.regions);
     setOrphanIds(new Set(orphans));
-    setShowOrphanWarning(orphans.length > 0);
+    setShowOrphanWarning(showWarning && orphans.length > 0);
   }, []);
 
-  const applyScheme = useCallback((next: Scheme, fresh: boolean, threshold: number) => {
+  const applyScheme = useCallback((
+    next: Scheme,
+    fresh: boolean,
+    threshold: number,
+    options?: { skipOrphanWarning?: boolean },
+  ) => {
     isFreshSchemeRef.current = fresh;
-    applyOrphans(next);
+    applyOrphans(next, !options?.skipOrphanWarning);
     if (fresh) {
       const defaults = computeDefaultHiddenNodes(next, threshold);
       setHiddenNodes(defaults);
@@ -202,6 +229,7 @@ export default function App() {
       setScheme(null);
       setHiddenNodes(new Set());
       setOrphanIds(new Set());
+      setDeletableRegionIds(new Set());
       setShowOrphanWarning(false);
       setSelectedId(null);
       setDetailsId(null);
@@ -313,6 +341,16 @@ export default function App() {
     setStatus(t('status.expandAll'));
   }, [collapseTarget, requestCenterOn, t]);
 
+  const openAddDialog = useCallback((lockedParent?: string) => {
+    setAddDialogLockedParent(lockedParent);
+    setShowAddDialog(true);
+  }, []);
+
+  const closeAddDialog = useCallback(() => {
+    setShowAddDialog(false);
+    setAddDialogLockedParent(undefined);
+  }, []);
+
   const handleAddManual = async (data: {
     id: string;
     parent: string | null;
@@ -331,8 +369,15 @@ export default function App() {
         members: {},
       });
       const result = await buildScheme();
-      applyScheme(result.scheme, true, collapseThreshold);
-      setShowAddDialog(false);
+      applyScheme(result.scheme, true, collapseThreshold, { skipOrphanWarning: true });
+      setDeletableRegionIds((prev) => new Set(prev).add(data.id));
+      closeAddDialog();
+      const parentMap = buildParentMap(result.scheme.regions);
+      setHiddenNodes((prev) => revealPathToNode(data.id, prev, parentMap));
+      setSelectedId(data.id);
+      setCollapseTarget(data.id);
+      focusSeqRef.current += 1;
+      setFocusRequest({ id: data.id, seq: focusSeqRef.current });
       setStatus(t('status.manualAdded', { id: data.id }));
     } catch (err) {
       setStatus(t('status.error', { msg: String(err) }));
@@ -360,6 +405,55 @@ export default function App() {
     setSelectedId(id);
     toggleChildren(id, hide);
   }, [toggleChildren]);
+
+  const onAddDescendant = useCallback((id: string) => {
+    openAddDialog(id);
+  }, [openAddDialog]);
+
+  const requestDeleteManual = useCallback((regionId: string) => {
+    if (!scheme) return;
+    const region = scheme.regions.find((r) => r.id === regionId);
+    if (!deletableRegionIds.has(regionId) && !isTemporaryRegion(region)) return;
+    const node = findForestNode(scheme, regionId);
+    const childIds = node?.children.map((child) => child.id) ?? [];
+    setDeleteTarget({ regionId, childIds });
+  }, [scheme, deletableRegionIds]);
+
+  const handleConfirmDeleteManual = async (mode: DeleteChildrenMode) => {
+    if (!deleteTarget || !scheme) return;
+    const { regionId } = deleteTarget;
+    try {
+      await deleteManualRegion(regionId, mode);
+      const result = await buildScheme();
+
+      const node = findForestNode(scheme, regionId);
+      const removedIds = new Set<string>([regionId]);
+      if (mode === 'cascade' && node) {
+        for (const id of collectDescendants(node)) {
+          removedIds.add(id);
+        }
+      }
+
+      applyScheme(result.scheme, false, collapseThreshold);
+      setHiddenNodes((prev) => {
+        const next = new Set(prev);
+        for (const id of removedIds) next.delete(id);
+        return next;
+      });
+      if (selectedId && removedIds.has(selectedId)) {
+        setSelectedId(null);
+        setCollapseTarget(null);
+      }
+      if (detailsId && removedIds.has(detailsId)) {
+        setDetailsId(null);
+      }
+      setDeleteTarget(null);
+      setDeletableRegionIds(collectDeletableRegionIds(result.scheme));
+      setStatus(t('status.manualDeleted', { id: regionId }));
+    } catch (err) {
+      setStatus(t('status.error', { msg: String(err) }));
+    }
+  };
 
   const blockBrowserMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -406,7 +500,7 @@ export default function App() {
         <button type="button" onClick={handleBuild}>{t('app.buildScheme')}</button>
         <button type="button" onClick={handleLoadScheme}>{t('app.loadScheme')}</button>
         <button type="button" onClick={handleSaveScheme} disabled={!scheme}>{t('app.saveScheme')}</button>
-        <button type="button" onClick={() => setShowAddDialog(true)} disabled={!scheme}>
+        <button type="button" onClick={() => openAddDialog()} disabled={!scheme}>
           {t('app.addManual')}
         </button>
         <button type="button" onClick={() => setShowSearch(true)} disabled={!scheme}>
@@ -468,9 +562,12 @@ export default function App() {
               baseSize={baseSize}
               focusRequest={focusRequest}
               centerRequest={centerRequest}
+              deletableRegionIds={deletableRegionIds}
               onNodeSelect={onNodeSelect}
               onNodeOpen={onNodeOpen}
               onCopyName={onCopyName}
+              onAddDescendant={onAddDescendant}
+              onDeleteManual={requestDeleteManual}
               onCollapseChildren={(id) => onContextCollapse(id, true)}
               onExpandChildren={(id) => onContextCollapse(id, false)}
             />
@@ -488,6 +585,16 @@ export default function App() {
           flagsCatalog={flagsCatalog}
           onClose={() => setDetailsId(null)}
           onFocusRegion={focusRegion}
+          onDeleteManual={requestDeleteManual}
+          canDelete={deletableRegionIds.has(detailsRegion.id)}
+        />
+      )}
+      {deleteTarget && (
+        <DeleteManualRegionDialog
+          regionId={deleteTarget.regionId}
+          childIds={deleteTarget.childIds}
+          onConfirm={handleConfirmDeleteManual}
+          onClose={() => setDeleteTarget(null)}
         />
       )}
       {showMetrics && scheme && (
@@ -509,9 +616,11 @@ export default function App() {
       )}
       {showAddDialog && (
         <AddRegionDialog
-          parentOptions={parentOptions}
+          key={addDialogLockedParent ?? 'free'}
+          regionIds={parentOptions}
+          lockedParent={addDialogLockedParent}
           onAdd={handleAddManual}
-          onClose={() => setShowAddDialog(false)}
+          onClose={closeAddDialog}
         />
       )}
     </div>
