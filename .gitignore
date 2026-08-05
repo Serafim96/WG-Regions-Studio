@@ -28,6 +28,13 @@ Thumbs.db
 *.log
 regions.yml
 all_flags.txt
+data/custom_flags.json
+
+# Local reference dumps / binaries (not needed to run the app)
+*.jar
+*.xlsx
+double-up-arrow.svg
+Приватные регионы иерархия
 
 # Dev-only (not needed to run the app)
 .cursor/
@@ -39,4 +46,3 @@ backend/tools/
 
 # Draw.io diagrams
 *.drawio
-Приватные регионы иерархия

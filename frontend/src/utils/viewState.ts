@@ -32,3 +32,11 @@ export function saveViewState(schemeKey: string, state: ViewState): void {
     // ignore quota errors
   }
 }
+
+export function clearViewState(schemeKey: string): void {
+  try {
+    localStorage.removeItem(storageKey(schemeKey));
+  } catch {
+    // ignore
+  }
+}

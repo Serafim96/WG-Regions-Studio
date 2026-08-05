@@ -8,15 +8,30 @@ export interface AppSettings {
   collapseThreshold: number;
   locale: Locale;
   theme: Theme;
+  sidebarCollapsed: boolean;
+  /** Sidebar width in px; minimum is SIDEBAR_MIN_WIDTH. */
+  sidebarWidth: number;
 }
 
 const STORAGE_KEY = 'mrv.settings';
+
+/** Default and minimum sidebar width (px). */
+export const SIDEBAR_MIN_WIDTH = 280;
+export const SIDEBAR_MAX_WIDTH = 560;
 
 export const DEFAULT_SETTINGS: AppSettings = {
   collapseThreshold: 40,
   locale: 'ru',
   theme: 'light',
+  sidebarCollapsed: false,
+  sidebarWidth: SIDEBAR_MIN_WIDTH,
 };
+
+function clampSidebarWidth(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_SETTINGS.sidebarWidth;
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(n)));
+}
 
 export function loadAppSettings(): AppSettings {
   try {
@@ -29,6 +44,8 @@ export function loadAppSettings(): AppSettings {
       collapseThreshold: parsed.collapseThreshold ?? DEFAULT_SETTINGS.collapseThreshold,
       locale,
       theme,
+      sidebarCollapsed: parsed.sidebarCollapsed === true,
+      sidebarWidth: clampSidebarWidth(parsed.sidebarWidth),
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

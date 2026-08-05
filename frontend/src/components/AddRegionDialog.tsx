@@ -1,5 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useI18n } from '../i18n/I18nContext';
+import {
+  emptyGeometryState,
+  geometryToPayload,
+  RegionGeometryEditor,
+  type GeometryPayload,
+  type RegionGeometryState,
+} from './RegionGeometryEditor';
 
 interface AddRegionDialogProps {
   regionIds: string[];
@@ -9,7 +16,7 @@ interface AddRegionDialogProps {
     parent: string | null;
     priority: number;
     flags: Record<string, string>;
-    isGlobal: boolean;
+    geometry: GeometryPayload;
   }) => void;
   onClose: () => void;
 }
@@ -25,7 +32,7 @@ export function AddRegionDialog({ regionIds, lockedParent, onAdd, onClose }: Add
   const [id, setId] = useState('');
   const [parentQuery, setParentQuery] = useState('');
   const [priority, setPriority] = useState(0);
-  const [isGlobal, setIsGlobal] = useState(false);
+  const [geometry, setGeometry] = useState<RegionGeometryState>(() => emptyGeometryState('cuboid'));
   const [flagsText, setFlagsText] = useState('');
   const [showFlagsExample, setShowFlagsExample] = useState(false);
   const [showParentSuggestions, setShowParentSuggestions] = useState(false);
@@ -78,7 +85,7 @@ export function AddRegionDialog({ regionIds, lockedParent, onAdd, onClose }: Add
       parent: resolvedParent,
       priority,
       flags: parseFlags(),
-      isGlobal,
+      geometry: geometryToPayload(geometry),
     });
   };
 
@@ -135,15 +142,9 @@ export function AddRegionDialog({ regionIds, lockedParent, onAdd, onClose }: Add
             {t('addRegion.priority')}
             <input type="number" value={priority} onChange={(e) => setPriority(Number(e.target.value))} />
           </label>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={isGlobal}
-              onChange={(e) => setIsGlobal(e.target.checked)}
-            />
-            {t('addRegion.global')}
-          </label>
-          <p className="hint">{t('addRegion.globalHint')}</p>
+
+          <RegionGeometryEditor value={geometry} onChange={setGeometry} />
+
           <label>
             {t('addRegion.flags')}
             <textarea rows={4} value={flagsText} onChange={(e) => setFlagsText(e.target.value)} />

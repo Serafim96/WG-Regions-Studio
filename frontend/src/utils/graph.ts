@@ -74,28 +74,43 @@ export function depthColor(depth: number): string {
 }
 
 const BASE_FONT = 11;
-const CHAR_WIDTH_EM = 0.58;
-const LINE_HEIGHT_EM = 1.25;
+const CHAR_WIDTH_EM = 0.62;
+const CHAR_WIDTH_EM_DENSE = 0.72;
+const LINE_HEIGHT_EM = 1.28;
 
 /** Fixed per-level size decay (no UI setting). */
 export const NODE_DEPTH_SCALE = 0.85;
+
+export interface NodeLabelMetricsOptions {
+  /** Wider char estimate for bold / value captions (avoids overflow). */
+  denseText?: boolean;
+  /** Emphasize flag-value captions (larger font inside the node). */
+  valueEmphasis?: boolean;
+}
 
 /** Node box and font scale by hierarchy depth (scale = NODE_DEPTH_SCALE^depth). */
 export function nodeLabelMetrics(
   label: string,
   hierarchyDepth: number,
   baseSize: number,
+  options?: NodeLabelMetricsOptions,
 ): { width: number; height: number; fontSize: number; textMaxWidth: number } {
   const scale = Math.pow(NODE_DEPTH_SCALE, hierarchyDepth);
-  const fontSize = Math.max(7, BASE_FONT * scale);
+  const baseFont = Math.max(7, BASE_FONT * scale);
+  const fontSize = options?.valueEmphasis
+    ? Math.max(baseFont + 2, Math.round(baseFont * 1.22))
+    : baseFont;
   const lines = label.split('\n');
   const longest = Math.max(...lines.map((l) => l.length), 1);
-  const textW = longest * fontSize * CHAR_WIDTH_EM;
+  const charEm = options?.denseText || options?.valueEmphasis ? CHAR_WIDTH_EM_DENSE : CHAR_WIDTH_EM;
+  const padX = options?.denseText || options?.valueEmphasis ? 28 : 20;
+  const padY = options?.denseText || options?.valueEmphasis ? 22 : 16;
+  const textW = longest * fontSize * charEm;
   const textH = lines.length * fontSize * LINE_HEIGHT_EM;
   const minBox = baseSize * scale;
-  const width = Math.max(minBox, textW + 20);
-  const height = Math.max(minBox * 0.72, textH + 16);
-  return { width, height, fontSize, textMaxWidth: width - 12 };
+  const width = Math.max(minBox, textW + padX);
+  const height = Math.max(minBox * 0.72, textH + padY);
+  return { width, height, fontSize, textMaxWidth: Math.max(8, width - 14) };
 }
 
 /** Absolute hierarchy depth from forest (0 = root without parent). */
@@ -203,6 +218,113 @@ export function getSpatialRelationsGrouped(
   };
 }
 
+/**
+ * Regions linked by full containment (contains / contained-in), not hierarchy.
+ * - `children`: only regions fully inside this one (recursive).
+ * - `parents`: only containers of this one (recursive), up to regions not contained in any other.
+ * - `all`: inward + outward.
+ */
+export function collectContainmentChain(
+  scheme: Scheme,
+  regionId: string,
+  mode: 'all' | 'children' | 'parents',
+): string[] {
+  const result = new Set<string>([regionId]);
+
+  const walkDown = (id: string) => {
+    for (const inner of getSpatialRelationsGrouped(scheme, id).contains) {
+      if (result.has(inner)) continue;
+      result.add(inner);
+      walkDown(inner);
+    }
+  };
+
+  const walkUp = (id: string) => {
+    for (const outer of getSpatialRelationsGrouped(scheme, id).containedIn) {
+      if (result.has(outer)) continue;
+      result.add(outer);
+      walkUp(outer);
+    }
+  };
+
+  if (mode === 'children' || mode === 'all') walkDown(regionId);
+  if (mode === 'parents' || mode === 'all') walkUp(regionId);
+  return Array.from(result);
+}
+
+/** Region plus all direct intersects partners (not recursive). */
+export function collectIntersectsPartners(scheme: Scheme, regionId: string): string[] {
+  const partners = getSpatialRelationsGrouped(scheme, regionId).intersects;
+  return [regionId, ...partners];
+}
+
+/**
+ * Edge keys that belong to a branch highlight (`relation-source-target` for spatial,
+ * `source->target` for hierarchy).
+ * When `hidden` is set, spatial keys are remapped to visible ancestors (same as drawn edges).
+ */
+export function collectHighlightEdgeKeys(
+  scheme: Scheme,
+  ids: Set<string>,
+  mode: 'children' | 'full' | 'containment-all' | 'containment-children' | 'containment-parents' | 'intersects',
+  hidden?: Set<string>,
+): Set<string> {
+  const keys = new Set<string>();
+  if (
+    mode === 'intersects'
+    || mode === 'containment-all'
+    || mode === 'containment-children'
+    || mode === 'containment-parents'
+  ) {
+    const parentMap = buildParentMap(scheme.regions);
+    const ancestors = hidden
+      ? buildVisibleAncestorMap(hidden, parentMap)
+      : null;
+    const wantContains = mode !== 'intersects';
+    for (const edge of scheme.spatialEdges) {
+      if (wantContains) {
+        if (edge.relation !== 'contains') continue;
+      } else if (edge.relation !== 'intersects') {
+        continue;
+      }
+      if (!ids.has(edge.source) || !ids.has(edge.target)) continue;
+      let src = edge.source;
+      let tgt = edge.target;
+      if (ancestors) {
+        src = ancestors.get(edge.source) ?? edge.source;
+        tgt = ancestors.get(edge.target) ?? edge.target;
+        if ((hidden && (hidden.has(src) || hidden.has(tgt))) || src === tgt) continue;
+      }
+      if (edge.relation === 'intersects') {
+        const [a, b] = [src, tgt].sort();
+        keys.add(`intersects-${a}-${b}`);
+        keys.add(`intersects-${b}-${a}`);
+      } else {
+        keys.add(`contains-${src}-${tgt}`);
+      }
+    }
+    return keys;
+  }
+  // Hierarchy branch: only parent→child edges inside the set.
+  for (const edge of scheme.hierarchyEdges) {
+    if (!ids.has(edge.source) || !ids.has(edge.target)) continue;
+    keys.add(`${edge.source}->${edge.target}`);
+  }
+  return keys;
+}
+
+/** Ancestors of a region via parent links (nearest first). */
+export function collectParentChain(scheme: Scheme, regionId: string): string[] {
+  const parentMap = buildParentMap(scheme.regions);
+  const list: string[] = [];
+  let current = parentMap.get(regionId) ?? null;
+  while (current) {
+    list.push(current);
+    current = parentMap.get(current) ?? null;
+  }
+  return list;
+}
+
 /** Unhide target and all ancestors so the node can be shown. */
 export function revealPathToNode(
   targetId: string,
@@ -211,11 +333,17 @@ export function revealPathToNode(
 ): Set<string> {
   const next = new Set(hidden);
   let current: string | null | undefined = targetId;
+  let changed = false;
   while (current) {
-    next.delete(current);
+    if (next.has(current)) {
+      next.delete(current);
+      changed = true;
+    }
     current = parentMap.get(current) ?? null;
   }
-  return next;
+  // Same reference avoids a Cytoscape rebuild when the path is already visible
+  // (e.g. search after «expand all»).
+  return changed ? next : hidden;
 }
 
 export function buildParentMap(regions: RegionData[]): Map<string, string | null> {

@@ -58,4 +58,6 @@ export interface FlagInfo {
   name: string;
   type: string;
   description: string;
+  /** True for WorldGuard standard catalog entries (immutable). */
+  builtin?: boolean;
 }

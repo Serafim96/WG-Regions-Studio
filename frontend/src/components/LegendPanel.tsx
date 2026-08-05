@@ -1,9 +1,5 @@
 import { useI18n } from '../i18n/I18nContext';
 
-interface LegendPanelProps {
-  onClose: () => void;
-}
-
 function LegendDirectedEdge({ color, width = 2.5 }: { color: string; width?: number }) {
   return (
     <svg width="56" height="20" viewBox="0 0 56 20" className="legend-arrow-svg" aria-hidden>
@@ -13,10 +9,16 @@ function LegendDirectedEdge({ color, width = 2.5 }: { color: string; width?: num
   );
 }
 
-export function LegendPanel({ onClose }: LegendPanelProps) {
+export function LegendPanel({
+  onClose,
+  mode = 'scheme',
+}: {
+  onClose: () => void;
+  mode?: 'scheme' | 'flagHighlight';
+}) {
   const { t } = useI18n();
 
-  const items = [
+  const schemeItems = [
     { sample: <span className="legend-node legend-node--normal" />, meaning: t('legend.normal') },
     { sample: <span className="legend-node legend-node--global" />, meaning: t('legend.global') },
     { sample: <span className="legend-node legend-node--manual" />, meaning: t('legend.manual') },
@@ -28,11 +30,23 @@ export function LegendPanel({ onClose }: LegendPanelProps) {
     { sample: <LegendDirectedEdge color="#8e44ad" width={2} />, meaning: t('legend.contains') },
   ];
 
+  const flagItems = [
+    { sample: <span className="legend-node legend-node--flag-define" />, meaning: t('legend.flagDefine') },
+    { sample: <span className="legend-node legend-node--flag-path" />, meaning: t('legend.flagPath') },
+    { sample: <span className="legend-node legend-node--flag-dim" />, meaning: t('legend.flagDim') },
+    { sample: <span className="legend-node legend-node--flag-conflict-pair" />, meaning: t('legend.flagConflictPair') },
+    { sample: <LegendDirectedEdge color="#1abc9c" width={5} />, meaning: t('legend.flagPathEdge') },
+  ];
+
+  const items = mode === 'flagHighlight' ? flagItems : schemeItems;
+  const title = mode === 'flagHighlight' ? t('legend.flagTitle') : t('legend.title');
+  const extra = mode === 'flagHighlight' ? t('legend.flagExtra') : t('legend.extra');
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal legend-modal" onClick={(e) => e.stopPropagation()}>
         <header>
-          <h2>{t('legend.title')}</h2>
+          <h2>{title}</h2>
           <button type="button" onClick={onClose}>×</button>
         </header>
         <div className="modal-body">
@@ -44,7 +58,7 @@ export function LegendPanel({ onClose }: LegendPanelProps) {
               </li>
             ))}
           </ul>
-          <p className="legend-extra">{t('legend.extra')}</p>
+          <p className="legend-extra">{extra}</p>
         </div>
       </div>
     </div>

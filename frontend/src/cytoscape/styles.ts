@@ -2,8 +2,13 @@
 
 import type { Theme } from '../utils/settings';
 
-export function regionNodeShape(regionType: string): 'ellipse' | 'rectangle' {
-  return regionType === 'manual' ? 'rectangle' : 'ellipse';
+export function regionNodeShape(
+  regionType: string,
+  isTemporary = false,
+): 'ellipse' | 'rectangle' {
+  if (regionType === 'global') return 'ellipse';
+  if (regionType === 'manual' || isTemporary) return 'rectangle';
+  return 'ellipse';
 }
 
 export function buildStylesheet(theme: Theme = 'light') {
@@ -88,6 +93,91 @@ export function buildStylesheet(theme: Theme = 'light') {
       },
     },
     {
+      selector: 'node.flag-conflict',
+      style: {
+        'border-width': 5,
+        'border-color': '#ffc107',
+        'border-style': 'solid',
+      },
+    },
+    {
+      selector: 'node.flag-dim',
+      style: {
+        opacity: 0.18,
+      },
+    },
+    {
+      // On the inheritance path but does not locally set the flag.
+      selector: 'node.flag-path',
+      style: {
+        opacity: 1,
+        'border-width': 3,
+        'border-color': '#16a085',
+        'background-opacity': 0.82,
+        color: '#0e6655',
+        'text-opacity': 1,
+        'font-weight': 500,
+      },
+    },
+    {
+      // Region that locally assigns the highlighted flag.
+      selector: 'node.flag-define',
+      style: {
+        opacity: 1,
+        'border-width': 5,
+        'border-color': '#1abc9c',
+        'background-opacity': 1,
+        color: '#064e3b',
+        'text-opacity': 1,
+        'font-weight': 700,
+      },
+    },
+    {
+      // Inherited flag value caption (larger + bold).
+      selector: 'node.flag-value-inherit',
+      style: {
+        color: '#0f766e',
+        'font-weight': 700,
+        'text-opacity': 1,
+      },
+    },
+    {
+      // Local flag value caption (larger + bold).
+      selector: 'node.flag-value-define',
+      style: {
+        color: '#065f46',
+        'font-weight': 800,
+        'text-opacity': 1,
+      },
+    },
+    {
+      // Spatial-conflict participant while a flag highlight is active.
+      selector: 'node.flag-conflict-pair',
+      style: {
+        opacity: 1,
+        'border-width': 5,
+        'border-color': '#e74c3c',
+        'background-opacity': 1,
+        color: '#7f1d1d',
+        'text-opacity': 1,
+        'font-weight': 800,
+      },
+    },
+    {
+      selector: 'node.flag-conflict-pair.flag-value-define',
+      style: {
+        color: '#7f1d1d',
+        'font-weight': 800,
+      },
+    },
+    {
+      selector: 'node.flag-conflict-pair.flag-value-inherit',
+      style: {
+        color: '#b91c1c',
+        'font-weight': 800,
+      },
+    },
+    {
       selector: 'node.selected',
       style: {
         'border-width': 4,
@@ -124,6 +214,32 @@ export function buildStylesheet(theme: Theme = 'light') {
         'target-arrow-shape': 'triangle',
         opacity: 0.85,
         'curve-style': 'bezier',
+      },
+    },
+    // Dim / path / conflict must come after base edge styles so opacity wins.
+    {
+      selector: 'edge.flag-dim-edge',
+      style: {
+        opacity: 0.12,
+      },
+    },
+    {
+      selector: 'edge.flag-path-edge',
+      style: {
+        opacity: 1,
+        width: 7,
+        'line-color': '#1abc9c',
+        'target-arrow-color': '#1abc9c',
+      },
+    },
+    {
+      selector: 'edge.flag-conflict-edge',
+      style: {
+        opacity: 1,
+        width: 4,
+        'line-color': '#e74c3c',
+        'target-arrow-color': '#e74c3c',
+        'line-style': 'solid',
       },
     },
   ];
