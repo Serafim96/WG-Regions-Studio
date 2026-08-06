@@ -1,10 +1,21 @@
 # WorldGuard Region Viewer
 
-Visualize WorldGuard region hierarchies with spatial overlaps (intersects) and full containment (contains).
+Visualize WorldGuard region hierarchies with spatial overlaps (**intersects**) and full containment (**contains**).
 
-Load your own `regions.yml`, explore the tree, collapse large subtrees, search regions, and inspect flags and metrics in the browser.
+Load your own `regions.yml` or a saved scheme, explore the tree, collapse large subtrees, search regions, manage flags, and export YAML back for the plugin — all in the browser.
 
-This repository is the **app** root (`backend/`, `frontend/`, docs). Local workspace files (venv, WorldGuard references, notes) live one level above when you develop in the full Cursor workspace.
+Repository: [Serafim96/WorldGuard-Region-Viewer](https://github.com/Serafim96/WorldGuard-Region-Viewer)
+
+This repository is the **app** root (`backend/`, `frontend/`, `docs/`). Local workspace files (venv, WorldGuard references, notes) may live one level above when you develop in a larger Cursor workspace.
+
+## Features
+
+- Open **YAML** or **`.mrv.json`** scheme from one **Open file** button (scheme builds immediately from YAML)
+- Hierarchy graph with spatial edges, collapse/expand, search, legend, metrics
+- **Flag conflicts** (overwrites + overlaps) and a **notifications** bell (errors / warnings)
+- Temporary regions, rename/delete, flag manager + catalog, **Export YAML**
+- Dark/light theme, Russian / English UI
+- See [CHANGELOG.md](CHANGELOG.md) for recent changes
 
 ## Requirements
 
@@ -25,7 +36,7 @@ cd frontend && npm install && npm run build && cd ..
 
 ## Run
 
-From this directory (`app/`):
+From this directory (repo root):
 
 **Windows:** double-click `run.bat` or:
 
@@ -43,10 +54,10 @@ The launcher uses `../.venv`, installs dependencies, builds the frontend if need
 
 ## Usage
 
-1. Place your WorldGuard **`regions.yml`** next to the app (workspace folder) or pick any path via the file dialog.
-2. Click **Open YAML**, then **Build scheme**.
-3. Use the toolbar for search, legend, metrics, collapse/expand, and scheme save/load.
-4. **Save scheme** / **Load scheme** use the **`.mrv.json`** format — a JSON snapshot of the built graph (nodes, edges, layout, metrics), so you can reopen it without rebuilding from YAML.
+1. Click **Open file** and choose a WorldGuard **`regions.yml`** / `.yaml`, or a saved **`.mrv.json`** scheme.
+2. If a scheme is already open, confirm that it will be discarded; YAML is parsed and the scheme is built right away.
+3. Use the map controls for search, legend, metrics, collapse/expand, highlights, and the notifications bell.
+4. **Save scheme** writes **`.mrv.json`** (tree, edges, layout, metrics). **Export YAML** writes a WorldGuard-compatible `regions.export.yml` (with checks for temporary regions and conflicts).
 
 The UI supports **Russian** and **English** (language switcher in the sidebar).
 
@@ -107,6 +118,7 @@ You do **not** need Node.js or a running web server for `pytest` — only Python
 
 ## Documentation
 
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Full user guide (English): [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
 - Full user guide (Russian): [docs/ИНСТРУКЦИЯ.md](docs/ИНСТРУКЦИЯ.md)
 
