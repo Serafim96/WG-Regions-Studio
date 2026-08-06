@@ -232,3 +232,35 @@ export function IconEdgeFilter({ size = GRAPH_ICON_SIZE, className }: SvgIconPro
     </svg>
   );
 }
+
+/** Flag (for flag-tree viewer on the scheme). */
+export function IconFlag({ size = GRAPH_ICON_SIZE, className }: SvgIconProps = {}) {
+  return (
+    <svg {...strokeSvg(size)} className={className}>
+      <path d="M4.5 15.5V3.5" />
+      <path d="M4.5 3.5h8.2l-1.6 2.8 1.6 2.8H4.5" />
+    </svg>
+  );
+}
+
+/** Re-align / re-layout — Word-style left-align (ragged horizontal bars). */
+export function IconAlign({ size = GRAPH_ICON_SIZE, className }: SvgIconProps = {}) {
+  return (
+    <svg {...strokeSvg(size)} className={className}>
+      <path d="M3 4.5h12" />
+      <path d="M3 7.5h7" />
+      <path d="M3 10.5h10" />
+      <path d="M3 13.5h5" />
+    </svg>
+  );
+}
+
+/** Circular arrows — refresh notifications. */
+export function IconRefresh({ size = GRAPH_ICON_SIZE, className }: SvgIconProps = {}) {
+  return (
+    <svg {...strokeSvg(size)} className={className}>
+      <path d="M14.5 9A5.5 5.5 0 1 1 12.5 4.2" />
+      <path d="M15.5 5.5h-3v3" />
+    </svg>
+  );
+}

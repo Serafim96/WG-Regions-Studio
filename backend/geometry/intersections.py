@@ -132,7 +132,12 @@ def _polygon_contains(outer: Polygon, inner: Polygon) -> bool:
 
 
 def is_spatial(region: Region) -> bool:
-    if region.is_manual or region.type in ("global", "manual"):
+    """True when the region has geometry that participates in spatial edges.
+
+    Temporary (manual) regions with complete cuboid/poly2d coords are included;
+    only global / incomplete / draft ``manual`` types are excluded.
+    """
+    if region.type in ("global", "manual"):
         return False
     if region.type == "cuboid":
         return region.min is not None and region.max is not None

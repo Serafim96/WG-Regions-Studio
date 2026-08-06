@@ -2,12 +2,13 @@
 setlocal
 cd /d "%~dp0"
 
-if not exist .venv (
-    echo Creating virtual environment...
-    python -m venv .venv
+set "VENV_DIR=%~dp0..\.venv"
+if not exist "%VENV_DIR%" (
+    echo Creating virtual environment in ..\.venv ...
+    python -m venv "%VENV_DIR%"
 )
 
-call .venv\Scripts\activate.bat
+call "%VENV_DIR%\Scripts\activate.bat"
 pip install -q -r requirements.txt
 
 echo Building frontend...

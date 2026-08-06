@@ -73,10 +73,12 @@ def apply_geometry_fields(
     max_y: int | None = None,
     points: list[dict[str, Any]] | None = None,
     clear_geometry: bool = False,
+    mark_as_manual: bool = True,
 ) -> None:
-    """Mutate region type and coordinate fields for a temporary region."""
+    """Mutate region type and coordinate fields."""
     region.type = region_type
-    region.is_manual = True
+    if mark_as_manual:
+        region.is_manual = True
 
     if region_type == "global" or clear_geometry:
         region.min = None

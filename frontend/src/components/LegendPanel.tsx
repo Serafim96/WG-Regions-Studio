@@ -1,4 +1,5 @@
 import { useI18n } from '../i18n/I18nContext';
+import { ModalOverlay } from './ModalOverlay';
 
 function LegendDirectedEdge({ color, width = 2.5 }: { color: string; width?: number }) {
   return (
@@ -9,13 +10,7 @@ function LegendDirectedEdge({ color, width = 2.5 }: { color: string; width?: num
   );
 }
 
-export function LegendPanel({
-  onClose,
-  mode = 'scheme',
-}: {
-  onClose: () => void;
-  mode?: 'scheme' | 'flagHighlight';
-}) {
+export function LegendPanel({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
 
   const schemeItems = [
@@ -38,29 +33,35 @@ export function LegendPanel({
     { sample: <LegendDirectedEdge color="#1abc9c" width={5} />, meaning: t('legend.flagPathEdge') },
   ];
 
-  const items = mode === 'flagHighlight' ? flagItems : schemeItems;
-  const title = mode === 'flagHighlight' ? t('legend.flagTitle') : t('legend.title');
-  const extra = mode === 'flagHighlight' ? t('legend.flagExtra') : t('legend.extra');
-
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <ModalOverlay onClose={onClose}>
       <div className="modal legend-modal" onClick={(e) => e.stopPropagation()}>
         <header>
-          <h2>{title}</h2>
+          <h2>{t('legend.title')}</h2>
           <button type="button" onClick={onClose}>×</button>
         </header>
         <div className="modal-body">
           <ul className="legend-visual-list">
-            {items.map((item, i) => (
-              <li key={i} className="legend-visual-item">
+            {schemeItems.map((item, i) => (
+              <li key={`s-${i}`} className="legend-visual-item">
                 <div className="legend-visual-sample">{item.sample}</div>
                 <p>{item.meaning}</p>
               </li>
             ))}
           </ul>
-          <p className="legend-extra">{extra}</p>
+          <p className="legend-extra">{t('legend.extra')}</p>
+          <h3 className="legend-section-title">{t('legend.flagTitle')}</h3>
+          <ul className="legend-visual-list">
+            {flagItems.map((item, i) => (
+              <li key={`f-${i}`} className="legend-visual-item">
+                <div className="legend-visual-sample">{item.sample}</div>
+                <p>{item.meaning}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="legend-extra">{t('legend.flagExtra')}</p>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

@@ -2,9 +2,6 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.venv/
-venv/
-env/
 *.egg-info/
 dist/
 build/
@@ -14,35 +11,17 @@ node_modules/
 frontend/dist/
 backend/static/
 
-# OS / IDE
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
+# Dev helpers (not required to run)
+backend/tools/
 
 # Local runtime / secrets
 .env
 .env.*
+*.log
 *.mrv.json
 *.mrv.view.json
-*.log
-regions.yml
-all_flags.txt
 data/custom_flags.json
 
-# Local reference dumps / binaries (not needed to run the app)
-*.jar
-*.xlsx
-double-up-arrow.svg
-Приватные регионы иерархия
-
-# Dev-only (not needed to run the app)
-.cursor/
-task.txt
-AGENTS.md
-docs/dev/
-backend/tools/
-замечания/
-
-# Draw.io diagrams
-*.drawio
+# OS
+.DS_Store
+Thumbs.db

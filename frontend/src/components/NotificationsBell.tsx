@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useI18n } from '../i18n/I18nContext';
-import { IconBell } from './GraphControlIcons';
+import type { TranslationKey } from '../i18n/translations';
+import { IconBell, IconRefresh } from './GraphControlIcons';
 
 export type NotificationLevel = 'error' | 'warning';
 export type NotificationKind = 'spatial' | 'overwrite' | 'orphan' | 'info';
@@ -12,8 +13,11 @@ export interface AppNotification {
   kind: NotificationKind;
   /** Stable key used to dedupe and auto-remove when the conflict is gone. */
   conflictKey: string;
-  title: string;
-  body: string;
+  /** i18n key for title — translated at render so locale switches apply. */
+  titleKey: TranslationKey;
+  /** i18n key for body. */
+  bodyKey: TranslationKey;
+  params?: Record<string, string | number>;
   flagName?: string;
   /** Spatial: region A; overwrite: parent; orphan: region id. */
   aId?: string;
@@ -33,6 +37,7 @@ interface Props {
   notifications: AppNotification[];
   onToggle: () => void;
   onClose: () => void;
+  onRefresh: () => void;
   onMarkAllRead: () => void;
   onClear: () => void;
   onDismiss: (id: string) => void;
@@ -44,6 +49,7 @@ export function NotificationsBell({
   notifications,
   onToggle,
   onClose,
+  onRefresh,
   onMarkAllRead,
   onClear,
   onDismiss,
@@ -80,7 +86,18 @@ export function NotificationsBell({
       {open && (
         <div className="notifications-panel" role="dialog" aria-label={t('notifications.title')}>
           <header>
-            <h3>{t('notifications.title')}</h3>
+            <div className="notifications-header-title">
+              <h3>{t('notifications.title')}</h3>
+              <button
+                type="button"
+                className="notifications-refresh"
+                onClick={onRefresh}
+                title={t('notifications.refresh')}
+                aria-label={t('notifications.refresh')}
+              >
+                <IconRefresh size={16} />
+              </button>
+            </div>
             <button type="button" className="notifications-close" onClick={onClose}>×</button>
           </header>
           <div className="notifications-tabs" role="tablist">
@@ -151,8 +168,8 @@ export function NotificationsBell({
                       }
                     }}
                   >
-                    <strong>{n.title}</strong>
-                    <span>{n.body}</span>
+                    <strong>{t(n.titleKey, n.params)}</strong>
+                    <span>{t(n.bodyKey, n.params)}</span>
                   </div>
                   {n.level === 'warning' && (
                     <button

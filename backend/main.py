@@ -30,17 +30,19 @@ from backend.manual_geometry import (
     is_manual_region,
     normalize_manual_type,
 )
-from backend.manual_regions import ChildrenMode, delete_manual_region
+from backend.manual_regions import ChildrenMode, clear_manual_regions, delete_manual_region
 from backend.models.region import Region
 from backend.parser.wg_parser import ParseError, parse_regions_yaml, validate_parent_links
 from backend.scheme.io import build_scheme, load_scheme, save_scheme, source_hash
 from backend.regions_export_yaml import export_regions_yaml
+from backend.util.region_ids import is_valid_region_id
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-STATIC_DIR = PROJECT_ROOT / "backend" / "static"
-FLAGS_PATH = PROJECT_ROOT / "all_flags.txt"
-WG_JAR_PATH = PROJECT_ROOT / "worldguard-bukkit-7.0.17.jar"
-CUSTOM_FLAGS_PATH = PROJECT_ROOT / "data" / "custom_flags.json"
+APP_ROOT = Path(__file__).resolve().parents[1]
+WORKSPACE_ROOT = APP_ROOT.parent
+STATIC_DIR = APP_ROOT / "backend" / "static"
+FLAGS_PATH = WORKSPACE_ROOT / "all_flags.txt"
+WG_JAR_PATH = WORKSPACE_ROOT / "worldguard-bukkit-7.0.17.jar"
+CUSTOM_FLAGS_PATH = APP_ROOT / "data" / "custom_flags.json"
 
 app = FastAPI(title="Minecraft Regions Viewer")
 app.add_middleware(
@@ -95,6 +97,19 @@ class UpdateFlagsRequest(BaseModel):
 
 class UpdateParentRequest(BaseModel):
     parent: str | None = None
+
+
+class UpdatePriorityRequest(BaseModel):
+    priority: int
+
+
+class RenameRegionRequest(BaseModel):
+    id: str
+
+
+class UpdateMembersRequest(BaseModel):
+    owners: dict[str, Any] = {}
+    members: dict[str, Any] = {}
 
 
 class UpdateManualGeometryRequest(BaseModel):
@@ -357,6 +372,11 @@ def scheme_import(scheme: dict[str, Any]) -> dict[str, Any]:
 @app.post("/api/regions/manual")
 def add_manual_region(req: ManualRegionRequest) -> dict[str, Any]:
     regions: list[Region] = list(_session.get("regions") or [])
+    if not is_valid_region_id(req.id):
+        raise HTTPException(
+            status_code=400,
+            detail="Region id must use Latin letters, digits, underscore or hyphen only",
+        )
     if any(r.id == req.id for r in regions):
         raise HTTPException(status_code=400, detail=f"Region '{req.id}' already exists")
 
@@ -412,6 +432,7 @@ def add_manual_region(req: ManualRegionRequest) -> dict[str, Any]:
 
 @app.post("/api/regions/manual/delete")
 def remove_manual_region(req: DeleteManualRegionRequest) -> dict[str, Any]:
+    """Delete any session region (YAML or temporary) with children handling."""
     regions: list[Region] = list(_session.get("regions") or [])
     try:
         updated = delete_manual_region(regions, req.id, req.children_mode)
@@ -426,23 +447,34 @@ def remove_manual_region(req: DeleteManualRegionRequest) -> dict[str, Any]:
     return {"deleted": req.id, "children_mode": req.children_mode}
 
 
+@app.post("/api/regions/manual/clear")
+def clear_all_manual_regions() -> dict[str, Any]:
+    """Remove all temporary regions from the session (used by «Reset scheme»)."""
+    regions: list[Region] = list(_session.get("regions") or [])
+    before = len(regions)
+    updated = clear_manual_regions(regions)
+    _session["regions"] = updated
+    removed = before - len(updated)
+    if _session.get("scheme") and updated:
+        _rebuild_scheme()
+    elif not updated:
+        _session["scheme"] = None
+    return {"removed": removed, "remaining": len(updated)}
+
+
 @app.patch("/api/regions/{region_id}/geometry")
 def update_region_geometry(region_id: str, req: UpdateManualGeometryRequest) -> dict[str, Any]:
     regions: list[Region] = list(_session.get("regions") or [])
     region = next((r for r in regions if r.id == region_id), None)
     if region is None:
         raise HTTPException(status_code=404, detail=f"Region '{region_id}' not found")
-    if not is_manual_region(region):
-        raise HTTPException(
-            status_code=400,
-            detail="Only temporary regions can change type/coordinates here",
-        )
 
     try:
         region_type = normalize_manual_type(req.type)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # Preserve is_manual for YAML-loaded regions; only temp regions stay marked manual.
     apply_geometry_fields(
         region,
         region_type=region_type,
@@ -451,6 +483,7 @@ def update_region_geometry(region_id: str, req: UpdateManualGeometryRequest) -> 
         min_y=req.min_y,
         max_y=req.max_y,
         points=req.points,
+        mark_as_manual=is_manual_region(region),
     )
     _session["regions"] = regions
 
@@ -470,6 +503,16 @@ def _sync_region_flags_to_scheme(region_id: str, flags: dict[str, Any]) -> None:
             break
 
 
+def _sync_region_field_to_scheme(region_id: str, field: str, value: Any) -> None:
+    scheme = _session.get("scheme")
+    if not scheme:
+        return
+    for entry in scheme["regions"]:
+        if entry.get("id") == region_id:
+            entry[field] = value
+            break
+
+
 @app.patch("/api/regions/{region_id}/flags")
 def update_region_flags(region_id: str, req: UpdateFlagsRequest) -> dict[str, Any]:
     regions: list[Region] = list(_session.get("regions") or [])
@@ -480,6 +523,75 @@ def update_region_flags(region_id: str, req: UpdateFlagsRequest) -> dict[str, An
     region.flags = dict(req.flags)
     _session["regions"] = regions
     _sync_region_flags_to_scheme(region_id, region.flags)
+
+    return region.to_dict()
+
+
+@app.patch("/api/regions/{region_id}/priority")
+def update_region_priority(region_id: str, req: UpdatePriorityRequest) -> dict[str, Any]:
+    regions: list[Region] = list(_session.get("regions") or [])
+    region = next((r for r in regions if r.id == region_id), None)
+    if region is None:
+        raise HTTPException(status_code=404, detail=f"Region '{region_id}' not found")
+
+    region.priority = int(req.priority)
+    _session["regions"] = regions
+    _sync_region_field_to_scheme(region_id, "priority", region.priority)
+
+    return region.to_dict()
+
+
+@app.patch("/api/regions/{region_id}/members")
+def update_region_members(region_id: str, req: UpdateMembersRequest) -> dict[str, Any]:
+    regions: list[Region] = list(_session.get("regions") or [])
+    region = next((r for r in regions if r.id == region_id), None)
+    if region is None:
+        raise HTTPException(status_code=404, detail=f"Region '{region_id}' not found")
+
+    region.owners = dict(req.owners or {})
+    region.members = dict(req.members or {})
+    _session["regions"] = regions
+    _sync_region_field_to_scheme(region_id, "owners", region.owners)
+    _sync_region_field_to_scheme(region_id, "members", region.members)
+
+    return region.to_dict()
+
+
+@app.patch("/api/regions/{region_id}/rename")
+def rename_region(region_id: str, req: RenameRegionRequest) -> dict[str, Any]:
+    new_id = req.id.strip()
+    if not is_valid_region_id(new_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Region id must use Latin letters, digits, underscore or hyphen only",
+        )
+    regions: list[Region] = list(_session.get("regions") or [])
+    region = next((r for r in regions if r.id == region_id), None)
+    if region is None:
+        raise HTTPException(status_code=404, detail=f"Region '{region_id}' not found")
+    if new_id == region_id:
+        return region.to_dict()
+    if any(r.id == new_id for r in regions):
+        raise HTTPException(status_code=400, detail=f"Region '{new_id}' already exists")
+
+    region.id = new_id
+    for other in regions:
+        if other.parent == region_id:
+            other.parent = new_id
+
+    try:
+        validate_parent_links(regions)
+    except ParseError as exc:
+        # Roll back id + parent rewrites.
+        region.id = region_id
+        for other in regions:
+            if other.parent == new_id:
+                other.parent = region_id
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    _session["regions"] = regions
+    if _session.get("scheme"):
+        _rebuild_scheme()
 
     return region.to_dict()
 

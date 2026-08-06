@@ -4,6 +4,7 @@ import {
   buildScheme,
   bulkUpdateFlags,
   clearSession,
+  clearManualRegions,
   exportRegionsYaml,
   deleteManualRegion,
   fetchFlags,
@@ -14,23 +15,31 @@ import {
   importCustomFlags,
   importScheme,
   parseYaml,
+  renameRegion,
   updateRegionFlags,
   updateRegionGeometry,
+  updateRegionMembers,
   updateRegionParent,
+  updateRegionPriority,
 } from './api';
 import { AddRegionDialog } from './components/AddRegionDialog';
+import { ConfirmDialog } from './components/ConfirmDialog';
 import { DeleteManualRegionDialog, type DeleteChildrenMode } from './components/DeleteManualRegionDialog';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { FlagConflictsDialog } from './components/FlagConflictsDialog';
 import { FlagsManagerDialog } from './components/FlagsManagerDialog';
 import { FlagsCatalogDialog } from './components/FlagsCatalogDialog';
+import { ValidationResultDialog } from './components/ValidationResultDialog';
+import { FlagTreeDialog } from './components/FlagTreeDialog';
 import {
   IconAdd,
+  IconAlign,
   IconClearHighlight,
   IconCollapseAll,
   IconEdgeFilter,
   IconExpandAll,
   IconExpandThreshold,
+  IconFlag,
   IconFullscreen,
   IconFullscreenExit,
   IconLegend,
@@ -53,8 +62,8 @@ import {
   NotificationsBell,
   type AppNotification,
 } from './components/NotificationsBell';
-import { OrphanWarningPanel } from './components/OrphanWarningPanel';
 import { RegionPanel } from './components/RegionPanel';
+import { RenameRegionDialog } from './components/RenameRegionDialog';
 import { SearchPanel } from './components/SearchPanel';
 import type { FlagInfo, ForestNode, RegionData, Scheme } from './types';
 import {
@@ -68,18 +77,21 @@ import {
   getSpatialRelationsGrouped,
   revealPathToNode,
 } from './utils/graph';
-import { collectDeletableRegionIds, isTemporaryRegion } from './utils/regions';
+import { collectDeletableRegionIds } from './utils/regions';
 import {
   computeCollapseAllHidden,
   computeDefaultHiddenNodes,
   computeExpandAllHidden,
 } from './utils/layout';
 import { runWorldGuardFlagChecks, type SpatialConflict } from './utils/flagConflicts';
-import { isUserCancelled, openTextFileWithDialog, saveTextWithDialog } from './utils/fileDialog';
+import { isSchemeFileName, isUserCancelled, isYamlFileName, openSchemeOrYamlWithDialog, saveTextWithDialog } from './utils/fileDialog';
+import { validateSchemeForYamlExport, type SchemeIssue } from './utils/schemeValidation';
 import { attachConflictInheritancePaths, buildFlagHighlight, enrichHighlightWithFlagValues } from './utils/flagTree';
+import { compareNatural } from './utils/naturalSort';
 import { loadAppSettings, saveAppSettings, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from './utils/settings';
 import { loadViewState, saveViewState, clearViewState } from './utils/viewState';
 import { useI18n } from './i18n/I18nContext';
+import type { TranslationKey } from './i18n/translations';
 import { useTheme } from './theme/ThemeContext';
 
 /** Legacy keys — cleared on startup; notifications are session-only. */
@@ -116,6 +128,18 @@ function findForestNode(scheme: Scheme, id: string): ForestNode | null {
   return search(scheme.forest.roots);
 }
 
+/** All nodes lit for a spatial conflict / overwrite (pair + inheritance parents). */
+function conflictHighlightFitIds(
+  scheme: Scheme,
+  flagName: string,
+  aId: string,
+  bId: string,
+): string[] {
+  const base = buildFlagHighlight(scheme, flagName);
+  const hl = attachConflictInheritancePaths(base, scheme, aId, bId);
+  return Array.from(hl.brightIds);
+}
+
 export default function App() {
   const initialSettings = loadAppSettings();
   const { t, locale, setLocale } = useI18n();
@@ -131,11 +155,9 @@ export default function App() {
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [hiddenNodes, setHiddenNodes] = useState<Set<string>>(new Set());
   const [orphanIds, setOrphanIds] = useState<Set<string>>(new Set());
-  const [showOrphanWarning, setShowOrphanWarning] = useState(false);
   const [flagsCatalog, setFlagsCatalog] = useState<FlagInfo[]>([]);
   const [showMetrics, setShowMetrics] = useState(false);
   const [showLegend, setShowLegend] = useState(false);
-  const [legendMode, setLegendMode] = useState<'scheme' | 'flagHighlight'>('scheme');
   const [showFlagsCatalog, setShowFlagsCatalog] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [showFlagsManager, setShowFlagsManager] = useState(false);
@@ -155,9 +177,16 @@ export default function App() {
   const notifiedConflictKeysRef = useRef<Set<string>>(new Set());
   /** Scheme for which current conflict keys were seeded (load: only ambiguous → bell). */
   const conflictNotifySeededForRef = useRef<string | null>(null);
+  /** Next notification sync replaces the list but skips toast popups. */
+  const quietNotificationReseedRef = useRef(false);
+  const [notificationRefreshSeq, setNotificationRefreshSeq] = useState(0);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [addDialogLockedParent, setAddDialogLockedParent] = useState<string | undefined>(undefined);
-  const [deleteTarget, setDeleteTarget] = useState<{ regionId: string; childIds: string[] } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    regionId: string;
+    childIds: string[];
+    parentId: string | null;
+  } | null>(null);
   const [deletableRegionIds, setDeletableRegionIds] = useState<Set<string>>(new Set());
   const [collapseThreshold, setCollapseThreshold] = useState(initialSettings.collapseThreshold);
   const [baseSize] = useState(60);
@@ -167,7 +196,6 @@ export default function App() {
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [graphLocked, setGraphLocked] = useState(true);
   const [loadedYamlHash, setLoadedYamlHash] = useState<string | null>(null);
-  const [hasPendingYaml, setHasPendingYaml] = useState(false);
   const [hashWarning, setHashWarning] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<{ id: string; seq: number } | null>(null);
   const [centerRequest, setCenterRequest] = useState<{ id: string; seq: number } | null>(null);
@@ -179,8 +207,22 @@ export default function App() {
   const [subtreeHighlightIds, setSubtreeHighlightIds] = useState<Set<string> | null>(null);
   const [subtreeHighlightMode, setSubtreeHighlightMode] = useState<HighlightBranchMode | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showOpenFileConfirm, setShowOpenFileConfirm] = useState(false);
+  const [showExportManualConfirm, setShowExportManualConfirm] = useState(false);
+  const [validationDialog, setValidationDialog] = useState<{
+    title: string;
+    intro?: string;
+    issues: SchemeIssue[];
+    okMessage?: string;
+  } | null>(null);
+  const [showFlagTreeDialog, setShowFlagTreeDialog] = useState(false);
+  const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
+  const [busyMessage, setBusyMessage] = useState<string | null>(null);
   const [edgeDisplayMode, setEdgeDisplayMode] = useState<EdgeDisplayMode>('all');
   const [showEdgeModeMenu, setShowEdgeModeMenu] = useState(false);
+  const [layoutRequest, setLayoutRequest] = useState<{ seq: number } | null>(null);
+  const layoutSeqRef = useRef(0);
   const schemeKeyRef = useRef('default');
   const isFreshSchemeRef = useRef(false);
 
@@ -257,7 +299,6 @@ export default function App() {
         || showFlagsManager
         || showFlagConflictsDialog
         || showAddDialog
-        || showOrphanWarning
         || showNotifications,
       );
       if (blocked || !scheme) return;
@@ -277,7 +318,6 @@ export default function App() {
     showFlagsManager,
     showFlagConflictsDialog,
     showAddDialog,
-    showOrphanWarning,
     showNotifications,
   ]);
 
@@ -311,7 +351,7 @@ export default function App() {
     if (!scheme || !detailsId) return [];
     const node = findForestNode(scheme, detailsId);
     if (!node) return [];
-    return node.children.map((c) => c.id).sort();
+    return node.children.map((c) => c.id).sort(compareNatural);
   }, [scheme, detailsId]);
 
   const detailsSpatialRelations = useMemo(() => {
@@ -322,7 +362,7 @@ export default function App() {
   }, [scheme, detailsId]);
 
   const regionIdList = useMemo(
-    () => (scheme ? scheme.regions.map((r) => r.id).sort() : []),
+    () => (scheme ? scheme.regions.map((r) => r.id).sort(compareNatural) : []),
     [scheme],
   );
 
@@ -457,13 +497,15 @@ export default function App() {
         level: 'error',
         kind: 'spatial',
         conflictKey: key,
-        title: t('notifications.ambiguousTitle', { flag: c.flagName }),
-        body: t('notifications.ambiguousBody', {
+        titleKey: 'notifications.ambiguousTitle',
+        bodyKey: 'notifications.ambiguousBody',
+        params: {
+          flag: c.flagName,
           a: c.aId,
           b: c.bId,
           aValue: formatFlagValueShort(c.aValue),
           bValue: formatFlagValueShort(c.bValue),
-        }),
+        },
         flagName: c.flagName,
         aId: c.aId,
         bId: c.bId,
@@ -479,14 +521,16 @@ export default function App() {
         level: 'warning',
         kind: 'spatial',
         conflictKey: key,
-        title: t('notifications.resolvedTitle', { flag: c.flagName }),
-        body: t('notifications.resolvedBody', {
+        titleKey: 'notifications.resolvedTitle',
+        bodyKey: 'notifications.resolvedBody',
+        params: {
+          flag: c.flagName,
           a: c.aId,
           b: c.bId,
           aValue: formatFlagValueShort(c.aValue),
           bValue: formatFlagValueShort(c.bValue),
           winner: c.winnerId ?? '?',
-        }),
+        },
         flagName: c.flagName,
         aId: c.aId,
         bId: c.bId,
@@ -505,13 +549,15 @@ export default function App() {
         level: 'warning',
         kind: 'overwrite',
         conflictKey: key,
-        title: t('notifications.overwriteTitle', { flag: o.flagName }),
-        body: t('notifications.overwriteBody', {
+        titleKey: 'notifications.overwriteTitle',
+        bodyKey: 'notifications.overwriteBody',
+        params: {
+          flag: o.flagName,
           child: o.childId,
           childValue: formatFlagValueShort(o.childValue),
           parent: o.parentId,
           parentValue: formatFlagValueShort(o.parentValue),
-        }),
+        },
         flagName: o.flagName,
         aId: o.parentId,
         bId: o.childId,
@@ -526,8 +572,9 @@ export default function App() {
         level: 'warning',
         kind: 'orphan',
         conflictKey: key,
-        title: t('notifications.orphanTitle'),
-        body: t('notifications.orphanBody', { id }),
+        titleKey: 'notifications.orphanTitle',
+        bodyKey: 'notifications.orphanBody',
+        params: { id },
         aId: id,
         read: false,
       });
@@ -595,19 +642,23 @@ export default function App() {
       return activeKeys.has(key) ? current : null;
     });
 
+    const quiet = quietNotificationReseedRef.current;
+    if (quiet) quietNotificationReseedRef.current = false;
+
     setNotificationToasts((prev) => {
+      if (quiet) return [];
       if (isReseed) return fresh.slice(0, 5);
       const pruned = prev.filter((n) => !n.conflictKey || activeKeys.has(n.conflictKey));
       return fresh.length > 0 ? [...fresh, ...pruned].slice(0, 5) : pruned;
     });
-    if (fresh.length > 0) {
+    if (!quiet && fresh.length > 0) {
       for (const item of fresh) {
         window.setTimeout(() => {
           setNotificationToasts((prev) => prev.filter((toast) => toast.id !== item.id));
-        }, 6500);
+        }, 9500);
       }
     }
-  }, [flagConflicts, scheme, orphanIds, t]);
+  }, [flagConflicts, scheme, orphanIds, notificationRefreshSeq]);
 
   useEffect(() => {
     if (!scheme) {
@@ -625,20 +676,18 @@ export default function App() {
     });
   }, [scheme]);
 
-  const applyOrphans = useCallback((next: Scheme, showWarning = true) => {
+  const applyOrphans = useCallback((next: Scheme) => {
     const orphans = findOrphanRegionIds(next.regions);
     setOrphanIds(new Set(orphans));
-    setShowOrphanWarning(showWarning && orphans.length > 0);
   }, []);
 
   const applyScheme = useCallback((
     next: Scheme,
     fresh: boolean,
     threshold: number,
-    options?: { skipOrphanWarning?: boolean },
   ) => {
     isFreshSchemeRef.current = fresh;
-    applyOrphans(next, !options?.skipOrphanWarning);
+    applyOrphans(next);
     if (fresh) {
       // Re-seed bell/toasts for this scheme; drop any previous session entries.
       conflictNotifySeededForRef.current = null;
@@ -660,7 +709,7 @@ export default function App() {
   }, [applyOrphans]);
 
   const parentOptions = useMemo(
-    () => (scheme ? scheme.regions.map((r) => r.id).sort() : []),
+    () => (scheme ? scheme.regions.map((r) => r.id).sort(compareNatural) : []),
     [scheme],
   );
 
@@ -683,9 +732,20 @@ export default function App() {
     setCollapseTarget(null);
   }, []);
 
+  const runBusy = useCallback(async (message: string, fn: () => Promise<void>) => {
+    setBusyMessage(message);
+    try {
+      await fn();
+    } finally {
+      setBusyMessage(null);
+    }
+  }, []);
+
   const handleClearApp = useCallback(async () => {
     try {
-      await clearSession();
+      await runBusy(t('status.resetting'), async () => {
+        await clearSession();
+      });
     } catch (err) {
       setStatus(t('status.error', { msg: String(err) }));
       return;
@@ -701,10 +761,8 @@ export default function App() {
     setDetailsId(null);
     setHiddenNodes(new Set());
     setOrphanIds(new Set());
-    setShowOrphanWarning(false);
     setShowMetrics(false);
     setShowLegend(false);
-    setLegendMode('scheme');
     setShowFlagsCatalog(false);
     setShowSearch(false);
     setShowFlagsManager(false);
@@ -723,7 +781,6 @@ export default function App() {
     setCollapseTarget(null);
     setGraphLocked(true);
     setLoadedYamlHash(null);
-    setHasPendingYaml(false);
     setHashWarning(null);
     setFocusRequest(null);
     setCenterRequest(null);
@@ -737,11 +794,13 @@ export default function App() {
     setEdgeDisplayMode('all');
     setShowEdgeModeMenu(false);
     setShowClearConfirm(false);
+    setShowResetConfirm(false);
+    setRenameTargetId(null);
     if (document.fullscreenElement) {
       void document.exitFullscreen();
     }
     setStatus(t('status.appCleared'));
-  }, [t]);
+  }, [runBusy, t]);
 
   const requestFitOnIds = useCallback((ids: string[]) => {
     fitSeqRef.current += 1;
@@ -772,7 +831,7 @@ export default function App() {
 
     // Only the clicked region — no related nodes for this mode.
     if (ids.length <= 1) {
-      const emptyKey =
+      const emptyKey: TranslationKey =
         mode === 'full' ? 'status.subtreeHighlightEmptyFull'
         : mode === 'children' ? 'status.subtreeHighlightEmptyChildren'
         : mode === 'intersects' ? 'status.subtreeHighlightEmptyIntersects'
@@ -780,17 +839,16 @@ export default function App() {
         : mode === 'containment-children' ? 'status.subtreeHighlightEmptyContainmentChildren'
         : mode === 'containment-parents' ? 'status.subtreeHighlightEmptyContainmentParents'
         : 'status.subtreeHighlightEmpty';
-      const title = t('status.subtreeHighlightEmptyTitle');
-      const body = t(emptyKey, { id: regionId });
-      setStatus(body);
+      setStatus(t(emptyKey, { id: regionId }));
       const toast: AppNotification = {
         id: `info|highlight-empty|${Date.now()}`,
         createdAt: Date.now(),
         level: 'warning',
         kind: 'info',
         conflictKey: `info|highlight-empty|${regionId}|${mode}`,
-        title,
-        body,
+        titleKey: 'status.subtreeHighlightEmptyTitle',
+        bodyKey: emptyKey,
+        params: { id: regionId },
         aId: regionId,
         read: false,
       };
@@ -949,7 +1007,11 @@ export default function App() {
       }
       setSelectedId(n.aId);
       setCollapseTarget(n.aId);
-      requestFitOnIds([n.aId, n.bId]);
+      if (scheme && n.flagName) {
+        requestFitOnIds(conflictHighlightFitIds(scheme, n.flagName, n.aId, n.bId));
+      } else {
+        requestFitOnIds([n.aId, n.bId]);
+      }
       return;
     }
 
@@ -970,72 +1032,121 @@ export default function App() {
       }
       setSelectedId(n.bId);
       setCollapseTarget(n.bId);
-      requestFitOnIds([n.aId, n.bId]);
-    }
-  }, [flagConflicts, scheme, requestFitOnIds]);
-
-  const handleYamlUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const preview = await parseYaml(file);
-      const newHash = preview.source_hash;
-
-      if (scheme && scheme.sourceHash && scheme.sourceHash !== newHash) {
-        setHashWarning(
-          t('warn.yamlMismatch', { oldHash: scheme.sourceHash, newHash }),
-        );
-      } else {
-        setHashWarning(null);
-      }
-
-      setLoadedYamlHash(newHash);
-      setHasPendingYaml(true);
-
-      // Keep the current scheme on screen; only auto-build when nothing is shown yet.
       if (scheme) {
-        setStatus(
-          `${t('status.loaded', { count: preview.count, path: preview.source_path })} | ${t('status.yamlPendingRebuild')}`,
-        );
+        requestFitOnIds(conflictHighlightFitIds(scheme, n.flagName, n.aId, n.bId));
       } else {
-        setStatus(t('status.building'));
-        clearCameraRequests();
-        const result = await buildScheme();
-        const collapsed = applyScheme(result.scheme, true, collapseThreshold);
-        setHasPendingYaml(false);
-        setHashWarning(null);
-        let msg = t('status.schemeReady', {
-          nodes: result.scheme.regions.length,
-          edges: result.scheme.spatialEdges.length,
-        });
-        if (collapsed > 0) {
-          msg += t('status.autoCollapsed', { count: collapsed, threshold: collapseThreshold });
-        }
-        setStatus(`${t('status.loaded', { count: preview.count, path: preview.source_path })} | ${msg}`);
+        requestFitOnIds([n.aId, n.bId]);
       }
-    } catch (err) {
-      setStatus(t('status.error', { msg: String(err) }));
     }
-    e.target.value = '';
+  }, [flagConflicts, scheme, requestFitOnIds, focusRegion]);
+
+  const formatValidation = useCallback(() => ({
+    invalidId: (id: string) => t('validate.invalidId', { id }),
+    hardError: (msg: string) => t('validate.hardError', { msg }),
+    ambiguous: (flag: string, a: string, b: string) => t('validate.ambiguous', { flag, a, b }),
+    incompleteManual: (id: string) => t('validate.incompleteManual', { id }),
+  }), [t]);
+
+  const handleOpenFileClick = () => {
+    if (scheme) {
+      setShowOpenFileConfirm(true);
+      return;
+    }
+    void performOpenFile();
   };
 
-  const handleBuild = async () => {
+  const showOpenFileError = useCallback((message: string) => {
+    setStatus(t('status.error', { msg: message }));
+    setValidationDialog({
+      title: t('status.openFileErrorTitle'),
+      intro: t('status.openFileErrorIntro'),
+      issues: [{ severity: 'error', code: 'hardError', text: message }],
+    });
+  }, [t]);
+
+  const performOpenFile = async () => {
     try {
-      setStatus(t('status.building'));
-      // Drop stale search focus so the new scheme fits overview + orphan warning.
-      clearCameraRequests();
-      const result = await buildScheme();
-      const collapsed = applyScheme(result.scheme, true, collapseThreshold);
-      setHasPendingYaml(false);
-      setHashWarning(null);
-      let msg = t('status.schemeReady', {
-        nodes: result.scheme.regions.length,
-        edges: result.scheme.spatialEdges.length,
-      });
-      if (collapsed > 0) {
-        msg += t('status.autoCollapsed', { count: collapsed, threshold: collapseThreshold });
+      const picked = await openSchemeOrYamlWithDialog();
+      if (!picked) return;
+
+      if (isYamlFileName(picked.name)) {
+        try {
+          await runBusy(t('status.building'), async () => {
+            const preview = await parseYaml(picked.file);
+            clearCameraRequests();
+            const result = await buildScheme();
+            applyScheme(result.scheme, true, collapseThreshold);
+            setLoadedYamlHash(preview.source_hash);
+            setHashWarning(null);
+            setStatus(t('status.schemeReady'));
+          });
+        } catch (err) {
+          showOpenFileError(
+            t('status.yamlInvalid', { msg: String(err) }),
+          );
+        }
+        return;
       }
-      setStatus(msg);
+
+      if (!isSchemeFileName(picked.name)) {
+        showOpenFileError(t('status.unsupportedFile', { name: picked.name }));
+        return;
+      }
+
+      let parsed: Scheme;
+      try {
+        parsed = JSON.parse(picked.text) as Scheme;
+      } catch {
+        showOpenFileError(t('status.schemeInvalidJson'));
+        return;
+      }
+
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.regions)) {
+        showOpenFileError(t('status.schemeInvalidContent'));
+        return;
+      }
+
+      try {
+        await runBusy(t('status.building'), async () => {
+          clearCameraRequests();
+          const loaded = await importScheme(parsed);
+          applyScheme(loaded, true, collapseThreshold);
+
+          if (loadedYamlHash && loaded.sourceHash !== loadedYamlHash) {
+            setHashWarning(
+              t('warn.schemeMismatch', { schemeHash: loaded.sourceHash, yamlHash: loadedYamlHash }),
+            );
+          } else {
+            setHashWarning(null);
+          }
+          setStatus(t('status.schemeLoaded'));
+        });
+      } catch (err) {
+        showOpenFileError(t('status.schemeInvalidContentDetail', { msg: String(err) }));
+      }
+    } catch (err) {
+      if (isUserCancelled(err)) return;
+      showOpenFileError(String(err));
+    }
+  };
+
+  const handleConfirmOpenFile = async () => {
+    setShowOpenFileConfirm(false);
+    await performOpenFile();
+  };
+
+  const handleConfirmResetScheme = async () => {
+    setShowResetConfirm(false);
+    try {
+      await runBusy(t('status.resetting'), async () => {
+        setStatus(t('status.clearingManuals'));
+        await clearManualRegions();
+        clearCameraRequests();
+        const result = await buildScheme();
+        applyScheme(result.scheme, true, collapseThreshold);
+        setHashWarning(null);
+        setStatus(t('status.schemeReady'));
+      });
     } catch (err) {
       setStatus(t('status.error', { msg: String(err) }));
     }
@@ -1053,88 +1164,55 @@ export default function App() {
     }
   };
 
-  const handleLoadScheme = async () => {
-    try {
-      const picked = await openTextFileWithDialog();
-      if (!picked) return;
-      let parsed: Scheme;
-      try {
-        parsed = JSON.parse(picked.text) as Scheme;
-      } catch {
-        setStatus(t('status.error', { msg: t('status.schemeInvalidJson') }));
-        return;
-      }
-      clearCameraRequests();
-      const loaded = await importScheme(parsed);
-      const collapsed = applyScheme(loaded, true, collapseThreshold);
-      setHasPendingYaml(false);
-
-      if (loadedYamlHash && loaded.sourceHash !== loadedYamlHash) {
-        setHashWarning(
-          t('warn.schemeMismatch', { schemeHash: loaded.sourceHash, yamlHash: loadedYamlHash }),
-        );
-      } else {
-        setHashWarning(null);
-      }
-
-      let msg = t('status.schemeLoaded', { nodes: loaded.regions.length });
-      if (collapsed > 0) msg += t('status.autoCollapsedShort', { count: collapsed });
-      setStatus(msg);
-    } catch (err) {
-      if (isUserCancelled(err)) return;
-      setStatus(t('status.error', { msg: String(err) }));
-    }
-  };
-
   const toggleChildren = useCallback((regionId: string, hide: boolean) => {
     if (!scheme) return;
     const node = findForestNode(scheme, regionId);
     if (!node) return;
     const childIds = node.children.map((c: ForestNode) => c.id);
-    const allIds = hide
-      ? node.children.flatMap((c) => [c.id, ...collectDescendants(c)])
-      : childIds;
-    setHiddenNodes((prev) => {
-      const next = new Set(prev);
-      for (const cid of allIds) {
-        if (hide) next.add(cid);
-        else next.delete(cid);
-      }
-      return next;
-    });
-  }, [scheme]);
+    const next = new Set(hiddenNodes);
+    for (const cid of childIds) {
+      if (hide) next.add(cid);
+      else next.delete(cid);
+    }
+    setHiddenNodes(next);
+    const branch = [regionId, ...collectDescendants(node)].filter((id) => !next.has(id));
+    requestFitOnIds(branch.length > 0 ? branch : [regionId]);
+  }, [scheme, hiddenNodes, requestFitOnIds]);
 
   const toggleRecursive = useCallback((regionId: string, hide: boolean) => {
     if (!scheme) return;
     const node = findForestNode(scheme, regionId);
     if (!node) return;
     const ids = collectDescendants(node);
-    setHiddenNodes((prev) => {
-      const next = new Set(prev);
-      for (const id of ids) {
-        if (hide) next.add(id);
-        else next.delete(id);
-      }
-      return next;
-    });
-  }, [scheme]);
+    const next = new Set(hiddenNodes);
+    for (const id of ids) {
+      if (hide) next.add(id);
+      else next.delete(id);
+    }
+    setHiddenNodes(next);
+    const branch = [regionId, ...collectDescendants(node)].filter((id) => !next.has(id));
+    requestFitOnIds(branch.length > 0 ? branch : [regionId]);
+  }, [scheme, hiddenNodes, requestFitOnIds]);
 
   const handleCollapseAll = useCallback(() => {
     if (!scheme) return;
-    setHiddenNodes(computeCollapseAllHidden(scheme));
-    setStatus(t('status.collapseAll'));
-  }, [scheme, t]);
+    const next = computeCollapseAllHidden(scheme);
+    setHiddenNodes(next);
+    const visible = scheme.regions.map((r) => r.id).filter((id) => !next.has(id));
+    requestFitOnIds(visible);
+  }, [scheme, requestFitOnIds]);
 
   const handleExpandAll = useCallback(() => {
+    if (!scheme) return;
     setHiddenNodes(computeExpandAllHidden());
-    setStatus(t('status.expandAll'));
-  }, [t]);
+    clearCameraRequests();
+  }, [scheme, clearCameraRequests]);
 
   const handleExpandThreshold = useCallback(() => {
     if (!scheme) return;
     setHiddenNodes(computeDefaultHiddenNodes(scheme, collapseThreshold));
-    setStatus(t('status.expandThreshold', { threshold: collapseThreshold }));
-  }, [scheme, collapseThreshold, t]);
+    clearCameraRequests();
+  }, [scheme, collapseThreshold, clearCameraRequests]);
 
   const openAddDialog = useCallback((lockedParent?: string) => {
     setAddDialogLockedParent(lockedParent);
@@ -1161,32 +1239,35 @@ export default function App() {
     };
   }) => {
     try {
-      await addManualRegion({
-        id: data.id,
-        parent: data.parent,
-        priority: data.priority,
-        flags: data.flags,
-        type: data.geometry.type as RegionData['type'],
-        min: data.geometry.min,
-        max: data.geometry.max,
-        min_y: data.geometry.min_y,
-        max_y: data.geometry.max_y,
-        points: data.geometry.points,
-        owners: {},
-        members: {},
+      await runBusy(t('status.building'), async () => {
+        await addManualRegion({
+          id: data.id,
+          parent: data.parent,
+          priority: data.priority,
+          flags: data.flags,
+          type: data.geometry.type as RegionData['type'],
+          min: data.geometry.min,
+          max: data.geometry.max,
+          min_y: data.geometry.min_y,
+          max_y: data.geometry.max_y,
+          points: data.geometry.points,
+          owners: {},
+          members: {},
+        });
+        const result = await buildScheme();
+        // Keep collapse/highlight state; only append the new region visually.
+        applyScheme(result.scheme, false, collapseThreshold);
+        setDeletableRegionIds((prev) => new Set(prev).add(data.id));
+        closeAddDialog();
+        const parentMap = buildParentMap(result.scheme.regions);
+        setHiddenNodes((prev) => revealPathToNode(data.id, prev, parentMap));
+        setSelectedId(data.id);
+        setCollapseTarget(data.id);
+        setCenterRequest(null);
+        focusSeqRef.current += 1;
+        setFocusRequest({ id: data.id, seq: focusSeqRef.current });
+        setStatus(t('status.manualAdded', { id: data.id }));
       });
-      const result = await buildScheme();
-      applyScheme(result.scheme, true, collapseThreshold, { skipOrphanWarning: true });
-      setDeletableRegionIds((prev) => new Set(prev).add(data.id));
-      closeAddDialog();
-      const parentMap = buildParentMap(result.scheme.regions);
-      setHiddenNodes((prev) => revealPathToNode(data.id, prev, parentMap));
-      setSelectedId(data.id);
-      setCollapseTarget(data.id);
-      setCenterRequest(null);
-      focusSeqRef.current += 1;
-      setFocusRequest({ id: data.id, seq: focusSeqRef.current });
-      setStatus(t('status.manualAdded', { id: data.id }));
     } catch (err) {
       setStatus(t('status.error', { msg: String(err) }));
     }
@@ -1216,19 +1297,38 @@ export default function App() {
     try {
       if (document.fullscreenElement) {
         await document.exitFullscreen();
-      } else {
-        await document.documentElement.requestFullscreen();
+        return;
       }
+      // F11 (browser UI fullscreen) is not the Fullscreen API — JS cannot exit it.
+      const browserFs =
+        window.innerHeight >= screen.height - 2
+        && window.innerWidth >= screen.width - 2;
+      if (browserFs) {
+        setStatus(t('graph.fullscreenF11Hint'));
+        return;
+      }
+      await document.documentElement.requestFullscreen();
     } catch (err) {
       setStatus(t('status.error', { msg: String(err) }));
     }
   }, [t]);
 
   useEffect(() => {
-    const sync = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    const sync = () => {
+      const apiFs = Boolean(document.fullscreenElement);
+      const browserFs =
+        !apiFs
+        && window.innerHeight >= screen.height - 2
+        && window.innerWidth >= screen.width - 2;
+      setIsFullscreen(apiFs || browserFs);
+    };
     document.addEventListener('fullscreenchange', sync);
+    window.addEventListener('resize', sync);
     sync();
-    return () => document.removeEventListener('fullscreenchange', sync);
+    return () => {
+      document.removeEventListener('fullscreenchange', sync);
+      window.removeEventListener('resize', sync);
+    };
   }, []);
 
   const onCopyName = useCallback((id: string) => {
@@ -1255,11 +1355,11 @@ export default function App() {
   const requestDeleteManual = useCallback((regionId: string) => {
     if (!scheme) return;
     const region = scheme.regions.find((r) => r.id === regionId);
-    if (!deletableRegionIds.has(regionId) && !isTemporaryRegion(region)) return;
+    if (!region) return;
     const node = findForestNode(scheme, regionId);
     const childIds = node?.children.map((child) => child.id) ?? [];
-    setDeleteTarget({ regionId, childIds });
-  }, [scheme, deletableRegionIds]);
+    setDeleteTarget({ regionId, childIds, parentId: region.parent ?? null });
+  }, [scheme]);
 
   const handleConfirmDeleteManual = async (mode: DeleteChildrenMode) => {
     if (!deleteTarget || !scheme) return;
@@ -1341,6 +1441,63 @@ export default function App() {
     setStatus(t('status.geometryUpdated', { id: regionId }));
   }, [t, applyScheme, collapseThreshold]);
 
+  const handleRename = useCallback(async (regionId: string, newId: string) => {
+    const normalized = newId.trim().toLowerCase();
+    await renameRegion(regionId, normalized);
+    const result = await buildScheme();
+    applyScheme(result.scheme, false, collapseThreshold);
+    setDetailsId(normalized);
+    setSelectedId((id) => (id === regionId ? normalized : id));
+    setCollapseTarget((id) => (id === regionId ? normalized : id));
+    setDeletableRegionIds((prev) => {
+      if (!prev.has(regionId)) return prev;
+      const next = new Set(prev);
+      next.delete(regionId);
+      next.add(normalized);
+      return next;
+    });
+    setHiddenNodes((prev) => {
+      if (!prev.has(regionId)) return prev;
+      const next = new Set(prev);
+      next.delete(regionId);
+      // don't hide the new id
+      return next;
+    });
+    setStatus(t('status.regionRenamed', { oldId: regionId, id: normalized }));
+  }, [t, applyScheme, collapseThreshold]);
+
+  const handleUpdatePriority = useCallback(async (regionId: string, priority: number) => {
+    await updateRegionPriority(regionId, priority);
+    setScheme((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        regions: prev.regions.map((r) =>
+          r.id === regionId ? { ...r, priority } : r,
+        ),
+      };
+    });
+    setStatus(t('status.priorityUpdated', { id: regionId }));
+  }, [t]);
+
+  const handleUpdateMembers = useCallback(async (
+    regionId: string,
+    owners: Record<string, unknown>,
+    members: Record<string, unknown>,
+  ) => {
+    await updateRegionMembers(regionId, owners, members);
+    setScheme((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        regions: prev.regions.map((r) =>
+          r.id === regionId ? { ...r, owners, members } : r,
+        ),
+      };
+    });
+    setStatus(t('status.membersUpdated', { id: regionId }));
+  }, [t]);
+
   const openFlagsManager = useCallback((regionId?: string) => {
     setFlagsManagerFocusId(regionId ?? null);
     setShowFlagsManager(true);
@@ -1384,31 +1541,29 @@ export default function App() {
     return { count: result.count };
   }, [t]);
 
-  const handleExportRegionsYaml = useCallback(async () => {
-    if (!scheme || !flagConflicts) return;
-    if (flagConflicts.hardErrors.length > 0) {
-      setStatus(t('status.exportBlocked', { msg: flagConflicts.hardErrors[0] }));
-      return;
-    }
+  const handleRefreshNotifications = useCallback(() => {
+    if (!scheme) return;
+    quietNotificationReseedRef.current = true;
+    conflictNotifySeededForRef.current = null;
+    setNotificationRefreshSeq((n) => n + 1);
+  }, [scheme]);
 
-    const includeManual = window.confirm(t('status.exportAskManual'));
-    if (includeManual) {
-      const incomplete = scheme.regions
-        .filter((r) => isTemporaryRegion(r) && r.type !== 'global' && r.type !== 'manual')
-        .filter((r) => {
-          if (r.type === 'cuboid') {
-            return !(r.min && r.max);
-          }
-          if (r.type === 'poly2d') {
-            return !(r.points && r.points.length >= 3 && r.min_y != null && r.max_y != null);
-          }
-          return false;
-        })
-        .map((r) => r.id);
-      if (incomplete.length > 0) {
-        setStatus(t('status.exportManualIncomplete', { ids: incomplete.join(', ') }));
-        return;
-      }
+  const doExportRegionsYaml = useCallback(async (includeManual: boolean) => {
+    if (!scheme || !flagConflicts) return;
+
+    const result = validateSchemeForYamlExport(
+      scheme,
+      flagConflicts,
+      { includeManual },
+      formatValidation(),
+    );
+    if (!result.ok) {
+      setValidationDialog({
+        title: t('status.exportIssuesTitle'),
+        intro: t('status.exportIssuesIntro'),
+        issues: result.issues,
+      });
+      return;
     }
 
     try {
@@ -1438,7 +1593,27 @@ export default function App() {
     } catch (err) {
       setStatus(t('status.error', { msg: String(err) }));
     }
-  }, [scheme, flagConflicts, t]);
+  }, [scheme, flagConflicts, formatValidation, t]);
+
+  const handleExportRegionsYaml = useCallback(() => {
+    if (!scheme || !flagConflicts) return;
+    // Base checks that always apply (names, cycles, ambiguous conflicts).
+    const base = validateSchemeForYamlExport(
+      scheme,
+      flagConflicts,
+      { includeManual: false },
+      formatValidation(),
+    );
+    if (!base.ok) {
+      setValidationDialog({
+        title: t('status.exportIssuesTitle'),
+        intro: t('status.exportIssuesIntro'),
+        issues: base.issues,
+      });
+      return;
+    }
+    setShowExportManualConfirm(true);
+  }, [scheme, flagConflicts, formatValidation, t]);
 
   const downloadText = (text: string, filename: string, type = 'application/json') => {
     const url = URL.createObjectURL(new Blob([text], { type }));
@@ -1449,11 +1624,41 @@ export default function App() {
     URL.revokeObjectURL(url);
   };
 
-  const buildButton = !scheme
-    ? { label: t('app.buildScheme'), icon: '▶' }
-    : hasPendingYaml
-      ? { label: t('app.rebuildScheme'), icon: '↻' }
-      : { label: t('app.updateScheme'), icon: '⟳' };
+  const hasScheme = Boolean(scheme);
+  const emptySchemeChrome = !hasScheme;
+  const schemeActionsDisabled = !hasScheme || Boolean(busyMessage);
+
+  const applyHighlightFlag = useCallback((name: string | null) => {
+    setSubtreeHighlightRoot(null);
+    setSubtreeHighlightIds(null);
+    setSubtreeHighlightMode(null);
+    setProblemFilter(null);
+    setHighlightFlag(name);
+    if (!name) {
+      setConflictSchemeView(null);
+      setOverwriteSchemeView(null);
+      return;
+    }
+    if (!scheme) return;
+    const hl = buildFlagHighlight(scheme, name);
+    const ids = Array.from(hl.brightIds);
+    if (ids.length > 0) {
+      const parentMap = buildParentMap(scheme.regions);
+      setHiddenNodes((prev) => {
+        let next = prev;
+        for (const id of ids) next = revealPathToNode(id, next, parentMap);
+        return next;
+      });
+      requestFitOnIds(ids);
+    }
+  }, [scheme, requestFitOnIds]);
+
+  const handleRelayout = useCallback(() => {
+    if (!scheme) return;
+    layoutSeqRef.current += 1;
+    setLayoutRequest({ seq: layoutSeqRef.current });
+    setStatus(t('status.relayout'));
+  }, [scheme, t]);
 
   const blockBrowserMenu = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -1461,36 +1666,34 @@ export default function App() {
 
   return (
     <div className="app">
+      {!sidebarCollapsed && (
       <aside
-        className={`toolbar${sidebarCollapsed ? ' toolbar--collapsed' : ''}`}
-        style={sidebarCollapsed ? undefined : { width: sidebarWidth, flexBasis: sidebarWidth }}
+        className="toolbar"
+        style={{ width: sidebarWidth, flexBasis: sidebarWidth }}
       >
-        {!sidebarCollapsed && (
-          <div
-            className="sidebar-resize-handle"
-            title={t('app.resizeSidebar')}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              sidebarResizeRef.current = { startX: e.clientX, startWidth: sidebarWidth };
-              document.body.classList.add('sidebar-resizing');
-            }}
-          />
-        )}
+        <div
+          className="sidebar-resize-handle"
+          title={t('app.resizeSidebar')}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            sidebarResizeRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+            document.body.classList.add('sidebar-resizing');
+          }}
+        />
         <button
           type="button"
           className="sidebar-toggle icon-btn"
           onClick={() => {
-            setSidebarCollapsed((value) => !value);
+            setSidebarCollapsed(true);
             // Let flex layout settle, then resize Cytoscape canvas.
             requestAnimationFrame(() => {
               requestAnimationFrame(() => graphRef.current?.resize());
             });
           }}
-          title={t(sidebarCollapsed ? 'app.expandSidebar' : 'app.collapseSidebar')}
+          title={t('app.collapseSidebar')}
         >
-          {sidebarCollapsed ? '»' : '«'}
+          «
         </button>
-        {!sidebarCollapsed && <>
         <h1>{t('app.title')}</h1>
 
         <div className="preferences-row">
@@ -1523,37 +1726,43 @@ export default function App() {
         </div>
 
         <section className="toolbar-section">
-        <label className="file-btn">
-          <span aria-hidden>📂 </span>{t('app.openYaml')}
-          <input type="file" accept=".yml,.yaml" onChange={handleYamlUpload} hidden />
-        </label>
-        <button type="button" className="primary" onClick={handleBuild}><span aria-hidden>{buildButton.icon} </span>{buildButton.label}</button>
-        <button type="button" onClick={handleLoadScheme}><span aria-hidden>↥ </span>{t('app.loadScheme')}</button>
-        <button type="button" onClick={handleSaveScheme} disabled={!scheme}><span aria-hidden>💾 </span>{t('app.saveScheme')}</button>
-        </section>
-        <section className="toolbar-section">
-        <button type="button" onClick={() => openFlagsManager()} disabled={!scheme}>
-          <span aria-hidden>⚑ </span>{t('app.flagsManager')}
-        </button>
-        <button type="button" onClick={() => setShowFlagsCatalog(true)}><span aria-hidden>☷ </span>{t('app.flagsCatalog')}</button>
-        </section>
-        <section className="toolbar-section">
         <button
           type="button"
-          onClick={() => setShowFlagConflictsDialog(true)}
-          disabled={!scheme || flagsCatalog.length === 0}
+          className={emptySchemeChrome ? 'primary' : undefined}
+          onClick={handleOpenFileClick}
+          disabled={Boolean(busyMessage)}
         >
-          <span aria-hidden>⚠ </span>{t('app.analyzeFlagConflicts')}
+          <span aria-hidden>📂 </span>{t('app.openFile')}
+        </button>
+        <button type="button" className="success" onClick={handleSaveScheme} disabled={!hasScheme || Boolean(busyMessage)}>
+          <span aria-hidden>💾 </span>{t('app.saveScheme')}
         </button>
         <button
           type="button"
           onClick={() => handleExportRegionsYaml()}
-          disabled={!scheme || flagsCatalog.length === 0}
+          disabled={schemeActionsDisabled || flagsCatalog.length === 0}
         >
           <span aria-hidden>⇩ </span>{t('app.exportRegionsYml')}
         </button>
-        <button type="button" onClick={() => setShowMetrics(true)} disabled={!scheme}>
-          <span aria-hidden>▥ </span>{t('app.metrics')}
+        </section>
+        <section className="toolbar-section">
+        <button type="button" onClick={() => openFlagsManager()} disabled={schemeActionsDisabled}>
+          <span aria-hidden>⚑ </span>{t('app.flagsManager')}
+        </button>
+        <button type="button" onClick={() => setShowFlagsCatalog(true)} disabled={schemeActionsDisabled}>
+          <span aria-hidden>☷ </span>{t('app.flagsCatalog')}
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowFlagConflictsDialog(true)}
+          disabled={schemeActionsDisabled || flagsCatalog.length === 0}
+        >
+          <span aria-hidden>⚠ </span>{t('app.analyzeFlagConflicts')}
+        </button>
+        </section>
+        <section className="toolbar-section">
+        <button type="button" onClick={() => setShowMetrics(true)} disabled={schemeActionsDisabled}>
+          <span aria-hidden>📊 </span>{t('app.metrics')}
         </button>
         </section>
 
@@ -1562,8 +1771,23 @@ export default function App() {
           <p className="depth-scale-hint">{t('app.autoCollapseHint')}</p>
           <label className="threshold-control">
             <span className="threshold-control-label">
-              {t('app.threshold')}:{' '}
-              <span className="threshold-value">{collapseThreshold}</span>
+              {t('app.threshold')}:
+              <input
+                type="number"
+                className="threshold-number"
+                min={0}
+                max={200}
+                step={1}
+                value={collapseThreshold}
+                disabled={schemeActionsDisabled}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  if (raw.trim() === '') return;
+                  const n = Number(raw);
+                  if (!Number.isFinite(n)) return;
+                  setCollapseThreshold(Math.max(0, Math.min(200, Math.round(n))));
+                }}
+              />
             </span>
             <input
               type="range"
@@ -1571,6 +1795,7 @@ export default function App() {
               max={200}
               step={1}
               value={collapseThreshold}
+              disabled={schemeActionsDisabled}
               onChange={(e) => setCollapseThreshold(Number(e.target.value))}
             />
           </label>
@@ -1612,14 +1837,26 @@ export default function App() {
         )}
 
         <p className="status">{status}</p>
-        <p className="hint">{t('app.hint')}</p>
         <div className="sidebar-footer">
-          <button type="button" className="danger" onClick={() => setShowClearConfirm(true)}>
+          <button
+            type="button"
+            className="warning"
+            onClick={() => setShowResetConfirm(true)}
+            disabled={schemeActionsDisabled}
+          >
+            <span aria-hidden>⟳ </span>{t('app.updateScheme')}
+          </button>
+          <button
+            type="button"
+            className="danger"
+            onClick={() => setShowClearConfirm(true)}
+            disabled={schemeActionsDisabled}
+          >
             {t('app.clearScheme')}
           </button>
         </div>
-        </>}
       </aside>
+      )}
 
       {showClearConfirm && (
         <div className="modal-overlay" onClick={() => setShowClearConfirm(false)}>
@@ -1631,7 +1868,7 @@ export default function App() {
             <div className="modal-body">
               <p>{t('app.clearSchemeConfirm')}</p>
               <div className="modal-actions">
-                <button type="button" onClick={() => setShowClearConfirm(false)}>
+                <button type="button" className="primary" onClick={() => setShowClearConfirm(false)}>
                   {t('app.no')}
                 </button>
                 <button
@@ -1645,6 +1882,64 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {showResetConfirm && (
+        <div className="modal-overlay" onClick={() => setShowResetConfirm(false)}>
+          <div className="modal clear-scheme-modal" onClick={(e) => e.stopPropagation()}>
+            <header>
+              <h2>{t('app.updateScheme')}</h2>
+              <button type="button" onClick={() => setShowResetConfirm(false)}>×</button>
+            </header>
+            <div className="modal-body">
+              <p>{t('app.resetSchemeConfirm')}</p>
+              <div className="modal-actions">
+                <button type="button" className="primary" onClick={() => setShowResetConfirm(false)}>
+                  {t('app.no')}
+                </button>
+                <button type="button" className="danger" onClick={() => { void handleConfirmResetScheme(); }}>
+                  {t('app.yes')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showOpenFileConfirm && (
+        <ConfirmDialog
+          title={t('app.openFileConfirmTitle')}
+          message={t('app.loadSchemeConfirm')}
+          onCancel={() => setShowOpenFileConfirm(false)}
+          onConfirm={() => { void handleConfirmOpenFile(); }}
+        />
+      )}
+
+      {showExportManualConfirm && (
+        <ConfirmDialog
+          title={t('status.exportAskManualTitle')}
+          message={t('status.exportAskManual')}
+          confirmClass="success"
+          onDismiss={() => setShowExportManualConfirm(false)}
+          onCancel={() => {
+            setShowExportManualConfirm(false);
+            void doExportRegionsYaml(false);
+          }}
+          onConfirm={() => {
+            setShowExportManualConfirm(false);
+            void doExportRegionsYaml(true);
+          }}
+        />
+      )}
+
+      {validationDialog && (
+        <ValidationResultDialog
+          title={validationDialog.title}
+          intro={validationDialog.intro}
+          issues={validationDialog.issues}
+          okMessage={validationDialog.okMessage}
+          onClose={() => setValidationDialog(null)}
+        />
       )}
 
       <main className="graph-area" onContextMenu={blockBrowserMenu}>
@@ -1661,7 +1956,7 @@ export default function App() {
               centerRequest={centerRequest}
               fitRequest={fitRequest}
               viewResetRequest={viewResetRequest}
-              deletableRegionIds={deletableRegionIds}
+              layoutRequest={layoutRequest}
               locked={graphLocked}
               conflictRegionIds={conflictRegionIds}
               flagHighlight={flagHighlight}
@@ -1673,6 +1968,7 @@ export default function App() {
               onNodeOpen={onNodeOpen}
               onBackgroundTap={clearSelection}
               onCopyName={onCopyName}
+              onRename={(id) => setRenameTargetId(id)}
               onAddDescendant={onAddDescendant}
               onDeleteManual={requestDeleteManual}
               onOpenFlagsManager={(id) => openFlagsManager(id)}
@@ -1694,7 +1990,20 @@ export default function App() {
               </button>
             )}
             <div className="graph-map-controls graph-map-controls--top-left">
-              <button type="button" className="graph-ctrl-btn" onClick={() => openAddDialog()} title={t('app.addManual')}>
+              {sidebarCollapsed && (
+                <button
+                  type="button"
+                  className="graph-ctrl-btn"
+                  onClick={() => {
+                    setSidebarCollapsed(false);
+                    requestAnimationFrame(() => requestAnimationFrame(() => graphRef.current?.resize()));
+                  }}
+                  title={t('app.expandSidebar')}
+                >
+                  »
+                </button>
+              )}
+              <button type="button" className="graph-ctrl-btn" onClick={() => openAddDialog()} title={t('app.addManual')} disabled={Boolean(busyMessage)}>
                 <IconAdd />
               </button>
             </div>
@@ -1702,24 +2011,27 @@ export default function App() {
               <button
                 type="button"
                 className="graph-ctrl-btn"
-                onClick={handleExpandAll}
-                title={t('app.expandAll')}
-              >
-                <IconExpandAll />
-              </button>
-              <button
-                type="button"
-                className="graph-ctrl-btn"
                 onClick={handleCollapseAll}
                 title={t('app.collapseAll')}
+                disabled={Boolean(busyMessage)}
               >
                 <IconCollapseAll />
               </button>
               <button
                 type="button"
                 className="graph-ctrl-btn"
+                onClick={handleExpandAll}
+                title={t('app.expandAll')}
+                disabled={Boolean(busyMessage)}
+              >
+                <IconExpandAll />
+              </button>
+              <button
+                type="button"
+                className="graph-ctrl-btn"
                 onClick={handleExpandThreshold}
                 title={t('app.expandThreshold')}
+                disabled={Boolean(busyMessage)}
               >
                 <IconExpandThreshold />
               </button>
@@ -1731,6 +2043,7 @@ export default function App() {
                 notifications={notifications}
                 onToggle={() => setShowNotifications((v) => !v)}
                 onClose={() => setShowNotifications(false)}
+                onRefresh={handleRefreshNotifications}
                 onMarkAllRead={() => {
                   setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
                 }}
@@ -1755,22 +2068,21 @@ export default function App() {
               <button
                 type="button"
                 className="graph-ctrl-btn"
-                onClick={() => { setLegendMode('scheme'); setShowLegend(true); }}
-                title={t('app.legend')}
+                onClick={handleRelayout}
+                title={t('app.relayout')}
+                disabled={Boolean(busyMessage)}
               >
-                <IconLegend />
+                <IconAlign />
               </button>
-              {highlightFlag && (
-                <button
-                  type="button"
-                  className="graph-ctrl-btn"
-                  onClick={() => { setLegendMode('flagHighlight'); setShowLegend(true); }}
-                  title={t('legend.flagTitle')}
-                >
-                  <IconLegend />
-                  <span className="graph-ctrl-badge">⚑</span>
-                </button>
-              )}
+              <button
+                type="button"
+                className={`graph-ctrl-btn${highlightFlag ? ' graph-ctrl-btn--active' : ''}`}
+                onClick={() => setShowFlagTreeDialog(true)}
+                title={t('flagsManager.flagTree')}
+                disabled={Boolean(busyMessage)}
+              >
+                <IconFlag />
+              </button>
               <div className="graph-problems-root" onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
@@ -1864,6 +2176,14 @@ export default function App() {
               )}
             </div>
             <div className="graph-map-controls graph-map-controls--bottom-right">
+              <button
+                type="button"
+                className="graph-ctrl-btn"
+                onClick={() => setShowLegend(true)}
+                title={t('app.legend')}
+              >
+                <IconLegend />
+              </button>
               <button type="button" className="graph-ctrl-btn" onClick={() => graphRef.current?.zoomIn()} title={t('graph.zoomIn')}>
                 <IconZoomIn />
               </button>
@@ -1882,7 +2202,24 @@ export default function App() {
             </div>
           </ErrorBoundary>
         ) : (
-          <div className="placeholder">{t('app.placeholder')}</div>
+          <>
+            {sidebarCollapsed && (
+              <div className="graph-map-controls graph-map-controls--top-left">
+                <button
+                  type="button"
+                  className="graph-ctrl-btn"
+                  onClick={() => {
+                    setSidebarCollapsed(false);
+                    requestAnimationFrame(() => requestAnimationFrame(() => graphRef.current?.resize()));
+                  }}
+                  title={t('app.expandSidebar')}
+                >
+                  »
+                </button>
+              </div>
+            )}
+            <div className="placeholder">{t('app.placeholder')}</div>
+          </>
         )}
       </main>
 
@@ -1897,16 +2234,20 @@ export default function App() {
           onFocusRegion={focusRegion}
           onCopyName={onCopyName}
           onDeleteManual={requestDeleteManual}
-          canDelete={deletableRegionIds.has(detailsRegion.id)}
+          canDelete
           onUpdateParent={handleUpdateParent}
           onUpdateFlags={handleUpdateFlags}
           onUpdateGeometry={handleUpdateGeometry}
+          onRequestRename={(id) => setRenameTargetId(id)}
+          onUpdatePriority={handleUpdatePriority}
+          onUpdateMembers={handleUpdateMembers}
         />
       )}
       {deleteTarget && (
         <DeleteManualRegionDialog
           regionId={deleteTarget.regionId}
           childIds={deleteTarget.childIds}
+          parentId={deleteTarget.parentId}
           onConfirm={handleConfirmDeleteManual}
           onClose={() => setDeleteTarget(null)}
         />
@@ -1915,13 +2256,27 @@ export default function App() {
         <MetricsPanel metrics={scheme.metrics} onClose={() => setShowMetrics(false)} />
       )}
       {showLegend && (
-        <LegendPanel mode={legendMode} onClose={() => setShowLegend(false)} />
+        <LegendPanel onClose={() => setShowLegend(false)} />
       )}
       {showSearch && scheme && (
         <SearchPanel
           regionIds={regionIdList}
+          parentMap={buildParentMap(scheme.regions)}
           onClose={() => setShowSearch(false)}
           onSelect={focusRegion}
+        />
+      )}
+      {showFlagTreeDialog && scheme && (
+        <FlagTreeDialog
+          scheme={scheme}
+          flagsCatalog={flagsCatalog}
+          highlightFlag={highlightFlag}
+          onClose={() => setShowFlagTreeDialog(false)}
+          onHighlightFlag={(name) => {
+            applyHighlightFlag(name);
+            setShowFlagTreeDialog(false);
+          }}
+          onSelectRegion={focusRegion}
         />
       )}
       {showFlagsManager && scheme && (
@@ -1932,18 +2287,6 @@ export default function App() {
           onClose={closeFlagsManager}
           onSave={handleUpdateFlags}
           onBulk={handleBulkFlags}
-          highlightFlag={highlightFlag}
-          onHighlightFlag={(name) => {
-            setSubtreeHighlightRoot(null);
-            setSubtreeHighlightIds(null);
-            setSubtreeHighlightMode(null);
-            setProblemFilter(null);
-            setHighlightFlag(name);
-            if (!name) {
-              setConflictSchemeView(null);
-              setOverwriteSchemeView(null);
-            }
-          }}
           onOpenCatalog={() => setShowFlagsCatalog(true)}
           initialRegionId={flagsManagerFocusId}
         />
@@ -1960,19 +2303,21 @@ export default function App() {
           onExport={async () => downloadText(await exportCustomFlags(), 'custom_flags.json')}
         />
       )}
-      {showOrphanWarning && orphanIds.size > 0 && (
-        <OrphanWarningPanel
-          orphanIds={Array.from(orphanIds).sort()}
-          onClose={() => setShowOrphanWarning(false)}
-        />
-      )}
       {showAddDialog && (
         <AddRegionDialog
           key={addDialogLockedParent ?? 'free'}
           regionIds={parentOptions}
+          flagsCatalog={flagsCatalog}
           lockedParent={addDialogLockedParent}
           onAdd={handleAddManual}
           onClose={closeAddDialog}
+        />
+      )}
+      {renameTargetId && (
+        <RenameRegionDialog
+          regionId={renameTargetId}
+          onRename={handleRename}
+          onClose={() => setRenameTargetId(null)}
         />
       )}
 
@@ -2002,7 +2347,9 @@ export default function App() {
             });
             setSelectedId(conflict.aId);
             setCollapseTarget(conflict.aId);
-            requestFitOnIds([conflict.aId, conflict.bId]);
+            requestFitOnIds(
+              conflictHighlightFitIds(scheme, conflict.flagName, conflict.aId, conflict.bId),
+            );
           }}
           onShowOverwriteOnScheme={(overwrite) => {
             setShowFlagConflictsDialog(false);
@@ -2026,7 +2373,14 @@ export default function App() {
             });
             setSelectedId(overwrite.childId);
             setCollapseTarget(overwrite.childId);
-            requestFitOnIds([overwrite.parentId, overwrite.childId]);
+            requestFitOnIds(
+              conflictHighlightFitIds(
+                scheme,
+                overwrite.flagName,
+                overwrite.parentId,
+                overwrite.childId,
+              ),
+            );
           }}
         />
       )}
@@ -2069,13 +2423,19 @@ export default function App() {
                     ? t('notifications.tabErrors')
                     : t('notifications.tabWarnings')}
               </span>
-              <strong>{toast.title}</strong>
-              <span>{toast.body}</span>
+              <strong>{t(toast.titleKey, toast.params)}</strong>
+              <span>{t(toast.bodyKey, toast.params)}</span>
               {toast.kind !== 'info' && (
                 <span className="notification-toast-hint">{t('notifications.toastHint')}</span>
               )}
             </div>
           ))}
+        </div>
+      )}
+      {busyMessage && (
+        <div className="busy-overlay" role="alert" aria-busy="true">
+          <div className="busy-spinner" />
+          <p className="busy-overlay-message">{busyMessage}</p>
         </div>
       )}
     </div>

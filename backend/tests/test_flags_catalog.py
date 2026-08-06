@@ -15,9 +15,10 @@ from backend.flags.catalog import (
     replace_custom_flags,
 )
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-FLAGS_PATH = PROJECT_ROOT / "all_flags.txt"
-WG_JAR_PATH = PROJECT_ROOT / "worldguard-bukkit-7.0.17.jar"
+APP_ROOT = Path(__file__).resolve().parents[2]
+WORKSPACE_ROOT = APP_ROOT.parent
+FLAGS_PATH = WORKSPACE_ROOT / "all_flags.txt"
+WG_JAR_PATH = WORKSPACE_ROOT / "worldguard-bukkit-7.0.17.jar"
 
 EXPECTED_DOCS = [
     "passthrough",

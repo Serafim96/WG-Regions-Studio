@@ -55,7 +55,8 @@ interface GraphViewProps {
   fitRequest: { ids: string[]; seq: number } | null;
   /** When seq changes, fit the whole scheme (used after «Build scheme»). */
   viewResetRequest: { seq: number } | null;
-  deletableRegionIds: Set<string>;
+  /** When seq changes, recompute node positions (align / re-layout). */
+  layoutRequest: { seq: number } | null;
   locked: boolean;
   subtreeHighlightActive: boolean;
   /** Which edge families to draw on the scheme. */
@@ -64,6 +65,7 @@ interface GraphViewProps {
   onNodeOpen: (regionId: string) => void;
   onBackgroundTap: () => void;
   onCopyName: (regionId: string) => void;
+  onRename?: (regionId: string) => void;
   onAddDescendant: (regionId: string) => void;
   onDeleteManual: (regionId: string) => void;
   onOpenFlagsManager: (regionId: string) => void;
@@ -106,7 +108,6 @@ interface ContextMenuState {
   x: number;
   y: number;
   nodeId: string;
-  hasDraftClass: boolean;
 }
 
 function applyRegionNodeStyles(cy: Core): void {
@@ -117,6 +118,10 @@ function applyRegionNodeStyles(cy: Core): void {
     }
   });
 }
+
+/** Shared zoom ceiling for focus/fit so 1-node and N-node centering look consistent. */
+const CAMERA_FOCUS_MAX_ZOOM = 1.35;
+const CAMERA_FOCUS_MIN_ZOOM = 0.25;
 
 function centerNodeOnCy(cy: Core, regionId: string): boolean {
   const node = cy.getElementById(regionId);
@@ -139,18 +144,19 @@ function focusNodeOnCy(cy: Core, regionId: string): boolean {
 
   const nw = Number(node.data('width')) || 80;
   const nh = Number(node.data('height')) || 56;
-  const pad = 120;
+  const pad = 160;
+  // Cap zoom so a lone region does not fill the whole viewport.
   const zoom = Math.min(
     cy.width() / (nw + pad),
     cy.height() / (nh + pad),
-    4,
+    CAMERA_FOCUS_MAX_ZOOM,
   );
 
   cy.stop(true);
   cy.animate(
     {
       center: { eles: node },
-      zoom: Math.max(0.25, zoom),
+      zoom: Math.max(CAMERA_FOCUS_MIN_ZOOM, zoom),
     },
     { duration: 280 },
   );
@@ -164,12 +170,28 @@ function fitNodesOnCy(cy: Core, ids: string[]): boolean {
     if (node.nonempty()) eles = eles.union(node);
   }
   if (eles.empty()) return false;
-  cy.stop(true);
-  // Tight padding so the selection fills the viewport without clipping.
+  if (eles.length === 1) {
+    return focusNodeOnCy(cy, eles[0].id());
+  }
+  // Cap zoom-in like single-node focus, but allow zooming out below
+  // CAMERA_FOCUS_MIN_ZOOM so distant nodes (e.g. opposite ends of the scheme)
+  // still fit on screen.
   const padding = eles.length <= 2 ? 72 : 40;
+  const bb = eles.boundingBox({ includeLabels: false });
+  const zoomRaw = Math.min(
+    (cy.width() - 2 * padding) / Math.max(bb.w, 1),
+    (cy.height() - 2 * padding) / Math.max(bb.h, 1),
+  );
+  const zoom = Math.max(
+    cy.minZoom(),
+    Math.min(zoomRaw, CAMERA_FOCUS_MAX_ZOOM),
+  );
+
+  cy.stop(true);
   cy.animate(
     {
-      fit: { eles, padding },
+      center: { eles },
+      zoom,
     },
     { duration: 280 },
   );
@@ -191,7 +213,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     centerRequest,
     fitRequest,
     viewResetRequest,
-    deletableRegionIds,
+    layoutRequest,
     locked,
     subtreeHighlightActive,
     edgeDisplayMode,
@@ -199,6 +221,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     onNodeOpen,
     onBackgroundTap,
     onCopyName,
+    onRename,
     onAddDescendant,
     onDeleteManual,
     onOpenFlagsManager,
@@ -233,6 +256,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
   const lastAppliedCenterSeqRef = useRef(0);
   const lastAppliedFitSeqRef = useRef(0);
   const lastViewResetSeqRef = useRef(0);
+  const lastLayoutSeqRef = useRef(0);
 
   useEffect(() => {
     if (!viewResetRequest) return;
@@ -241,6 +265,17 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     fitOnNextLayout.current = true;
     viewStateRef.current = null;
   }, [viewResetRequest]);
+
+  useEffect(() => {
+    if (!layoutRequest) return;
+    if (layoutRequest.seq === lastLayoutSeqRef.current) return;
+    lastLayoutSeqRef.current = layoutRequest.seq;
+    // Force a rebuild with fresh layout positions; keep camera roughly.
+    viewStateRef.current = cyRef.current
+      ? { zoom: cyRef.current.zoom(), pan: { ...cyRef.current.pan() } }
+      : viewStateRef.current;
+    fitOnNextLayout.current = false;
+  }, [layoutRequest]);
 
   useImperativeHandle(ref, () => ({
     focusNode(regionId: string) {
@@ -521,7 +556,6 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
         x: rect.left + rendered.x,
         y: rect.top + rendered.y,
         nodeId: id,
-        hasDraftClass: node.hasClass('draft'),
       });
     });
 
@@ -540,7 +574,8 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     applyRegionNodeStyles(cy);
     // Lock state is applied by a separate effect — do not depend on `locked` here,
     // otherwise toggle lock/unlock destroys the graph and recenters the camera.
-    if (lockedRef.current) cy.nodes().ungrabify();
+    // panify: drag on a node pans the viewport (node stays put); cxttap still works.
+    if (lockedRef.current) cy.nodes().panify();
     cyRef.current = cy;
 
     // Prefer focus (search/partners) over fit / expand-collapse center.
@@ -603,6 +638,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     baseSize,
     locale,
     theme,
+    layoutRequest,
     t,
     onNodeSelect,
     onNodeOpen,
@@ -612,8 +648,12 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
-    if (locked) cy.nodes().ungrabify();
-    else cy.nodes().grabify();
+    if (locked) {
+      cy.nodes().panify();
+    } else {
+      cy.nodes().unpanify();
+      cy.nodes().grabify();
+    }
   }, [locked]);
 
   useEffect(() => {
@@ -710,6 +750,11 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
           <button type="button" onClick={() => { onCopyName(contextMenu.nodeId); setContextMenu(null); }}>
             {t('graph.copyName')}
           </button>
+          {onRename && (
+            <button type="button" onClick={() => { onRename(contextMenu.nodeId); setContextMenu(null); }}>
+              {t('graph.rename')}
+            </button>
+          )}
           <button type="button" onClick={() => { onAddDescendant(contextMenu.nodeId); setContextMenu(null); }}>
             {t('graph.addDescendant')}
           </button>
@@ -789,17 +834,13 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
               {t('graph.clearSubtreeHighlight')}
             </button>
           )}
-          {(deletableRegionIds.has(contextMenu.nodeId)
-            || contextMenu.hasDraftClass
-            || isTemporaryRegion(contextRegion)) && (
-            <button
-              type="button"
-              className="danger-menu-item"
-              onClick={() => { onDeleteManual(contextMenu.nodeId); setContextMenu(null); }}
-            >
-              {t('graph.deleteManual')}
-            </button>
-          )}
+          <button
+            type="button"
+            className="danger-menu-item"
+            onClick={() => { onDeleteManual(contextMenu.nodeId); setContextMenu(null); }}
+          >
+            {t('graph.deleteManual')}
+          </button>
           <button type="button" onClick={() => { onCollapseChildren(contextMenu.nodeId); setContextMenu(null); }}>
             {t('graph.hideChildren')}
           </button>

@@ -1,6 +1,7 @@
 import type { FlagInfo, ForestNode, RegionData, Scheme } from '../types';
 import { computeEffectiveFlagsByRegion } from './flagConflicts';
 import { buildParentMap } from './graph';
+import { compareNatural } from './naturalSort';
 
 export interface FlagTreeNode {
   id: string;
@@ -132,7 +133,7 @@ export function buildFlagDefinitionTree(
 
   const build = (id: string): FlagTreeNode => {
     const region = regionsById.get(id)!;
-    const kids = (childrenOf.get(id) ?? []).sort();
+    const kids = (childrenOf.get(id) ?? []).sort(compareNatural);
     return {
       id,
       value: region.flags[flagName],
@@ -140,7 +141,7 @@ export function buildFlagDefinitionTree(
     };
   };
 
-  return roots.sort().map(build);
+  return roots.sort(compareNatural).map(build);
 }
 
 export function buildFlagHighlight(scheme: Scheme, flagName: string): FlagHighlight {
@@ -294,5 +295,30 @@ export function defaultCollapsedWithoutFlagSubtrees(
   }
 
   for (const root of roots) subtreeHasFlags(root);
+  return collapsed;
+}
+
+/** Collapse branches that never assign `flagName` locally. */
+export function defaultCollapsedWithoutNamedFlag(
+  roots: ForestNode[],
+  regionsById: Map<string, RegionData>,
+  flagName: string,
+): Set<string> {
+  const collapsed = new Set<string>();
+
+  function subtreeDefines(node: ForestNode): boolean {
+    const self = regionsById.get(node.id);
+    const selfHas = !!self && Object.prototype.hasOwnProperty.call(self.flags || {}, flagName);
+    let childHas = false;
+    for (const child of node.children) {
+      if (subtreeDefines(child)) childHas = true;
+    }
+    if (node.children.length > 0 && !childHas) {
+      collapsed.add(node.id);
+    }
+    return selfHas || childHas;
+  }
+
+  for (const root of roots) subtreeDefines(root);
   return collapsed;
 }

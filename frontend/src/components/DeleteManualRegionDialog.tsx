@@ -1,10 +1,13 @@
 import { useI18n } from '../i18n/I18nContext';
+import { ModalOverlay } from './ModalOverlay';
 
-export type DeleteChildrenMode = 'detach' | 'cascade';
+export type DeleteChildrenMode = 'detach' | 'cascade' | 'orphan';
 
 interface DeleteManualRegionDialogProps {
   regionId: string;
   childIds: string[];
+  /** Parent of the region being deleted (null/undefined = root). */
+  parentId?: string | null;
   onConfirm: (mode: DeleteChildrenMode) => void;
   onClose: () => void;
 }
@@ -12,14 +15,16 @@ interface DeleteManualRegionDialogProps {
 export function DeleteManualRegionDialog({
   regionId,
   childIds,
+  parentId = null,
   onConfirm,
   onClose,
 }: DeleteManualRegionDialogProps) {
   const { t } = useI18n();
   const hasChildren = childIds.length > 0;
+  const hasParent = Boolean(parentId);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <ModalOverlay onClose={onClose}>
       <div className="modal delete-manual-modal" onClick={(e) => e.stopPropagation()}>
         <header>
           <h2>{t('deleteManual.title')}</h2>
@@ -37,14 +42,27 @@ export function DeleteManualRegionDialog({
                   <li>{t('deleteManual.andMore', { count: childIds.length - 8 })}</li>
                 )}
               </ul>
+              {!hasParent && (
+                <p className="delete-manual-warn">{t('deleteManual.noParentWarn')}</p>
+              )}
+              {hasParent && (
+                <p className="hint">{t('deleteManual.parentHint', { parent: parentId! })}</p>
+              )}
               <div className="modal-actions delete-manual-actions">
                 <button type="button" className="danger" onClick={() => onConfirm('cascade')}>
                   {t('deleteManual.cascade')}
                 </button>
-                <button type="button" onClick={() => onConfirm('detach')}>
-                  {t('deleteManual.detach')}
+                {hasParent && (
+                  <button type="button" className="danger" onClick={() => onConfirm('detach')}>
+                    {t('deleteManual.reparent', { parent: parentId! })}
+                  </button>
+                )}
+                <button type="button" className="danger" onClick={() => onConfirm('orphan')}>
+                  {t('deleteManual.orphan')}
                 </button>
-                <button type="button" onClick={onClose}>{t('deleteManual.cancel')}</button>
+                <button type="button" className="primary" onClick={onClose}>
+                  {t('deleteManual.cancel')}
+                </button>
               </div>
             </>
           ) : (
@@ -54,12 +72,14 @@ export function DeleteManualRegionDialog({
                 <button type="button" className="danger" onClick={() => onConfirm('detach')}>
                   {t('deleteManual.delete')}
                 </button>
-                <button type="button" onClick={onClose}>{t('deleteManual.cancel')}</button>
+                <button type="button" className="primary" onClick={onClose}>
+                  {t('deleteManual.cancel')}
+                </button>
               </div>
             </>
           )}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

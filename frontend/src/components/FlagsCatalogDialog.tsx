@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo, Scheme } from '../types';
+import { ModalOverlay } from './ModalOverlay';
 
 const FLAG_TYPES = [
   'state',
@@ -82,7 +83,7 @@ export function FlagsCatalogDialog({
 
   return (
     <>
-      <div className="modal-overlay" onClick={onClose}>
+      <ModalOverlay onClose={onClose}>
         <div className="modal flags-catalog-modal" onClick={(event) => event.stopPropagation()}>
           <header><h2>{t('catalog.title')}</h2><button type="button" onClick={onClose}>×</button></header>
           <div className="modal-body">
@@ -122,7 +123,7 @@ export function FlagsCatalogDialog({
             )}
           </div>
         </div>
-      </div>
+      </ModalOverlay>
       {confirmNames && (
         <div className="modal-overlay catalog-confirm-overlay">
           <div className="modal catalog-confirm-modal" role="dialog" aria-modal="true">

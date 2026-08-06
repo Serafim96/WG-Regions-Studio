@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from backend.models.region import Region
+from backend.util.natural_sort import natural_key
 
 
 @dataclass
@@ -43,7 +44,7 @@ def build_forest(regions: list[Region]) -> Forest:
             children_map[region.parent].append(region.id)
 
     for child_ids in children_map.values():
-        child_ids.sort()
+        child_ids.sort(key=natural_key)
 
     memo: dict[str, TreeNode] = {}
 
@@ -61,7 +62,7 @@ def build_forest(regions: list[Region]) -> Forest:
         return node
 
     roots = [make_node(r.id, 0) for r in regions if not r.parent]
-    roots.sort(key=lambda n: n.id)
+    roots.sort(key=lambda n: natural_key(n.id))
 
     return Forest(roots=roots, by_id=memo)
 

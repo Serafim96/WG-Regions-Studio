@@ -7,7 +7,7 @@ from typing import Literal
 
 from backend.models.region import Region
 
-ChildrenMode = Literal["detach", "cascade"]
+ChildrenMode = Literal["detach", "cascade", "orphan"]
 
 
 def collect_descendant_ids(regions: list[Region], root_id: str) -> set[str]:
@@ -28,23 +28,21 @@ def collect_descendant_ids(regions: list[Region], root_id: str) -> set[str]:
     return result
 
 
-def delete_manual_region(
+def delete_region(
     regions: list[Region],
     region_id: str,
     children_mode: ChildrenMode,
 ) -> list[Region]:
-    """Remove a manual region; detach or cascade-delete its children."""
+    """Remove a region; cascade-delete, reparent, or orphan its children."""
     target = next((region for region in regions if region.id == region_id), None)
     if target is None:
         raise ValueError(f"Region '{region_id}' not found")
-    if not target.is_manual:
-        raise ValueError(f"Region '{region_id}' is not manual")
 
     if children_mode == "cascade":
         remove_ids = {region_id} | collect_descendant_ids(regions, region_id)
         return [region for region in regions if region.id not in remove_ids]
 
-    new_parent = target.parent
+    new_parent = None if children_mode == "orphan" else target.parent
     updated: list[Region] = []
     for region in regions:
         if region.id == region_id:
@@ -54,3 +52,37 @@ def delete_manual_region(
         else:
             updated.append(region)
     return updated
+
+
+# Backwards-compatible alias (manual-only check removed; any region can be deleted).
+def delete_manual_region(
+    regions: list[Region],
+    region_id: str,
+    children_mode: ChildrenMode,
+) -> list[Region]:
+    return delete_region(regions, region_id, children_mode)
+
+
+def clear_manual_regions(regions: list[Region]) -> list[Region]:
+    """Remove all temporary regions; re-link remaining children past deleted manuals."""
+    by_id = {region.id: region for region in regions}
+    manual_ids = {region.id for region in regions if region.is_manual}
+    if not manual_ids:
+        return list(regions)
+
+    def resolve_parent(parent_id: str | None) -> str | None:
+        current = parent_id
+        while current and current in manual_ids:
+            current = by_id[current].parent if current in by_id else None
+        return current
+
+    result: list[Region] = []
+    for region in regions:
+        if region.id in manual_ids:
+            continue
+        new_parent = resolve_parent(region.parent)
+        if new_parent != region.parent:
+            result.append(replace(region, parent=new_parent))
+        else:
+            result.append(region)
+    return result

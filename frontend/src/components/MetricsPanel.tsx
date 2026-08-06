@@ -1,9 +1,15 @@
 import { useI18n } from '../i18n/I18nContext';
 import type { MetricsData } from '../types';
+import { ModalOverlay } from './ModalOverlay';
 
 interface MetricsPanelProps {
   metrics: MetricsData | null;
   onClose: () => void;
+}
+
+function formatNumber(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return '—';
+  return value.toLocaleString('en-US');
 }
 
 export function MetricsPanel({ metrics, onClose }: MetricsPanelProps) {
@@ -11,46 +17,115 @@ export function MetricsPanel({ metrics, onClose }: MetricsPanelProps) {
 
   if (!metrics) return null;
 
+  const typeEntries = Object.entries(metrics.by_type);
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <ModalOverlay onClose={onClose}>
       <div className="modal metrics-modal" onClick={(e) => e.stopPropagation()}>
         <header>
           <h2>{t('metrics.title')}</h2>
           <button type="button" onClick={onClose}>×</button>
         </header>
         <div className="modal-body">
-          <h3>{t('metrics.count')}</h3>
-          <p>{t('metrics.total')}: <strong>{metrics.total}</strong></p>
-          <ul>
-            {Object.entries(metrics.by_type).map(([typeName, n]) => (
-              <li key={typeName}>{typeName}: {n}</li>
-            ))}
-          </ul>
+          <section className="metrics-summary">
+            <h3>{t('metrics.count')}</h3>
+            <table className="metrics-table metrics-table--summary">
+              <thead>
+                <tr>
+                  <th scope="col">{t('metrics.colType')}</th>
+                  <th scope="col" className="metrics-num">{t('metrics.colCount')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{t('metrics.total')}</td>
+                  <td className="metrics-num">{formatNumber(metrics.total)}</td>
+                </tr>
+                {typeEntries.map(([typeName, n]) => (
+                  <tr key={typeName}>
+                    <td>{typeName}</td>
+                    <td className="metrics-num">{formatNumber(n)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
 
-          <h3>{t('metrics.volume')}</h3>
-          <ol className="metrics-list">
-            {metrics.by_volume.slice(0, 20).map((item) => (
-              <li key={item.id}>
-                {item.id} — {item.volume ?? 'N/A'}
-              </li>
-            ))}
-          </ol>
+          <div className="metrics-columns">
+            <section className="metrics-block">
+              <h3>{t('metrics.volume')}</h3>
+              <div className="metrics-table-wrap">
+                <table className="metrics-table">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="metrics-rank">#</th>
+                      <th scope="col">{t('metrics.colRegion')}</th>
+                      <th scope="col" className="metrics-num">{t('metrics.colVolume')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metrics.by_volume.slice(0, 20).map((item, index) => (
+                      <tr key={item.id}>
+                        <td className="metrics-rank">{index + 1}</td>
+                        <td className="metrics-id">{item.id}</td>
+                        <td className="metrics-num">{formatNumber(item.volume)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
 
-          <h3>{t('metrics.points')}</h3>
-          <ol className="metrics-list">
-            {metrics.by_points.slice(0, 20).map((item) => (
-              <li key={item.id}>{item.id} — {item.points}</li>
-            ))}
-          </ol>
+            <section className="metrics-block">
+              <h3>{t('metrics.points')}</h3>
+              <div className="metrics-table-wrap">
+                <table className="metrics-table">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="metrics-rank">#</th>
+                      <th scope="col">{t('metrics.colRegion')}</th>
+                      <th scope="col" className="metrics-num">{t('metrics.colPoints')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metrics.by_points.slice(0, 20).map((item, index) => (
+                      <tr key={item.id}>
+                        <td className="metrics-rank">{index + 1}</td>
+                        <td className="metrics-id">{item.id}</td>
+                        <td className="metrics-num">{formatNumber(item.points)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
 
-          <h3>{t('metrics.intersections')}</h3>
-          <ol className="metrics-list">
-            {metrics.by_intersections.slice(0, 20).map((item) => (
-              <li key={item.id}>{item.id} — {item.count}</li>
-            ))}
-          </ol>
+            <section className="metrics-block">
+              <h3>{t('metrics.intersections')}</h3>
+              <div className="metrics-table-wrap">
+                <table className="metrics-table">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="metrics-rank">#</th>
+                      <th scope="col">{t('metrics.colRegion')}</th>
+                      <th scope="col" className="metrics-num">{t('metrics.colCount')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {metrics.by_intersections.slice(0, 20).map((item, index) => (
+                      <tr key={item.id}>
+                        <td className="metrics-rank">{index + 1}</td>
+                        <td className="metrics-id">{item.id}</td>
+                        <td className="metrics-num">{formatNumber(item.count)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

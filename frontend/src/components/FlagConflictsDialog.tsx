@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo } from '../types';
 import type { FlagConflictsResult, FlagOverwrite, SpatialConflict } from '../utils/flagConflicts';
+import { compareNatural } from '../utils/naturalSort';
 import { FlagNameWithHelp } from './FlagHelpButton';
+import { ModalOverlay } from './ModalOverlay';
 
 function formatValue(v: unknown): string {
   if (v === undefined || v === null) return '—';
@@ -18,14 +20,32 @@ function formatValue(v: unknown): string {
   }
 }
 
-function groupByFlagName<T extends { flagName: string }>(items: T[]): Map<string, T[]> {
+function groupByFlagNameSorted<T extends { flagName: string }>(
+  items: T[],
+  compareItem: (a: T, b: T) => number,
+): [string, T[]][] {
   const map = new Map<string, T[]>();
   for (const item of items) {
     const list = map.get(item.flagName) ?? [];
     list.push(item);
     map.set(item.flagName, list);
   }
-  return map;
+  return Array.from(map.entries())
+    .sort(([a], [b]) => compareNatural(a, b))
+    .map(([flagName, list]) => [flagName, [...list].sort(compareItem)]);
+}
+
+function compareOverwrite(a: FlagOverwrite, b: FlagOverwrite): number {
+  return compareNatural(a.childId, b.childId)
+    || compareNatural(a.parentId, b.parentId);
+}
+
+function compareSpatial(a: SpatialConflict, b: SpatialConflict): number {
+  const aFirst = compareNatural(a.aId, a.bId) <= 0 ? a.aId : a.bId;
+  const aSecond = compareNatural(a.aId, a.bId) <= 0 ? a.bId : a.aId;
+  const bFirst = compareNatural(b.aId, b.bId) <= 0 ? b.aId : b.bId;
+  const bSecond = compareNatural(b.aId, b.bId) <= 0 ? b.bId : b.aId;
+  return compareNatural(aFirst, bFirst) || compareNatural(aSecond, bSecond);
 }
 
 export function FlagConflictsDialog({
@@ -47,18 +67,18 @@ export function FlagConflictsDialog({
   const [tab, setTab] = useState<'overwrites' | 'spatial'>('overwrites');
 
   const overwritesByFlag = useMemo(
-    () => groupByFlagName(result.overwrites),
+    () => groupByFlagNameSorted(result.overwrites, compareOverwrite),
     [result.overwrites],
   );
   const spatialByFlag = useMemo(
-    () => groupByFlagName(result.spatialConflicts),
+    () => groupByFlagNameSorted(result.spatialConflicts, compareSpatial),
     [result.spatialConflicts],
   );
 
   const hasHardErrors = result.hardErrors.length > 0;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <ModalOverlay onClose={onClose}>
       <div className="modal flag-conflicts-modal" onClick={(e) => e.stopPropagation()}>
         <header>
           <h2>{t('flagConflicts.dialogTitle')}</h2>
@@ -99,7 +119,7 @@ export function FlagConflictsDialog({
                 ) : (
                   <>
                   <p className="flag-conflicts-hint">{t('flagConflicts.overwritesHint')}</p>
-                  {Array.from(overwritesByFlag.entries()).map(([flagName, items]) => (
+                  {overwritesByFlag.map(([flagName, items]) => (
                       <div key={flagName} className="flag-conflicts-group">
                         <h3>
                           <FlagNameWithHelp name={flagName} flagsCatalog={flagsCatalog} />
@@ -157,7 +177,7 @@ export function FlagConflictsDialog({
                 ) : (
                   <>
                   <p className="flag-conflicts-hint">{t('flagConflicts.spatialHint')}</p>
-                  {Array.from(spatialByFlag.entries()).map(([flagName, items]) => (
+                  {spatialByFlag.map(([flagName, items]) => (
                       <div key={flagName} className="flag-conflicts-group">
                         <h3>
                           <FlagNameWithHelp name={flagName} flagsCatalog={flagsCatalog} />
@@ -239,6 +259,6 @@ export function FlagConflictsDialog({
           )}
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

@@ -185,6 +185,12 @@ export function buildStylesheet(theme: Theme = 'light') {
       },
     },
     {
+      selector: 'edge',
+      style: {
+        events: 'no',
+      },
+    },
+    {
       selector: 'edge.hierarchy',
       style: {
         width: 6,

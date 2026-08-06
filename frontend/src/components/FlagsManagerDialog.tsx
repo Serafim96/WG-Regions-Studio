@@ -2,15 +2,14 @@ import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo, ForestNode, RegionData, Scheme } from '../types';
 import { buildParentMap } from '../utils/graph';
-import {
-  buildFlagDefinitionTree,
-  defaultCollapsedWithoutFlagSubtrees,
-  listUsedFlagNames,
-  type FlagTreeNode,
-} from '../utils/flagTree';
-import { FlagHelpButton, findFlagInfo } from './FlagHelpButton';
+import { compareNatural } from '../utils/naturalSort';
+import { validateFlagRows } from '../utils/flagRows';
+import { defaultCollapsedWithoutFlagSubtrees } from '../utils/flagTree';
+import { findFlagInfo } from './FlagHelpButton';
 import { FlagNameCombobox } from './FlagNameCombobox';
 import { FlagValueInput } from './FlagValueInput';
+import { ModalOverlay } from './ModalOverlay';
+import { ConfirmDialog } from './ConfirmDialog';
 import {
   IconCollapseAll,
   IconExpandAll,
@@ -37,9 +36,6 @@ interface FlagsManagerDialogProps {
     value?: unknown;
     regionIds: string[] | null;
   }) => Promise<{ count: number }>;
-  /** Highlight flag assignment tree on the main scheme. */
-  highlightFlag: string | null;
-  onHighlightFlag: (flagName: string | null) => void;
   onOpenCatalog: () => void;
   /** Open focused on this region (pinned with parents, ready to edit). */
   initialRegionId?: string | null;
@@ -187,50 +183,12 @@ function TreeNode({
   );
 }
 
-function FlagDefTreeNode({
-  node,
-  depth,
-  onSelect,
-}: {
-  node: FlagTreeNode;
-  depth: number;
-  onSelect: (id: string) => void;
-}) {
-  return (
-    <li>
-      <button
-        type="button"
-        className="flags-tree-item has-flags"
-        style={{ paddingLeft: `${8 + depth * 14}px` }}
-        onClick={() => onSelect(node.id)}
-      >
-        {node.id}
-        <span className="flags-tree-count">{formatFlagValue(node.value)}</span>
-      </button>
-      {node.children.length > 0 && (
-        <ul>
-          {node.children.map((child) => (
-            <FlagDefTreeNode
-              key={child.id}
-              node={child}
-              depth={depth + 1}
-              onSelect={onSelect}
-            />
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-}
-
 export function FlagsManagerDialog({
   scheme,
   flagsCatalog,
   onClose,
   onSave,
   onBulk,
-  highlightFlag,
-  onHighlightFlag,
   onOpenCatalog,
   initialRegionId = null,
 }: FlagsManagerDialogProps) {
@@ -244,12 +202,9 @@ export function FlagsManagerDialog({
     [scheme.regions],
   );
   const allRegionIds = useMemo(
-    () => scheme.regions.map((r) => r.id).sort(),
+    () => scheme.regions.map((r) => r.id).sort(compareNatural),
     [scheme.regions],
   );
-  const usedFlags = useMemo(() => listUsedFlagNames(scheme), [scheme]);
-  const flagPickOptions = useMemo(() => usedFlags, [usedFlags]);
-
   const initialPinned = useMemo(() => {
     if (!initialRegionId || !regionsById.has(initialRegionId)) return new Set<string>();
     return new Set(collectAncestorIds(initialRegionId, parentMap));
@@ -266,9 +221,8 @@ export function FlagsManagerDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAddRegionSearch, setShowAddRegionSearch] = useState(false);
-  const [showFlagTree, setShowFlagTree] = useState(false);
-  const [flagTreeName, setFlagTreeName] = useState('');
-  const [treeWidth, setTreeWidth] = useState(300);
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [treeWidth, setTreeWidth] = useState(560);
 
   const [bulkFlag, setBulkFlag] = useState('');
   const [bulkAction, setBulkAction] = useState<'delete' | 'update'>('update');
@@ -277,6 +231,27 @@ export function FlagsManagerDialog({
   const [showBulkSearch, setShowBulkSearch] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    title: string;
+    message: string;
+    confirmClass?: 'danger' | 'primary' | 'success' | 'warning';
+    onConfirm: () => void;
+  } | null>(null);
+
+  const askUnsaved = (then: () => void) => {
+    if (!dirty) {
+      then();
+      return;
+    }
+    setConfirmState({
+      title: t('flagsManager.unsavedTitle'),
+      message: t('flagsManager.unsavedConfirm'),
+      onConfirm: () => {
+        setConfirmState(null);
+        then();
+      },
+    });
+  };
 
   const tree = useMemo(() => {
     if (showAllRegions) return scheme.forest.roots;
@@ -319,11 +294,6 @@ export function FlagsManagerDialog({
     return ids;
   }, [tree]);
 
-  const flagDefTree = useMemo(() => {
-    if (!flagTreeName.trim()) return [];
-    return buildFlagDefinitionTree(scheme, flagTreeName.trim());
-  }, [scheme, flagTreeName]);
-
   useEffect(() => {
     if (selectedId && !regionsById.has(selectedId)) {
       setSelectedId(treeIds[0] ?? null);
@@ -349,8 +319,7 @@ export function FlagsManagerDialog({
 
   const selectRegion = (id: string) => {
     if (id === selectedId) return;
-    if (dirty && !window.confirm(t('flagsManager.unsavedConfirm'))) return;
-    setSelectedId(id);
+    askUnsaved(() => setSelectedId(id));
   };
 
   const updateRow = (key: string, patch: Partial<Pick<FlagRow, 'name' | 'value'>>) => {
@@ -373,6 +342,11 @@ export function FlagsManagerDialog({
 
   const handleSave = async () => {
     if (!selectedId) return;
+    const validation = validateFlagRows(rows, flagsCatalog);
+    if (!validation.ok) {
+      setError(t(validation.errorKey as Parameters<typeof t>[0]));
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -386,24 +360,24 @@ export function FlagsManagerDialog({
   };
 
   const handleClose = () => {
-    if (dirty && !window.confirm(t('flagsManager.unsavedConfirm'))) return;
-    onClose();
+    askUnsaved(onClose);
   };
 
   const handleAddRegion = (regionId: string) => {
-    if (dirty && !window.confirm(t('flagsManager.unsavedConfirm'))) return;
-    const pathIds = collectAncestorIds(regionId, parentMap);
-    setPinnedIds((prev) => {
-      const next = new Set(prev);
-      for (const id of pathIds) next.add(id);
-      return next;
+    askUnsaved(() => {
+      const pathIds = collectAncestorIds(regionId, parentMap);
+      setPinnedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of pathIds) next.add(id);
+        return next;
+      });
+      setSelectedId(regionId);
+      setShowAddRegionSearch(false);
     });
-    setSelectedId(regionId);
-    setShowAddRegionSearch(false);
   };
 
   const addBulkTarget = (regionId: string) => {
-    setBulkTargets((prev) => (prev.includes(regionId) ? prev : [...prev, regionId].sort()));
+    setBulkTargets((prev) => (prev.includes(regionId) ? prev : [...prev, regionId].sort(compareNatural)));
     setShowBulkSearch(false);
   };
 
@@ -432,23 +406,31 @@ export function FlagsManagerDialog({
         flag,
         count: bulkTargets.length,
       });
-    if (!window.confirm(confirmMsg)) return;
-
-    setBulkBusy(true);
-    setBulkMessage(null);
-    try {
-      const result = await onBulk({
-        flag,
-        action: bulkAction,
-        value: bulkAction === 'update' ? parseFlagValue(bulkValue) : undefined,
-        regionIds: forAll ? null : bulkTargets,
-      });
-      setBulkMessage(t('flagsManager.bulkDone', { count: result.count }));
-    } catch (err) {
-      setBulkMessage(String(err));
-    } finally {
-      setBulkBusy(false);
-    }
+    setConfirmState({
+      title: t('flagsManager.bulkTitle'),
+      message: confirmMsg,
+      confirmClass: bulkAction === 'delete' ? 'danger' : 'success',
+      onConfirm: () => {
+        setConfirmState(null);
+        void (async () => {
+          setBulkBusy(true);
+          setBulkMessage(null);
+          try {
+            const result = await onBulk({
+              flag,
+              action: bulkAction,
+              value: bulkAction === 'update' ? parseFlagValue(bulkValue) : undefined,
+              regionIds: forAll ? null : bulkTargets,
+            });
+            setBulkMessage(t('flagsManager.bulkDone', { count: result.count }));
+          } catch (err) {
+            setBulkMessage(String(err));
+          } finally {
+            setBulkBusy(false);
+          }
+        })();
+      },
+    });
   };
 
   const regionsOutsideTree = useMemo(() => {
@@ -472,12 +454,6 @@ export function FlagsManagerDialog({
   const expandAll = () => setCollapsedIds(new Set());
   const collapseAll = () => setCollapsedIds(new Set(treeIds));
 
-  const applyFlagTreeHighlight = () => {
-    const name = flagTreeName.trim();
-    if (!name) return;
-    onHighlightFlag(name);
-  };
-
   const onTreeResizeStart = (event: ReactMouseEvent) => {
     event.preventDefault();
     const startX = event.clientX;
@@ -496,7 +472,7 @@ export function FlagsManagerDialog({
 
   return (
     <>
-      <div className="modal-overlay" onClick={handleClose}>
+      <ModalOverlay onClose={handleClose}>
         <div className="modal flags-manager-modal" onClick={(e) => e.stopPropagation()}>
           <header>
             <h2>{t('flagsManager.title')}</h2>
@@ -506,22 +482,8 @@ export function FlagsManagerDialog({
             <aside className="flags-manager-tree" style={{ width: treeWidth }}>
               <div className="flags-manager-tree-header">
                 <p className="flags-manager-tree-hint">{t('flagsManager.treeHint')}</p>
-                {!showAllRegions && (
-                  <button
-                    type="button"
-                    className="flags-add-region-btn"
-                    title={t('flagsManager.addRegion')}
-                    onClick={() => setShowAddRegionSearch(true)}
-                    disabled={regionsOutsideTree.length === 0}
-                  >
-                    +
-                  </button>
-                )}
               </div>
               <div className="flags-tree-toolbar">
-                <button type="button" onClick={toggleShowAll}>
-                  {showAllRegions ? t('flagsManager.showWithFlags') : t('flagsManager.showAll')}
-                </button>
                 <button
                   type="button"
                   className="flags-tree-icon-btn"
@@ -540,65 +502,26 @@ export function FlagsManagerDialog({
                   <IconCollapseAll size={SIDEBAR_ICON_SIZE} />
                   <span className="sr-only">{t('flagsManager.collapseAll')}</span>
                 </button>
-                <button type="button" onClick={() => setShowFlagTree((v) => !v)}>
-                  {t('flagsManager.flagTree')}
-                </button>
-                <button type="button" onClick={onOpenCatalog}>{t('flagsManager.openCatalog')}</button>
+                <label className="flags-filter-toggle">
+                  <input
+                    type="checkbox"
+                    checked={!showAllRegions}
+                    onChange={toggleShowAll}
+                  />
+                  {t('flagsManager.onlyWithFlags')}
+                </label>
+                {!showAllRegions && (
+                  <button
+                    type="button"
+                    className="flags-add-region-btn"
+                    title={t('flagsManager.addRegion')}
+                    onClick={() => setShowAddRegionSearch(true)}
+                    disabled={regionsOutsideTree.length === 0}
+                  >
+                    +
+                  </button>
+                )}
               </div>
-              {showFlagTree && (
-                <div className="flags-flag-tree-panel">
-                  <div className="flag-pick-row">
-                    <label>
-                      {t('flagsManager.flagTreePick')}
-                      <select
-                        value={flagTreeName}
-                        onChange={(e) => setFlagTreeName(e.target.value)}
-                      >
-                        <option value="">{t('flagsManager.flagTreePickEmpty')}</option>
-                        {flagPickOptions.map((name) => {
-                          const info = flagsCatalog.find((f) => f.name === name);
-                          const label = info ? `${name} (${info.type})` : name;
-                          return (
-                            <option key={name} value={name}>
-                              {label}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </label>
-                    <FlagHelpButton name={flagTreeName} flagsCatalog={flagsCatalog} />
-                  </div>
-                  <div className="modal-actions">
-                    <button type="button" onClick={applyFlagTreeHighlight} disabled={!flagTreeName.trim()}>
-                      {t('flagsManager.flagTreeOnScheme')}
-                    </button>
-                    {highlightFlag && (
-                      <button type="button" onClick={() => onHighlightFlag(null)}>
-                        {t('flagsManager.flagTreeClear')}
-                      </button>
-                    )}
-                  </div>
-                  {flagTreeName.trim() && (
-                    flagDefTree.length === 0 ? (
-                      <p className="flags-manager-empty">{t('flagsManager.flagTreeEmpty')}</p>
-                    ) : (
-                      <>
-                        <p className="flags-manager-tree-hint">{t('flagsManager.flagTreeHint')}</p>
-                        <ul className="flags-tree">
-                          {flagDefTree.map((node) => (
-                            <FlagDefTreeNode
-                              key={node.id}
-                              node={node}
-                              depth={0}
-                              onSelect={selectRegion}
-                            />
-                          ))}
-                        </ul>
-                      </>
-                    )
-                  )}
-                </div>
-              )}
               {tree.length === 0 ? (
                 <p className="flags-manager-empty">{t('flagsManager.empty')}</p>
               ) : (
@@ -627,11 +550,21 @@ export function FlagsManagerDialog({
             />
 
             <section className="flags-manager-editor">
+              <div className="flags-editor-toolbar">
+                {selectedId ? <h3>{selectedId}</h3> : <span />}
+                <div className="flags-editor-toolbar-actions">
+                  <button type="button" className="flags-toolbar-btn" onClick={() => setShowBulkModal(true)}>
+                    {t('flagsManager.bulkTitle')}
+                  </button>
+                  <button type="button" className="flags-toolbar-btn" onClick={onOpenCatalog}>
+                    {t('flagsManager.openCatalog')}
+                  </button>
+                </div>
+              </div>
               {!selectedId ? (
                 <p className="flags-manager-empty">{t('flagsManager.selectRegion')}</p>
               ) : (
                 <>
-                  <h3>{selectedId}</h3>
                   <div className="flags-table-wrap">
                     <table className="flags-table flags-edit-table">
                       <thead>
@@ -691,6 +624,7 @@ export function FlagsManagerDialog({
                     <button type="button" onClick={addRow}>{t('flagsManager.add')}</button>
                     <button
                       type="button"
+                      className="success"
                       onClick={handleSave}
                       disabled={!dirty || saving}
                     >
@@ -699,82 +633,93 @@ export function FlagsManagerDialog({
                   </div>
                 </>
               )}
-
-              <div className="flags-bulk-panel">
-                <h3>{t('flagsManager.bulkTitle')}</h3>
-                <p className="flags-manager-tree-hint">{t('flagsManager.bulkHint')}</p>
-                <div className="flags-bulk-row">
-                  <label>
-                    {t('flagsManager.bulkFlag')}
-                    <FlagNameCombobox
-                      value={bulkFlag}
-                      flagsCatalog={flagsCatalog}
-                      onChange={setBulkFlag}
-                      placeholder={t('flagsManager.namePlaceholder')}
-                    />
-                  </label>
-                  <label>
-                    {t('flagsManager.bulkAction')}
-                    <select
-                      value={bulkAction}
-                      onChange={(e) => setBulkAction(e.target.value as 'delete' | 'update')}
-                    >
-                      <option value="update">{t('flagsManager.bulkUpdate')}</option>
-                      <option value="delete">{t('flagsManager.bulkDelete')}</option>
-                    </select>
-                  </label>
-                  {bulkAction === 'update' && (
-                    <label>
-                      {t('flagsManager.bulkValue')}
-                      <FlagValueInput
-                        value={bulkValue}
-                        flagType={findFlagInfo(flagsCatalog, bulkFlag)?.type}
-                        onChange={setBulkValue}
-                        placeholder={t('flagsManager.valuePlaceholder')}
-                      />
-                    </label>
-                  )}
-                </div>
-                <div className="flags-bulk-targets">
-                  <div className="flags-bulk-targets-header">
-                    <span>{t('flagsManager.bulkTargets', { count: bulkTargets.length })}</span>
-                    <button type="button" onClick={() => setShowBulkSearch(true)}>
-                      {t('flagsManager.bulkAddTarget')}
-                    </button>
-                  </div>
-                  {bulkTargets.length > 0 && (
-                    <ul className="flags-bulk-target-list">
-                      {bulkTargets.map((id) => (
-                        <li key={id}>
-                          <span>{id}</span>
-                          <button type="button" onClick={() => removeBulkTarget(id)}>×</button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                {bulkMessage && <p className="flags-bulk-message">{bulkMessage}</p>}
-                <div className="modal-actions">
-                  <button
-                    type="button"
-                    disabled={bulkBusy}
-                    onClick={() => handleBulkApply(false)}
-                  >
-                    {t('flagsManager.bulkApplyList')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={bulkBusy}
-                    onClick={() => handleBulkApply(true)}
-                  >
-                    {t('flagsManager.bulkApplyAll')}
-                  </button>
-                </div>
-              </div>
             </section>
           </div>
         </div>
-      </div>
+      </ModalOverlay>
+
+      {showBulkModal && (
+        <ModalOverlay onClose={() => setShowBulkModal(false)}>
+          <div className="modal flags-bulk-modal" onClick={(e) => e.stopPropagation()}>
+            <header>
+              <h2>{t('flagsManager.bulkTitle')}</h2>
+              <button type="button" onClick={() => setShowBulkModal(false)}>×</button>
+            </header>
+            <div className="modal-body">
+              <p className="flags-manager-tree-hint">{t('flagsManager.bulkHint')}</p>
+              <div className="flags-bulk-row">
+                <label>
+                  {t('flagsManager.bulkFlag')}
+                  <FlagNameCombobox
+                    value={bulkFlag}
+                    flagsCatalog={flagsCatalog}
+                    onChange={setBulkFlag}
+                    placeholder={t('flagsManager.namePlaceholder')}
+                  />
+                </label>
+                <label>
+                  {t('flagsManager.bulkAction')}
+                  <select
+                    value={bulkAction}
+                    onChange={(e) => setBulkAction(e.target.value as 'delete' | 'update')}
+                  >
+                    <option value="update">{t('flagsManager.bulkUpdate')}</option>
+                    <option value="delete">{t('flagsManager.bulkDelete')}</option>
+                  </select>
+                </label>
+                {bulkAction === 'update' && (
+                  <label>
+                    {t('flagsManager.bulkValue')}
+                    <FlagValueInput
+                      value={bulkValue}
+                      flagType={findFlagInfo(flagsCatalog, bulkFlag)?.type}
+                      onChange={setBulkValue}
+                      placeholder={t('flagsManager.valuePlaceholder')}
+                    />
+                  </label>
+                )}
+              </div>
+              <div className="flags-bulk-targets">
+                <div className="flags-bulk-targets-header">
+                  <span>{t('flagsManager.bulkTargets', { count: bulkTargets.length })}</span>
+                  <button type="button" onClick={() => setShowBulkSearch(true)}>
+                    {t('flagsManager.bulkAddTarget')}
+                  </button>
+                </div>
+                {bulkTargets.length > 0 && (
+                  <ul className="flags-bulk-target-list">
+                    {bulkTargets.map((id) => (
+                      <li key={id}>
+                        <span>{id}</span>
+                        <button type="button" onClick={() => removeBulkTarget(id)}>×</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              {bulkMessage && <p className="flags-bulk-message">{bulkMessage}</p>}
+              <div className="modal-actions">
+                <button
+                  type="button"
+                  className={bulkAction === 'delete' ? 'danger' : ''}
+                  disabled={bulkBusy}
+                  onClick={() => handleBulkApply(false)}
+                >
+                  {t('flagsManager.bulkApplyList')}
+                </button>
+                <button
+                  type="button"
+                  className={bulkAction === 'delete' ? 'danger' : ''}
+                  disabled={bulkBusy}
+                  onClick={() => handleBulkApply(true)}
+                >
+                  {t('flagsManager.bulkApplyAll')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalOverlay>
+      )}
 
       {showAddRegionSearch && (
         <SearchPanel
@@ -788,6 +733,15 @@ export function FlagsManagerDialog({
           regionIds={allRegionIds}
           onClose={() => setShowBulkSearch(false)}
           onSelect={addBulkTarget}
+        />
+      )}
+      {confirmState && (
+        <ConfirmDialog
+          title={confirmState.title}
+          message={confirmState.message}
+          confirmClass={confirmState.confirmClass}
+          onCancel={() => setConfirmState(null)}
+          onConfirm={confirmState.onConfirm}
         />
       )}
     </>

@@ -1,4 +1,5 @@
 import type { ForestNode, RegionData, Scheme, SpatialEdge } from '../types';
+import { compareNatural } from './naturalSort';
 
 const EDGE_STRENGTH: Record<string, number> = { contains: 2, intersects: 1 };
 
@@ -180,7 +181,7 @@ export function findOrphanRegionIds(regions: RegionData[]): string[] {
 
 export function getSpatialPartners(scheme: Scheme, regionId: string): string[] {
   const grouped = getSpatialRelationsGrouped(scheme, regionId);
-  return [...grouped.intersects, ...grouped.containedIn, ...grouped.contains].sort();
+  return [...grouped.intersects, ...grouped.containedIn, ...grouped.contains].sort(compareNatural);
 }
 
 export interface SpatialRelationsGrouped {
@@ -210,7 +211,7 @@ export function getSpatialRelationsGrouped(
     }
   }
 
-  const sort = (s: Set<string>) => Array.from(s).sort();
+  const sort = (s: Set<string>) => Array.from(s).sort(compareNatural);
   return {
     intersects: sort(intersects),
     containedIn: sort(containedIn),

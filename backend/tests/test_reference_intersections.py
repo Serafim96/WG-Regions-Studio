@@ -9,8 +9,8 @@ from backend.geometry.intersections import compute_spatial_edges, region_contain
 from backend.parser.wg_parser import parse_regions_yaml, validate_parent_links
 from backend.tests.conftest import WG_REGIONS_REFERENCE_YML
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-REFERENCE_JSON = PROJECT_ROOT / "data" / "reference_spatial_edges.json"
+APP_ROOT = Path(__file__).resolve().parents[2]
+REFERENCE_JSON = APP_ROOT / "data" / "reference_spatial_edges.json"
 
 
 @pytest.fixture(scope="module")

@@ -4,14 +4,38 @@ const SCHEME_ACCEPT: Record<string, string[]> = {
   'application/json': ['.json', '.mrv.json'],
 };
 
+/** Prefer MIME→extension maps without text/plain (Windows otherwise lists .txt etc.). */
+const OPEN_FILE_TYPES: { description: string; accept: Record<string, string[]> }[] = [
+  {
+    description: 'YAML or MRV scheme',
+    accept: {
+      'application/x-yaml': ['.yml', '.yaml'],
+      'text/yaml': ['.yml', '.yaml'],
+      'application/json': ['.json', '.mrv.json'],
+    },
+  },
+];
+
+export function isYamlFileName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.endsWith('.yml') || lower.endsWith('.yaml');
+}
+
+export function isSchemeFileName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.endsWith('.mrv.json') || lower.endsWith('.json');
+}
+
 type SaveFilePickerOptions = {
   suggestedName?: string;
   types?: { description: string; accept: Record<string, string[]> }[];
+  excludeAcceptAllOption?: boolean;
 };
 
 type OpenFilePickerOptions = {
   multiple?: boolean;
   types?: { description: string; accept: Record<string, string[]> }[];
+  excludeAcceptAllOption?: boolean;
 };
 
 type FileSystemWritable = {
@@ -43,6 +67,7 @@ export async function saveTextWithDialog(
     try {
       const handle = await w.showSaveFilePicker({
         suggestedName,
+        excludeAcceptAllOption: true,
         types: [{ description: 'MRV scheme', accept: SCHEME_ACCEPT }],
       });
       const writable = await handle.createWritable();
@@ -72,16 +97,20 @@ export async function saveTextWithDialog(
 /** Open a text/JSON file via the OS open dialog; falls back to <input type="file">. */
 export async function openTextFileWithDialog(
   accept = '.json,.mrv.json,application/json',
-): Promise<{ name: string; text: string } | null> {
+  pickerTypes: { description: string; accept: Record<string, string[]> }[] = [
+    { description: 'MRV scheme', accept: SCHEME_ACCEPT },
+  ],
+): Promise<{ name: string; text: string; file: File } | null> {
   const w = getWindowWithPicker();
   if (typeof w.showOpenFilePicker === 'function') {
     try {
       const [handle] = await w.showOpenFilePicker({
         multiple: false,
-        types: [{ description: 'MRV scheme', accept: SCHEME_ACCEPT }],
+        excludeAcceptAllOption: true,
+        types: pickerTypes,
       });
       const file = await handle.getFile();
-      return { name: file.name, text: await file.text() };
+      return { name: file.name, text: await file.text(), file };
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
         return null;
@@ -102,7 +131,7 @@ export async function openTextFileWithDialog(
         resolve(null);
         return;
       }
-      resolve({ name: file.name, text: await file.text() });
+      resolve({ name: file.name, text: await file.text(), file });
     };
     input.oncancel = () => {
       input.remove();
@@ -111,6 +140,15 @@ export async function openTextFileWithDialog(
     document.body.appendChild(input);
     input.click();
   });
+}
+
+/** Open YAML regions or a saved scheme (.mrv.json). */
+export async function openSchemeOrYamlWithDialog(): Promise<{
+  name: string;
+  text: string;
+  file: File;
+} | null> {
+  return openTextFileWithDialog('.yml,.yaml,.json,.mrv.json', OPEN_FILE_TYPES);
 }
 
 export function isUserCancelled(err: unknown): boolean {

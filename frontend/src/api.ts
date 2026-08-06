@@ -138,13 +138,20 @@ export async function addManualRegion(data: Partial<RegionData> & { id: string }
 
 export async function deleteManualRegion(
   id: string,
-  childrenMode: 'detach' | 'cascade' = 'detach',
+  childrenMode: 'detach' | 'cascade' | 'orphan' = 'detach',
 ) {
   const res = await fetch(`${API}/regions/manual/delete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id, children_mode: childrenMode }),
   });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+/** Remove all temporary regions from the server session. */
+export async function clearManualRegions(): Promise<{ removed: number; remaining: number }> {
+  const res = await fetch(`${API}/regions/manual/clear`, { method: 'POST' });
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
@@ -172,6 +179,40 @@ export async function updateRegionParent(
     body: JSON.stringify({ parent }),
   });
   if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function updateRegionPriority(regionId: string, priority: number) {
+  const res = await fetch(`${API}/regions/${encodeURIComponent(regionId)}/priority`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ priority }),
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+export async function renameRegion(regionId: string, newId: string) {
+  const res = await fetch(`${API}/regions/${encodeURIComponent(regionId)}/rename`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: newId }),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
+  return res.json();
+}
+
+export async function updateRegionMembers(
+  regionId: string,
+  owners: Record<string, unknown>,
+  members: Record<string, unknown>,
+) {
+  const res = await fetch(`${API}/regions/${encodeURIComponent(regionId)}/members`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ owners, members }),
+  });
+  if (!res.ok) throw new Error(await readApiError(res));
   return res.json();
 }
 

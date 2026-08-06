@@ -1,13 +1,14 @@
 import type { ForestNode, Scheme } from '../types';
+import { compareNatural } from './naturalSort';
 
 const H_PAD = 30;
 const V_GAP = 40;
 /** Vertical gap between parent and children block. */
 const LEVEL_GAP = 76;
-/** Gap between wrapped sibling rows under the same parent. */
+/** Gap when stacking under / beside an earlier sibling box. */
 const ROW_GAP = 48;
 const ROOT_GAP = 40;
-/** Max direct siblings in one horizontal row before wrapping. */
+/** Max siblings in one left-to-right run before wrapping down. */
 const MAX_CHILDREN_PER_ROW = 5;
 /** Offset when parking an orphan root beside its spatial partners. */
 const ORPHAN_NEAR_GAP = 90;
@@ -22,12 +23,11 @@ interface SubtreeLayout {
   width: number;
 }
 
-function chunk<T>(items: T[], size: number): T[][] {
-  const rows: T[][] = [];
-  for (let i = 0; i < items.length; i += size) {
-    rows.push(items.slice(i, i + size));
-  }
-  return rows;
+interface PlacedRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
 }
 
 function collectSubtreeIds(node: ForestNode, hiddenNodes: Set<string>, out: string[]): void {
@@ -36,11 +36,128 @@ function collectSubtreeIds(node: ForestNode, hiddenNodes: Set<string>, out: stri
   for (const child of node.children) collectSubtreeIds(child, hiddenNodes, out);
 }
 
+/** Lowest Y where [x, x+w) clears already placed sibling boxes. */
+function skylineTopY(
+  placed: PlacedRect[],
+  x: number,
+  w: number,
+  originY: number,
+): number {
+  let y = originY;
+  for (const p of placed) {
+    if (p.x < x + w && p.x + p.w > x) {
+      y = Math.max(y, p.y + p.h + ROW_GAP);
+    }
+  }
+  return y;
+}
+
+function countInYBand(placed: PlacedRect[], y: number): number {
+  return placed.filter((p) => Math.abs(p.y - y) <= 1).length;
+}
+
+function rightEdgeInYBand(placed: PlacedRect[], y: number, fallbackX: number): number {
+  let right = fallbackX;
+  for (const p of placed) {
+    if (Math.abs(p.y - y) <= 1) right = Math.max(right, p.x + p.w);
+  }
+  return right;
+}
+
 /**
- * Balanced tree layout: siblings spread horizontally (up to N per row),
- * extra rows wrap downward; generous vertical gaps between levels.
- * Orphan forest roots (no parent, not «root») are then pulled toward regions
- * they share a spatial edge with, when those partners already have positions.
+ * Pick a slot for the next sibling box.
+ * Prefer continuing the current L→R run (compact columns like metro tunnel).
+ * Otherwise choose the lowest skyline among wrap / side pockets / right of tall boxes —
+ * without extending any Y-band past MAX_CHILDREN_PER_ROW.
+ */
+function findSiblingSlot(
+  placed: PlacedRect[],
+  width: number,
+  originX: number,
+  originY: number,
+  xCursor: number,
+  itemsInRow: number,
+): { x: number; y: number } {
+  type Cand = { x: number; y: number };
+  const cands: Cand[] = [];
+
+  if (itemsInRow < MAX_CHILDREN_PER_ROW) {
+    cands.push({
+      x: xCursor,
+      y: skylineTopY(placed, xCursor, width, originY),
+    });
+  }
+
+  // New row / left pocket
+  cands.push({
+    x: originX,
+    y: skylineTopY(placed, originX, width, originY),
+  });
+
+  // Pockets immediately to the right of each placed box (beside tall neighbours).
+  for (const p of placed) {
+    const x = p.x + p.w;
+    const y = skylineTopY(placed, x, width, originY);
+    // Band already has a full L→R run — do not keep growing it into empty space.
+    if (countInYBand(placed, y) >= MAX_CHILDREN_PER_ROW) continue;
+    cands.push({ x, y });
+  }
+
+  cands.sort((a, b) => a.y - b.y || a.x - b.x);
+  return cands[0];
+}
+
+function packMeasuredSubtrees(
+  measured: { width: number; height: number; local: Map<string, { x: number; y: number }> }[],
+  originX: number,
+  originY: number,
+  out: Map<string, { x: number; y: number }>,
+): { width: number; height: number } {
+  const placed: PlacedRect[] = [];
+  const origins: { x: number; y: number }[] = [];
+
+  let xCursor = originX;
+  let itemsInRow = 0;
+
+  for (const m of measured) {
+    if (itemsInRow >= MAX_CHILDREN_PER_ROW) {
+      xCursor = originX;
+      itemsInRow = 0;
+    }
+
+    const slot = findSiblingSlot(placed, m.width, originX, originY, xCursor, itemsInRow);
+    placed.push({ x: slot.x, y: slot.y, w: m.width, h: m.height });
+    origins.push({ x: slot.x, y: slot.y });
+    // Recount from geometry so gap picks cannot reset the row counter to 1.
+    itemsInRow = countInYBand(placed, slot.y);
+    xCursor = rightEdgeInYBand(placed, slot.y, originX);
+  }
+
+  for (let i = 0; i < measured.length; i++) {
+    const { local } = measured[i];
+    const origin = origins[i];
+    for (const [id, pos] of local) {
+      out.set(id, { x: pos.x + origin.x, y: pos.y + origin.y });
+    }
+  }
+
+  let maxRight = originX;
+  let maxBottom = originY;
+  for (const p of placed) {
+    maxRight = Math.max(maxRight, p.x + p.w);
+    maxBottom = Math.max(maxBottom, p.y + p.h);
+  }
+  return {
+    width: Math.max(0, maxRight - originX),
+    height: Math.max(0, maxBottom - originY),
+  };
+}
+
+/**
+ * Hierarchical layout, natural sibling order.
+ * Children form compact rows of ~5 (tall columns like metro_express_tunnel).
+ * Wide branches that cannot fit in the left pocket park beside/under other boxes
+ * at the lowest free skyline (not necessarily after the tallest neighbour).
  */
 export function layoutVisibleForest(
   scheme: Scheme,
@@ -50,58 +167,72 @@ export function layoutVisibleForest(
   const positions = new Map<string, { x: number; y: number }>();
   const defaultDim = { width: 80, height: 56 };
 
-  function layoutSubtree(node: ForestNode, leftX: number, topY: number): SubtreeLayout {
+  function layoutSubtreeInto(
+    node: ForestNode,
+    leftX: number,
+    topY: number,
+    out: Map<string, { x: number; y: number }>,
+  ): SubtreeLayout {
     if (hiddenNodes.has(node.id)) return { height: 0, width: 0 };
 
     const dims = nodeDims.get(node.id) ?? defaultDim;
-    const visibleChildren = node.children.filter((c) => !hiddenNodes.has(c.id));
+    const visibleChildren = node.children
+      .filter((c) => !hiddenNodes.has(c.id))
+      .sort((a, b) => compareNatural(a.id, b.id));
 
     if (visibleChildren.length === 0) {
-      positions.set(node.id, { x: leftX + dims.width / 2, y: topY + dims.height / 2 });
+      out.set(node.id, { x: leftX + dims.width / 2, y: topY + dims.height / 2 });
       return { height: dims.height + V_GAP, width: dims.width + H_PAD };
     }
 
-    const childRows = chunk(visibleChildren, MAX_CHILDREN_PER_ROW);
-    let rowTopY = topY + dims.height + LEVEL_GAP;
-    let maxRowWidth = 0;
-    let childBlockHeight = 0;
+    const measured: {
+      width: number;
+      height: number;
+      local: Map<string, { x: number; y: number }>;
+    }[] = [];
 
-    for (let rowIndex = 0; rowIndex < childRows.length; rowIndex++) {
-      const row = childRows[rowIndex];
-      let xCursor = leftX;
-      let rowHeight = 0;
-
-      for (const child of row) {
-        const sub = layoutSubtree(child, xCursor, rowTopY);
-        rowHeight = Math.max(rowHeight, sub.height);
-        xCursor += sub.width;
-      }
-
-      const rowWidth = xCursor - leftX;
-      maxRowWidth = Math.max(maxRowWidth, rowWidth);
-      childBlockHeight += rowHeight;
-      if (rowIndex < childRows.length - 1) {
-        childBlockHeight += ROW_GAP;
-        rowTopY += rowHeight + ROW_GAP;
-      } else {
-        rowTopY += rowHeight;
-      }
+    for (const child of visibleChildren) {
+      const local = new Map<string, { x: number; y: number }>();
+      const size = layoutSubtreeInto(child, 0, 0, local);
+      measured.push({ width: size.width, height: size.height, local });
     }
 
-    const parentCenterX = leftX + maxRowWidth / 2;
-    positions.set(node.id, { x: parentCenterX, y: topY + dims.height / 2 });
+    const childOriginY = topY + dims.height + LEVEL_GAP;
+    const packed = packMeasuredSubtrees(measured, leftX, childOriginY, out);
 
-    const totalWidth = Math.max(dims.width + H_PAD, maxRowWidth + H_PAD);
-    const totalHeight = dims.height + LEVEL_GAP + childBlockHeight + V_GAP;
-    return { height: totalHeight, width: totalWidth };
+    const contentWidth = Math.max(dims.width + H_PAD, packed.width + H_PAD);
+    const contentHeight = dims.height + LEVEL_GAP + packed.height + V_GAP;
+    out.set(node.id, {
+      x: leftX + contentWidth / 2,
+      y: topY + dims.height / 2,
+    });
+
+    return { height: contentHeight, width: contentWidth };
   }
 
-  let xOffset = 0;
-  for (const root of scheme.forest?.roots ?? []) {
-    if (hiddenNodes.has(root.id)) continue;
-    const sub = layoutSubtree(root, xOffset, 0);
-    xOffset += sub.width + ROOT_GAP;
+  const roots = [...(scheme.forest?.roots ?? [])]
+    .filter((r) => !hiddenNodes.has(r.id))
+    .sort((a, b) => compareNatural(a.id, b.id));
+
+  const measuredRoots: {
+    width: number;
+    height: number;
+    local: Map<string, { x: number; y: number }>;
+  }[] = [];
+
+  for (const root of roots) {
+    const local = new Map<string, { x: number; y: number }>();
+    const size = layoutSubtreeInto(root, 0, 0, local);
+    measuredRoots.push({ width: size.width, height: size.height, local });
   }
+
+  if (measuredRoots.length === 1) {
+    for (const [id, pos] of measuredRoots[0].local) positions.set(id, pos);
+  } else if (measuredRoots.length > 1) {
+    packMeasuredSubtrees(measuredRoots, 0, 0, positions);
+  }
+
+  void ROOT_GAP;
 
   pullOrphanRootsNearSpatialPartners(scheme, hiddenNodes, positions, nodeDims);
   return positions;
@@ -125,7 +256,8 @@ function pullOrphanRootsNearSpatialPartners(
   const defaultDim = { width: 80, height: 56 };
   let parkIndex = 0;
 
-  for (const root of scheme.forest?.roots ?? []) {
+  const roots = [...(scheme.forest?.roots ?? [])].sort((a, b) => compareNatural(a.id, b.id));
+  for (const root of roots) {
     if (hiddenNodes.has(root.id)) continue;
     const region = regionById.get(root.id);
     if (!region || region.parent || region.id === 'root') continue;
@@ -135,7 +267,6 @@ function pullOrphanRootsNearSpatialPartners(
 
     const partnerPos: { x: number; y: number }[] = [];
     for (const id of linked) {
-      // Prefer partners that are not themselves orphan roots being moved.
       const pos = positions.get(id);
       if (!pos) continue;
       const other = regionById.get(id);

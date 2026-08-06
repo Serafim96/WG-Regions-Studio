@@ -4,6 +4,8 @@ Visualize WorldGuard region hierarchies with spatial overlaps (intersects) and f
 
 Load your own `regions.yml`, explore the tree, collapse large subtrees, search regions, and inspect flags and metrics in the browser.
 
+This repository is the **app** root (`backend/`, `frontend/`, docs). Local workspace files (venv, WorldGuard references, notes) live one level above when you develop in the full Cursor workspace.
+
 ## Requirements
 
 - Python 3.11+
@@ -11,15 +13,19 @@ Load your own `regions.yml`, explore the tree, collapse large subtrees, search r
 
 ## Setup
 
+Virtual environment lives in the **parent** folder (`../.venv`) so it stays outside the git repo:
+
 ```bash
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Linux/macOS
+python -m venv ../.venv
+../.venv\Scripts\activate          # Windows
+# source ../.venv/bin/activate     # Linux/macOS
 pip install -r requirements.txt
 cd frontend && npm install && npm run build && cd ..
 ```
 
 ## Run
+
+From this directory (`app/`):
 
 **Windows:** double-click `run.bat` or:
 
@@ -33,11 +39,11 @@ run.bat
 chmod +x run.sh && ./run.sh
 ```
 
-The launcher creates a virtual environment, installs dependencies, builds the frontend if needed, and opens http://127.0.0.1:8000 in your browser.
+The launcher uses `../.venv`, installs dependencies, builds the frontend if needed, and opens http://127.0.0.1:8000 in your browser.
 
 ## Usage
 
-1. Place your WorldGuard **`regions.yml`** in the project folder (or pick any path via the file dialog).
+1. Place your WorldGuard **`regions.yml`** next to the app (workspace folder) or pick any path via the file dialog.
 2. Click **Open YAML**, then **Build scheme**.
 3. Use the toolbar for search, legend, metrics, collapse/expand, and scheme save/load.
 4. **Save scheme** / **Load scheme** use the **`.mrv.json`** format — a JSON snapshot of the built graph (nodes, edges, layout, metrics), so you can reopen it without rebuilding from YAML.
@@ -46,26 +52,23 @@ The UI supports **Russian** and **English** (language switcher in the sidebar).
 
 ## Tests
 
-Backend tests live in `backend/tests/`. Run them from the **project root** (the folder that contains `pytest.ini`, `backend/`, and `frontend/`).
+Backend tests live in `backend/tests/`. Run them from this directory (the folder that contains `pytest.ini`, `backend/`, and `frontend/`).
 
 ### 1. One-time setup
 
-Use the same virtual environment as the app:
-
 ```bash
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # Linux/macOS
+python -m venv ../.venv
+../.venv\Scripts\activate          # Windows
+# source ../.venv/bin/activate     # Linux/macOS
 pip install -r requirements.txt
 ```
 
 ### 2. Run all tests
 
-**Windows (PowerShell or CMD), from project root:**
+**Windows (PowerShell or CMD), from this folder:**
 
 ```powershell
-cd path\to\WorldGuard-Region-Viewer
-.venv\Scripts\activate
+..\.venv\Scripts\activate
 pytest
 ```
 
@@ -73,25 +76,17 @@ pytest
 
 ```bash
 cd path/to/WorldGuard-Region-Viewer
-source .venv/bin/activate
+source ../.venv/bin/activate
 pytest
 ```
 
 `pytest.ini` already points to `backend/tests`, so no extra paths are needed.
 
+Optional local files for flag/jar tests: place `all_flags.txt` and the WorldGuard jar in the **parent** workspace folder (one level above this repo).
+
 ### 3. Optional: full dataset tests
 
-Some integration tests read **`backend/tests/fixtures/wg_regions_reference.yml`** — a frozen copy for pytest. The **`regions.yml`** in the project root is only for your viewing in the UI; tests do not depend on it.
-
-```text
-WorldGuard-Region-Viewer/
-├── backend/tests/fixtures/wg_regions_reference.yml  ← frozen YAML for integration tests
-├── pytest.ini
-├── backend/tests/       ← test files
-└── ...
-```
-
-Run a single file or test:
+Some integration tests read **`backend/tests/fixtures/wg_regions_reference.yml`** — a frozen copy for pytest.
 
 ```bash
 pytest backend/tests/test_parser.py
@@ -106,7 +101,7 @@ pytest backend/tests/test_full_dataset.py -v
 | Region tree | `test_tree.py` |
 | Spatial geometry | `test_intersections.py` |
 | Scheme I/O | `test_scheme.py` |
-| Full export (needs `regions.yml`) | `test_full_dataset.py`, `test_reference_intersections.py` |
+| Full export | `test_full_dataset.py`, `test_reference_intersections.py` |
 
 You do **not** need Node.js or a running web server for `pytest` — only Python and `requirements.txt` dependencies.
 
@@ -117,12 +112,11 @@ You do **not** need Node.js or a running web server for `pytest` — only Python
 
 ## Data files (not in this repository)
 
-These files are local-only (see `.gitignore`):
-
-| File | Purpose |
-|------|---------|
-| `regions.yml` | Your WorldGuard regions export |
-| `*.mrv.json` | Saved scheme in the app’s **MRV** format (built tree, spatial edges, layout, metrics) — created via **Save scheme**, opened via **Load scheme** |
+| File | Typical location | Purpose |
+|------|------------------|---------|
+| `regions.yml` | parent workspace | Your WorldGuard regions export |
+| `all_flags.txt` | parent workspace | Flag catalog reference |
+| `*.mrv.json` | anywhere you choose | Saved scheme (MRV format) |
 
 ## License
 
