@@ -235,7 +235,67 @@ export function layoutVisibleForest(
   void ROOT_GAP;
 
   pullOrphanRootsNearSpatialPartners(scheme, hiddenNodes, positions, nodeDims);
+  separateOverlappingNodes(positions, nodeDims);
   return positions;
+}
+
+function nodeAabb(
+  id: string,
+  positions: Map<string, { x: number; y: number }>,
+  nodeDims: Map<string, NodeDimensions>,
+  defaultDim: NodeDimensions,
+  gap = 0,
+): { x0: number; y0: number; x1: number; y1: number } | null {
+  const pos = positions.get(id);
+  if (!pos) return null;
+  const d = nodeDims.get(id) ?? defaultDim;
+  const hw = d.width / 2 + gap;
+  const hh = d.height / 2 + gap;
+  return { x0: pos.x - hw, y0: pos.y - hh, x1: pos.x + hw, y1: pos.y + hh };
+}
+
+function aabbsOverlap(
+  a: { x0: number; y0: number; x1: number; y1: number },
+  b: { x0: number; y0: number; x1: number; y1: number },
+): boolean {
+  return a.x1 > b.x0 && a.x0 < b.x1 && a.y1 > b.y0 && a.y0 < b.y1;
+}
+
+/** After label-driven growth, push overlapping nodes apart horizontally. */
+function separateOverlappingNodes(
+  positions: Map<string, { x: number; y: number }>,
+  nodeDims: Map<string, NodeDimensions>,
+  gap = 16,
+): void {
+  const ids = [...positions.keys()];
+  const defaultDim = { width: 80, height: 56 };
+  for (let iter = 0; iter < 6; iter++) {
+    let moved = false;
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const aId = ids[i];
+        const bId = ids[j];
+        const aBox = nodeAabb(aId, positions, nodeDims, defaultDim, gap / 2);
+        const bBox = nodeAabb(bId, positions, nodeDims, defaultDim, gap / 2);
+        if (!aBox || !bBox || !aabbsOverlap(aBox, bBox)) continue;
+
+        const pa = positions.get(aId)!;
+        const pb = positions.get(bId)!;
+        const overlapX = Math.min(aBox.x1, bBox.x1) - Math.max(aBox.x0, bBox.x0);
+        if (overlapX <= 0) continue;
+        const push = overlapX / 2 + 1;
+        if (pa.x <= pb.x) {
+          positions.set(aId, { x: pa.x - push, y: pa.y });
+          positions.set(bId, { x: pb.x + push, y: pb.y });
+        } else {
+          positions.set(aId, { x: pa.x + push, y: pa.y });
+          positions.set(bId, { x: pb.x - push, y: pb.y });
+        }
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
 }
 
 function pullOrphanRootsNearSpatialPartners(
@@ -265,43 +325,80 @@ function pullOrphanRootsNearSpatialPartners(
     const linked = partners.get(root.id);
     if (!linked || linked.size === 0) continue;
 
-    const partnerPos: { x: number; y: number }[] = [];
+    const partnerEntries: { id: string; x: number; y: number }[] = [];
     for (const id of linked) {
       const pos = positions.get(id);
       if (!pos) continue;
       const other = regionById.get(id);
       if (other && !other.parent && other.id !== 'root') continue;
-      partnerPos.push(pos);
+      partnerEntries.push({ id, ...pos });
     }
-    if (partnerPos.length === 0) {
+    if (partnerEntries.length === 0) {
       for (const id of linked) {
         const pos = positions.get(id);
-        if (pos) partnerPos.push(pos);
+        if (pos) partnerEntries.push({ id, ...pos });
       }
     }
-    if (partnerPos.length === 0) continue;
+    if (partnerEntries.length === 0) continue;
 
-    const avgX = partnerPos.reduce((s, p) => s + p.x, 0) / partnerPos.length;
-    const avgY = partnerPos.reduce((s, p) => s + p.y, 0) / partnerPos.length;
+    const avgX = partnerEntries.reduce((s, p) => s + p.x, 0) / partnerEntries.length;
+    const avgY = partnerEntries.reduce((s, p) => s + p.y, 0) / partnerEntries.length;
     const current = positions.get(root.id);
     if (!current) continue;
 
     const dims = nodeDims.get(root.id) ?? defaultDim;
+    const maxPartnerHalfW = Math.max(
+      ...partnerEntries.map((p) => (nodeDims.get(p.id) ?? defaultDim).width / 2),
+      defaultDim.width / 2,
+    );
     const side = parkIndex % 2 === 0 ? 1 : -1;
     const row = Math.floor(parkIndex / 2);
     parkIndex += 1;
-    const targetX = avgX + side * (dims.width / 2 + ORPHAN_NEAR_GAP + row * 24);
-    const targetY = avgY + row * (dims.height * 0.35);
-    const dx = targetX - current.x;
-    const dy = targetY - current.y;
-    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
 
-    const ids: string[] = [];
-    collectSubtreeIds(root, hiddenNodes, ids);
-    for (const id of ids) {
-      const pos = positions.get(id);
-      if (!pos) continue;
-      positions.set(id, { x: pos.x + dx, y: pos.y + dy });
+    const subtreeIds: string[] = [];
+    collectSubtreeIds(root, hiddenNodes, subtreeIds);
+    const subtreeSet = new Set(subtreeIds);
+
+    let extra = 0;
+    for (let guard = 0; guard < 24; guard++) {
+      const targetX =
+        avgX + side * (dims.width / 2 + maxPartnerHalfW + ORPHAN_NEAR_GAP + row * 24 + extra);
+      const targetY = avgY + row * (dims.height * 0.35);
+      const dx = targetX - current.x;
+      const dy = targetY - current.y;
+
+      const trial = new Map(positions);
+      for (const id of subtreeIds) {
+        const pos = trial.get(id);
+        if (!pos) continue;
+        trial.set(id, { x: pos.x + dx, y: pos.y + dy });
+      }
+
+      let hits = false;
+      for (const id of subtreeIds) {
+        const box = nodeAabb(id, trial, nodeDims, defaultDim, 8);
+        if (!box) continue;
+        for (const [otherId] of trial) {
+          if (subtreeSet.has(otherId)) continue;
+          const other = nodeAabb(otherId, trial, nodeDims, defaultDim, 8);
+          if (other && aabbsOverlap(box, other)) {
+            hits = true;
+            break;
+          }
+        }
+        if (hits) break;
+      }
+      if (!hits || guard === 23) {
+        if (Math.abs(dx) >= 1 || Math.abs(dy) >= 1) {
+          for (const id of subtreeIds) {
+            const pos = positions.get(id);
+            if (!pos) continue;
+            positions.set(id, { x: pos.x + dx, y: pos.y + dy });
+          }
+        }
+        break;
+      }
+      extra += 28;
     }
   }
 }

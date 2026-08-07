@@ -19,6 +19,8 @@ export interface SpatialEdge {
   source: string;
   target: string;
   relation: 'intersects' | 'contains';
+  /** Shared intersection volume in blocks (intersects edges from a fresh build). */
+  overlapBlocks?: number | null;
 }
 
 export interface HierarchyEdge {

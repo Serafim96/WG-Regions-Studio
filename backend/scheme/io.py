@@ -46,7 +46,16 @@ def build_scheme(
         "forest": forest.to_dict(),
         "hierarchyEdges": hierarchy_edges,
         "spatialEdges": [
-            {"source": e.source, "target": e.target, "relation": e.relation}
+            {
+                "source": e.source,
+                "target": e.target,
+                "relation": e.relation,
+                **(
+                    {"overlapBlocks": e.overlap_blocks}
+                    if e.relation == "intersects" and e.overlap_blocks is not None
+                    else {}
+                ),
+            }
             for e in spatial_edges
         ],
         "layout": layout,

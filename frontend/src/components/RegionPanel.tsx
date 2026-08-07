@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../i18n/I18nContext';
-import type { FlagInfo, RegionData } from '../types';
+import type { FlagInfo, RegionData, SpatialEdge } from '../types';
 import type { SpatialRelationsGrouped } from '../utils/graph';
 import { compareNatural } from '../utils/naturalSort';
 import { validateFlagRows } from '../utils/flagRows';
 import { isTemporaryRegion } from '../utils/regions';
+import {
+  cuboidIntersectionVolume,
+  findIntersectOverlapBlocks,
+  formatOneDecimal,
+  regionVolume,
+} from '../utils/volume';
 import { findFlagInfo } from './FlagHelpButton';
 import { FlagNameCombobox } from './FlagNameCombobox';
 import { FlagValueInput } from './FlagValueInput';
@@ -29,6 +35,8 @@ interface RegionPanelProps {
   region: RegionData;
   childIds: string[];
   spatialRelations: SpatialRelationsGrouped;
+  spatialEdges: SpatialEdge[];
+  regionsById: Map<string, RegionData>;
   flagsCatalog: FlagInfo[];
   regionIds: string[];
   onClose: () => void;
@@ -48,6 +56,9 @@ interface RegionPanelProps {
     members: Record<string, unknown>,
   ) => Promise<void>;
 }
+
+type IntersectSortKey = 'id' | 'blocks' | 'percent';
+type SortDir = 'asc' | 'desc';
 
 function PartnerList({
   ids,
@@ -75,6 +86,143 @@ function PartnerList({
                 <button type="button" className="region-link" onClick={() => onFocusRegion(pid)}>
                   {pid}
                 </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function IntersectsPartnerTable({
+  region,
+  partnerIds,
+  spatialEdges,
+  regionsById,
+  emptyText,
+  onFocusRegion,
+}: {
+  region: RegionData;
+  partnerIds: string[];
+  spatialEdges: SpatialEdge[];
+  regionsById: Map<string, RegionData>;
+  emptyText: string;
+  onFocusRegion: (id: string) => void;
+}) {
+  const { t } = useI18n();
+  const [sortKey, setSortKey] = useState<IntersectSortKey>('id');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  const selfVolume = useMemo(() => regionVolume(region), [region]);
+
+  const rows = useMemo(() => {
+    return partnerIds.map((id) => {
+      const fromEdge = findIntersectOverlapBlocks(spatialEdges, region.id, id);
+      let blocks: number | null;
+      if (fromEdge === undefined) {
+        const partner = regionsById.get(id);
+        blocks = partner ? cuboidIntersectionVolume(region, partner) : null;
+      } else {
+        blocks = fromEdge;
+      }
+      const percent =
+        blocks != null && selfVolume != null && selfVolume > 0
+          ? (blocks / selfVolume) * 100
+          : null;
+      return { id, blocks, percent };
+    });
+  }, [partnerIds, spatialEdges, region, regionsById, selfVolume]);
+
+  const sorted = useMemo(() => {
+    const list = [...rows];
+    const dir = sortDir === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      if (sortKey === 'id') {
+        return compareNatural(a.id, b.id) * dir;
+      }
+      const av = sortKey === 'blocks' ? a.blocks : a.percent;
+      const bv = sortKey === 'blocks' ? b.blocks : b.percent;
+      if (av == null && bv == null) return compareNatural(a.id, b.id);
+      if (av == null) return 1;
+      if (bv == null) return -1;
+      if (av !== bv) return (av < bv ? -1 : 1) * dir;
+      return compareNatural(a.id, b.id);
+    });
+    return list;
+  }, [rows, sortKey, sortDir]);
+
+  const toggleSort = (key: IntersectSortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(key === 'id' ? 'asc' : 'desc');
+  };
+
+  const sortMarker = (key: IntersectSortKey) => {
+    if (sortKey !== key) return '';
+    return sortDir === 'asc' ? ' ↑' : ' ↓';
+  };
+
+  if (sorted.length === 0) {
+    return <p className="partners-empty">{emptyText}</p>;
+  }
+
+  return (
+    <div className="region-link-table region-link-table--intersects">
+      <table>
+        <thead>
+          <tr>
+            <th>
+              <button
+                type="button"
+                className="region-sort-btn"
+                onClick={() => toggleSort('id')}
+                title={sortDir === 'asc' ? t('region.intersectSortAsc') : t('region.intersectSortDesc')}
+              >
+                {t('region.intersectColRegion')}
+                {sortMarker('id')}
+              </button>
+            </th>
+            <th className="region-num-col">
+              <button
+                type="button"
+                className="region-sort-btn"
+                onClick={() => toggleSort('blocks')}
+                title={sortDir === 'asc' ? t('region.intersectSortAsc') : t('region.intersectSortDesc')}
+              >
+                {t('region.intersectColBlocks')}
+                {sortMarker('blocks')}
+              </button>
+            </th>
+            <th className="region-num-col">
+              <button
+                type="button"
+                className="region-sort-btn"
+                onClick={() => toggleSort('percent')}
+                title={sortDir === 'asc' ? t('region.intersectSortAsc') : t('region.intersectSortDesc')}
+              >
+                {t('region.intersectColPercent')}
+                {sortMarker('percent')}
+              </button>
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((row) => (
+            <tr key={row.id}>
+              <td>
+                <button type="button" className="region-link" onClick={() => onFocusRegion(row.id)}>
+                  {row.id}
+                </button>
+              </td>
+              <td className="region-num-col">
+                {row.blocks == null ? '—' : formatOneDecimal(row.blocks)}
+              </td>
+              <td className="region-num-col">
+                {row.percent == null ? '—' : `${formatOneDecimal(row.percent)}%`}
               </td>
             </tr>
           ))}
@@ -220,6 +368,8 @@ export function RegionPanel({
   region,
   childIds,
   spatialRelations,
+  spatialEdges,
+  regionsById,
   flagsCatalog,
   regionIds,
   onClose,
@@ -660,8 +810,11 @@ export function RegionPanel({
               <p className="partners-subtitle">
                 {t('region.intersects', { count: sortedSpatial.intersects.length })}
               </p>
-              <PartnerList
-                ids={sortedSpatial.intersects}
+              <IntersectsPartnerTable
+                region={region}
+                partnerIds={sortedSpatial.intersects}
+                spatialEdges={spatialEdges}
+                regionsById={regionsById}
                 emptyText={t('region.noIntersects')}
                 onFocusRegion={onFocusRegion}
               />

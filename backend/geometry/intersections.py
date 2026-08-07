@@ -17,6 +17,8 @@ class SpatialEdge:
     source: str
     target: str
     relation: SpatialRelation
+    # Shared intersection volume in blocks (intersects edges only).
+    overlap_blocks: int | None = None
 
     def normalized_key(self) -> tuple[str, str, SpatialRelation]:
         if self.relation == "intersects":
@@ -50,6 +52,47 @@ def region_volume(region: Region) -> int | None:
     if region.type == "poly2d":
         return poly2d_volume(region)
     return None
+
+
+def _inclusive_axis_overlap(a_lo: int, a_hi: int, b_lo: int, b_hi: int) -> int | None:
+    """Inclusive block count along one axis; None if no positive overlap."""
+    lo = max(a_lo, b_lo)
+    hi = min(a_hi, b_hi)
+    if hi < lo:
+        return None
+    return hi - lo + 1
+
+
+def intersection_volume(a: Region, b: Region) -> int | None:
+    """Volume of A ∩ B in blocks, or None when not computable / empty."""
+    if not is_spatial(a) or not is_spatial(b):
+        return None
+
+    y_a = _get_y_range(a)
+    y_b = _get_y_range(b)
+    if y_a is None or y_b is None:
+        return None
+    height = _inclusive_axis_overlap(y_a[0], y_a[1], y_b[0], y_b[1])
+    if height is None:
+        return None
+
+    if a.type == "cuboid" and b.type == "cuboid":
+        assert a.min and a.max and b.min and b.max
+        dx = _inclusive_axis_overlap(a.min.x, a.max.x, b.min.x, b.max.x)
+        dy = _inclusive_axis_overlap(a.min.y, a.max.y, b.min.y, b.max.y)
+        dz = _inclusive_axis_overlap(a.min.z, a.max.z, b.min.z, b.max.z)
+        if dx is None or dy is None or dz is None:
+            return None
+        return dx * dy * dz
+
+    poly_a = _cuboid_to_polygon_xz(a) if a.type == "cuboid" else _poly_to_polygon(a)
+    poly_b = _cuboid_to_polygon_xz(b) if b.type == "cuboid" else _poly_to_polygon(b)
+    if poly_a is None or poly_b is None:
+        return None
+    inter = poly_a.intersection(poly_b)
+    if inter.is_empty or inter.area <= 0:
+        return None
+    return int(inter.area * height)
 
 
 def _polygon_area_xz(points: list[Vec2]) -> float:
@@ -219,6 +262,13 @@ def compute_spatial_edges(regions: list[Region]) -> list[SpatialEdge]:
                 key = (x, y, "intersects")
                 if key not in seen:
                     seen.add(key)
-                    edges.append(SpatialEdge(source=x, target=y, relation="intersects"))
+                    edges.append(
+                        SpatialEdge(
+                            source=x,
+                            target=y,
+                            relation="intersects",
+                            overlap_blocks=intersection_volume(a, b),
+                        )
+                    )
 
     return edges

@@ -28,6 +28,8 @@ export function LegendPanel({ onClose }: { onClose: () => void }) {
   const flagItems = [
     { sample: <span className="legend-node legend-node--flag-define" />, meaning: t('legend.flagDefine') },
     { sample: <span className="legend-node legend-node--flag-path" />, meaning: t('legend.flagPath') },
+    { sample: <span className="legend-node legend-node--flag-contained-no-inherit" />, meaning: t('legend.flagContainedNoInherit') },
+    { sample: <span className="legend-node legend-node--flag-intersect-partial" />, meaning: t('legend.flagIntersectPartial') },
     { sample: <span className="legend-node legend-node--flag-dim" />, meaning: t('legend.flagDim') },
     { sample: <span className="legend-node legend-node--flag-conflict-pair" />, meaning: t('legend.flagConflictPair') },
     { sample: <LegendDirectedEdge color="#1abc9c" width={5} />, meaning: t('legend.flagPathEdge') },

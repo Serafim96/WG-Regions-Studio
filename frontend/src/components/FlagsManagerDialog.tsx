@@ -4,9 +4,14 @@ import type { FlagInfo, ForestNode, RegionData, Scheme } from '../types';
 import { buildParentMap } from '../utils/graph';
 import { compareNatural } from '../utils/naturalSort';
 import { validateFlagRows } from '../utils/flagRows';
-import { defaultCollapsedWithoutFlagSubtrees } from '../utils/flagTree';
+import {
+  defaultCollapsedWithoutFlagSubtrees,
+  defaultCollapsedWithoutNamedFlag,
+  listUsedFlagNames,
+} from '../utils/flagTree';
 import { findFlagInfo } from './FlagHelpButton';
 import { FlagNameCombobox } from './FlagNameCombobox';
+import { FlagTreeView } from './FlagTreeDialog';
 import { FlagValueInput } from './FlagValueInput';
 import { ModalOverlay } from './ModalOverlay';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -18,6 +23,8 @@ import {
   TREE_ICON_SIZE,
 } from './GraphControlIcons';
 import { SearchPanel } from './SearchPanel';
+
+type ManagerTab = 'manage' | 'flagTree';
 
 interface FlagRow {
   key: string;
@@ -39,10 +46,17 @@ interface FlagsManagerDialogProps {
   onOpenCatalog: () => void;
   /** Open focused on this region (pinned with parents, ready to edit). */
   initialRegionId?: string | null;
+  highlightFlag?: string | null;
+  onHighlightFlag?: (flagName: string | null) => void;
+  onSelectRegion?: (regionId: string) => void;
 }
 
 function regionHasFlags(region: RegionData | undefined): boolean {
   return !!region && Object.keys(region.flags).length > 0;
+}
+
+function regionHasNamedFlag(region: RegionData | undefined, flagName: string): boolean {
+  return !!region && Object.prototype.hasOwnProperty.call(region.flags || {}, flagName);
 }
 
 /** Keep nodes with flags, explicitly pinned ids, and their ancestors. */
@@ -55,6 +69,25 @@ function filterForestWithFlags(
   for (const node of nodes) {
     const children = filterForestWithFlags(node.children, regionsById, pinnedIds);
     const selfHas = regionHasFlags(regionsById.get(node.id)) || pinnedIds.has(node.id);
+    if (selfHas || children.length > 0) {
+      result.push({ ...node, children });
+    }
+  }
+  return result;
+}
+
+/** Keep nodes that set `flagName`, pinned ids, and their ancestors. */
+function filterForestWithNamedFlag(
+  nodes: ForestNode[],
+  regionsById: Map<string, RegionData>,
+  flagName: string,
+  pinnedIds: Set<string>,
+): ForestNode[] {
+  const result: ForestNode[] = [];
+  for (const node of nodes) {
+    const children = filterForestWithNamedFlag(node.children, regionsById, flagName, pinnedIds);
+    const selfHas =
+      regionHasNamedFlag(regionsById.get(node.id), flagName) || pinnedIds.has(node.id);
     if (selfHas || children.length > 0) {
       result.push({ ...node, children });
     }
@@ -114,6 +147,7 @@ function TreeNode({
   selectedId,
   depth,
   collapsedIds,
+  filterFlag,
   onSelect,
   onToggleCollapse,
 }: {
@@ -122,10 +156,14 @@ function TreeNode({
   selectedId: string | null;
   depth: number;
   collapsedIds: Set<string>;
+  filterFlag: string;
   onSelect: (id: string) => void;
   onToggleCollapse: (id: string) => void;
 }) {
-  const hasFlags = regionHasFlags(regionsById.get(node.id));
+  const region = regionsById.get(node.id);
+  const hasFlags = filterFlag
+    ? regionHasNamedFlag(region, filterFlag)
+    : regionHasFlags(region);
   const hasChildren = node.children.length > 0;
   const collapsed = collapsedIds.has(node.id);
   return (
@@ -158,7 +196,9 @@ function TreeNode({
           {node.id}
           {hasFlags && (
             <span className="flags-tree-count">
-              {Object.keys(regionsById.get(node.id)!.flags).length}
+              {filterFlag
+                ? 1
+                : Object.keys(regionsById.get(node.id)!.flags).length}
             </span>
           )}
         </button>
@@ -173,6 +213,7 @@ function TreeNode({
               selectedId={selectedId}
               depth={depth + 1}
               collapsedIds={collapsedIds}
+              filterFlag={filterFlag}
               onSelect={onSelect}
               onToggleCollapse={onToggleCollapse}
             />
@@ -191,6 +232,9 @@ export function FlagsManagerDialog({
   onBulk,
   onOpenCatalog,
   initialRegionId = null,
+  highlightFlag = null,
+  onHighlightFlag,
+  onSelectRegion,
 }: FlagsManagerDialogProps) {
   const { t } = useI18n();
   const regionsById = useMemo(
@@ -205,12 +249,16 @@ export function FlagsManagerDialog({
     () => scheme.regions.map((r) => r.id).sort(compareNatural),
     [scheme.regions],
   );
+  const usedFlagNames = useMemo(() => listUsedFlagNames(scheme), [scheme]);
   const initialPinned = useMemo(() => {
     if (!initialRegionId || !regionsById.has(initialRegionId)) return new Set<string>();
     return new Set(collectAncestorIds(initialRegionId, parentMap));
   }, [initialRegionId, parentMap, regionsById]);
 
+  const [tab, setTab] = useState<ManagerTab>('manage');
   const [showAllRegions, setShowAllRegions] = useState(false);
+  /** When non-empty, tree shows only regions that set this flag (+ parents / pins). */
+  const [filterFlag, setFilterFlag] = useState('');
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
   const [pinnedIds, setPinnedIds] = useState<Set<string>>(() => initialPinned);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -253,23 +301,44 @@ export function FlagsManagerDialog({
     });
   };
 
+  const changeFilterFlag = (next: string) => {
+    // Drop manual pins from a previous filter session (remarks_37).
+    setPinnedIds(new Set());
+    setFilterFlag(next);
+  };
+
   const tree = useMemo(() => {
+    if (filterFlag) {
+      return filterForestWithNamedFlag(
+        scheme.forest.roots,
+        regionsById,
+        filterFlag,
+        pinnedIds,
+      );
+    }
     if (showAllRegions) return scheme.forest.roots;
     return filterForestWithFlags(scheme.forest.roots, regionsById, pinnedIds);
-  }, [scheme.forest.roots, regionsById, pinnedIds, showAllRegions]);
+  }, [scheme.forest.roots, regionsById, pinnedIds, showAllRegions, filterFlag]);
 
   // Initial / mode-switch collapse defaults.
   useEffect(() => {
-    setCollapsedIds(defaultCollapsedWithoutFlagSubtrees(tree, regionsById));
-  }, [showAllRegions]); // eslint-disable-line react-hooks/exhaustive-deps -- only on mode switch / mount
+    if (filterFlag) {
+      setCollapsedIds(defaultCollapsedWithoutNamedFlag(tree, regionsById, filterFlag));
+    } else {
+      setCollapsedIds(defaultCollapsedWithoutFlagSubtrees(tree, regionsById));
+    }
+  }, [showAllRegions, filterFlag]); // eslint-disable-line react-hooks/exhaustive-deps -- only on mode switch / mount
 
   useEffect(() => {
     // Keep collapse in sync when tree structure first loads in flags-only mode.
     setCollapsedIds((prev) => {
       if (prev.size > 0) return prev;
+      if (filterFlag) {
+        return defaultCollapsedWithoutNamedFlag(tree, regionsById, filterFlag);
+      }
       return defaultCollapsedWithoutFlagSubtrees(tree, regionsById);
     });
-  }, [tree, regionsById]);
+  }, [tree, regionsById, filterFlag]);
 
   useEffect(() => {
     if (!initialRegionId) return;
@@ -320,6 +389,11 @@ export function FlagsManagerDialog({
   const selectRegion = (id: string) => {
     if (id === selectedId) return;
     askUnsaved(() => setSelectedId(id));
+  };
+
+  const switchTab = (next: ManagerTab) => {
+    if (next === tab) return;
+    askUnsaved(() => setTab(next));
   };
 
   const updateRow = (key: string, patch: Partial<Pick<FlagRow, 'name' | 'value'>>) => {
@@ -438,6 +512,8 @@ export function FlagsManagerDialog({
     return allRegionIds.filter((id) => !inTree.has(id));
   }, [allRegionIds, treeIds]);
 
+  const showAddRegionBtn = Boolean(filterFlag) || !showAllRegions;
+
   const toggleShowAll = () => {
     setShowAllRegions((prev) => !prev);
   };
@@ -475,166 +551,220 @@ export function FlagsManagerDialog({
       <ModalOverlay onClose={handleClose}>
         <div className="modal flags-manager-modal" onClick={(e) => e.stopPropagation()}>
           <header>
-            <h2>{t('flagsManager.title')}</h2>
+            <div className="flags-manager-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'manage'}
+                className={tab === 'manage' ? 'active' : ''}
+                onClick={() => switchTab('manage')}
+              >
+                {t('flagsManager.tabManage')}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === 'flagTree'}
+                className={tab === 'flagTree' ? 'active' : ''}
+                onClick={() => switchTab('flagTree')}
+              >
+                {t('flagsManager.tabFlagTree')}
+              </button>
+            </div>
             <button type="button" onClick={handleClose}>×</button>
           </header>
-          <div className="flags-manager-body">
-            <aside className="flags-manager-tree" style={{ width: treeWidth }}>
-              <div className="flags-manager-tree-header">
-                <p className="flags-manager-tree-hint">{t('flagsManager.treeHint')}</p>
-              </div>
-              <div className="flags-tree-toolbar">
-                <button
-                  type="button"
-                  className="flags-tree-icon-btn"
-                  onClick={expandAll}
-                  title={t('flagsManager.expandAll')}
-                >
-                  <IconExpandAll size={SIDEBAR_ICON_SIZE} />
-                  <span className="sr-only">{t('flagsManager.expandAll')}</span>
-                </button>
-                <button
-                  type="button"
-                  className="flags-tree-icon-btn"
-                  onClick={collapseAll}
-                  title={t('flagsManager.collapseAll')}
-                >
-                  <IconCollapseAll size={SIDEBAR_ICON_SIZE} />
-                  <span className="sr-only">{t('flagsManager.collapseAll')}</span>
-                </button>
-                <label className="flags-filter-toggle">
-                  <input
-                    type="checkbox"
-                    checked={!showAllRegions}
-                    onChange={toggleShowAll}
-                  />
-                  {t('flagsManager.onlyWithFlags')}
-                </label>
-                {!showAllRegions && (
+
+          {tab === 'flagTree' ? (
+            <FlagTreeView
+              scheme={scheme}
+              flagsCatalog={flagsCatalog}
+              highlightFlag={highlightFlag}
+              onHighlightFlag={(name) => {
+                askUnsaved(() => {
+                  onHighlightFlag?.(name);
+                  if (name) onClose();
+                });
+              }}
+              onSelectRegion={onSelectRegion}
+            />
+          ) : (
+            <div className="flags-manager-body">
+              <aside className="flags-manager-tree" style={{ width: treeWidth }}>
+                <div className="flags-manager-tree-header">
+                  <p className="flags-manager-tree-hint">
+                    {filterFlag
+                      ? t('flagsManager.treeHintFiltered', { flag: filterFlag })
+                      : t('flagsManager.treeHint')}
+                  </p>
+                </div>
+                <div className="flags-tree-toolbar">
                   <button
                     type="button"
-                    className="flags-add-region-btn"
-                    title={t('flagsManager.addRegion')}
-                    onClick={() => setShowAddRegionSearch(true)}
-                    disabled={regionsOutsideTree.length === 0}
+                    className="flags-tree-icon-btn"
+                    onClick={expandAll}
+                    title={t('flagsManager.expandAll')}
                   >
-                    +
+                    <IconExpandAll size={SIDEBAR_ICON_SIZE} />
+                    <span className="sr-only">{t('flagsManager.expandAll')}</span>
                   </button>
-                )}
-              </div>
-              {tree.length === 0 ? (
-                <p className="flags-manager-empty">{t('flagsManager.empty')}</p>
-              ) : (
-                <ul className="flags-tree">
-                  {tree.map((node) => (
-                    <TreeNode
-                      key={node.id}
-                      node={node}
-                      regionsById={regionsById}
-                      selectedId={selectedId}
-                      depth={0}
-                      collapsedIds={collapsedIds}
-                      onSelect={selectRegion}
-                      onToggleCollapse={toggleCollapse}
+                  <button
+                    type="button"
+                    className="flags-tree-icon-btn"
+                    onClick={collapseAll}
+                    title={t('flagsManager.collapseAll')}
+                  >
+                    <IconCollapseAll size={SIDEBAR_ICON_SIZE} />
+                    <span className="sr-only">{t('flagsManager.collapseAll')}</span>
+                  </button>
+                  <label className="flags-filter-toggle">
+                    <input
+                      type="checkbox"
+                      checked={!showAllRegions && !filterFlag}
+                      disabled={Boolean(filterFlag)}
+                      onChange={toggleShowAll}
                     />
-                  ))}
-                </ul>
-              )}
-            </aside>
-            <div
-              className="flags-manager-resize"
-              onMouseDown={onTreeResizeStart}
-              role="separator"
-              aria-orientation="vertical"
-              aria-label={t('flagsManager.resizeTree')}
-            />
-
-            <section className="flags-manager-editor">
-              <div className="flags-editor-toolbar">
-                {selectedId ? <h3>{selectedId}</h3> : <span />}
-                <div className="flags-editor-toolbar-actions">
-                  <button type="button" className="flags-toolbar-btn" onClick={() => setShowBulkModal(true)}>
-                    {t('flagsManager.bulkTitle')}
-                  </button>
-                  <button type="button" className="flags-toolbar-btn" onClick={onOpenCatalog}>
-                    {t('flagsManager.openCatalog')}
-                  </button>
-                </div>
-              </div>
-              {!selectedId ? (
-                <p className="flags-manager-empty">{t('flagsManager.selectRegion')}</p>
-              ) : (
-                <>
-                  <div className="flags-table-wrap">
-                    <table className="flags-table flags-edit-table">
-                      <thead>
-                        <tr>
-                          <th>{t('region.flagName')}</th>
-                          <th>{t('region.flagValue')}</th>
-                          <th>{t('region.flagType')}</th>
-                          <th />
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.length === 0 ? (
-                          <tr>
-                            <td colSpan={4}>{t('region.noFlags')}</td>
-                          </tr>
-                        ) : (
-                          rows.map((row) => {
-                            const info = findFlagInfo(flagsCatalog, row.name);
-                            return (
-                              <tr key={row.key}>
-                                <td>
-                                  <FlagNameCombobox
-                                    value={row.name}
-                                    flagsCatalog={flagsCatalog}
-                                    onChange={(name) => updateRow(row.key, { name })}
-                                    placeholder={t('flagsManager.namePlaceholder')}
-                                  />
-                                </td>
-                                <td>
-                                  <FlagValueInput
-                                    value={row.value}
-                                    flagType={info?.type}
-                                    onChange={(value) => updateRow(row.key, { value })}
-                                    placeholder={t('flagsManager.valuePlaceholder')}
-                                  />
-                                </td>
-                                <td>{info?.type ?? '—'}</td>
-                                <td>
-                                  <button
-                                    type="button"
-                                    className="flags-row-remove"
-                                    onClick={() => removeRow(row.key)}
-                                    title={t('flagsManager.remove')}
-                                  >
-                                    ×
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                  {error && <p className="flags-manager-error">{error}</p>}
-                  <div className="modal-actions">
-                    <button type="button" onClick={addRow}>{t('flagsManager.add')}</button>
+                    {t('flagsManager.onlyWithFlags')}
+                  </label>
+                  <label className="flags-filter-by-flag">
+                    <span className="sr-only">{t('flagsManager.filterByFlag')}</span>
+                    <select
+                      value={filterFlag}
+                      onChange={(e) => changeFilterFlag(e.target.value)}
+                      title={t('flagsManager.filterByFlag')}
+                    >
+                      <option value="">{t('flagsManager.filterByFlagNone')}</option>
+                      {usedFlagNames.map((name) => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {showAddRegionBtn && (
                     <button
                       type="button"
-                      className="success"
-                      onClick={handleSave}
-                      disabled={!dirty || saving}
+                      className="flags-add-region-btn"
+                      title={t('flagsManager.addRegion')}
+                      onClick={() => setShowAddRegionSearch(true)}
+                      disabled={regionsOutsideTree.length === 0}
                     >
-                      {saving ? t('flagsManager.saving') : t('flagsManager.save')}
+                      +
+                    </button>
+                  )}
+                </div>
+                {tree.length === 0 ? (
+                  <p className="flags-manager-empty">{t('flagsManager.empty')}</p>
+                ) : (
+                  <ul className="flags-tree">
+                    {tree.map((node) => (
+                      <TreeNode
+                        key={node.id}
+                        node={node}
+                        regionsById={regionsById}
+                        selectedId={selectedId}
+                        depth={0}
+                        collapsedIds={collapsedIds}
+                        filterFlag={filterFlag}
+                        onSelect={selectRegion}
+                        onToggleCollapse={toggleCollapse}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </aside>
+              <div
+                className="flags-manager-resize"
+                onMouseDown={onTreeResizeStart}
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={t('flagsManager.resizeTree')}
+              />
+
+              <section className="flags-manager-editor">
+                <div className="flags-editor-toolbar">
+                  {selectedId ? <h3>{selectedId}</h3> : <span />}
+                  <div className="flags-editor-toolbar-actions">
+                    <button type="button" className="flags-toolbar-btn" onClick={() => setShowBulkModal(true)}>
+                      {t('flagsManager.bulkTitle')}
+                    </button>
+                    <button type="button" className="flags-toolbar-btn" onClick={onOpenCatalog}>
+                      {t('flagsManager.openCatalog')}
                     </button>
                   </div>
-                </>
-              )}
-            </section>
-          </div>
+                </div>
+                {!selectedId ? (
+                  <p className="flags-manager-empty">{t('flagsManager.selectRegion')}</p>
+                ) : (
+                  <>
+                    <div className="flags-table-wrap">
+                      <table className="flags-table flags-edit-table">
+                        <thead>
+                          <tr>
+                            <th>{t('region.flagName')}</th>
+                            <th>{t('region.flagValue')}</th>
+                            <th>{t('region.flagType')}</th>
+                            <th />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rows.length === 0 ? (
+                            <tr>
+                              <td colSpan={4}>{t('region.noFlags')}</td>
+                            </tr>
+                          ) : (
+                            rows.map((row) => {
+                              const info = findFlagInfo(flagsCatalog, row.name);
+                              return (
+                                <tr key={row.key}>
+                                  <td>
+                                    <FlagNameCombobox
+                                      value={row.name}
+                                      flagsCatalog={flagsCatalog}
+                                      onChange={(name) => updateRow(row.key, { name })}
+                                      placeholder={t('flagsManager.namePlaceholder')}
+                                    />
+                                  </td>
+                                  <td>
+                                    <FlagValueInput
+                                      value={row.value}
+                                      flagType={info?.type}
+                                      onChange={(value) => updateRow(row.key, { value })}
+                                      placeholder={t('flagsManager.valuePlaceholder')}
+                                    />
+                                  </td>
+                                  <td>{info?.type ?? '—'}</td>
+                                  <td>
+                                    <button
+                                      type="button"
+                                      className="flags-row-remove"
+                                      onClick={() => removeRow(row.key)}
+                                      title={t('flagsManager.remove')}
+                                    >
+                                      ×
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    {error && <p className="flags-manager-error">{error}</p>}
+                    <div className="modal-actions">
+                      <button type="button" onClick={addRow}>{t('flagsManager.add')}</button>
+                      <button
+                        type="button"
+                        className="success"
+                        onClick={handleSave}
+                        disabled={!dirty || saving}
+                      >
+                        {saving ? t('flagsManager.saving') : t('flagsManager.save')}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </section>
+            </div>
+          )}
         </div>
       </ModalOverlay>
 

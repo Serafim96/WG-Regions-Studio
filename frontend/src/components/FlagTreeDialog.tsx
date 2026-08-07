@@ -14,6 +14,7 @@ import {
   TREE_ICON_SIZE,
 } from './GraphControlIcons';
 import { FlagHelpButton } from './FlagHelpButton';
+import { FlagNameCombobox } from './FlagNameCombobox';
 import { ModalOverlay } from './ModalOverlay';
 
 function formatFlagValue(value: unknown): string {
@@ -26,7 +27,7 @@ function formatFlagValue(value: unknown): string {
 }
 
 /** Keep defining / inheriting nodes and ancestors so the forest stays connected. */
-function filterForestForFlag(
+export function filterForestForFlag(
   nodes: ForestNode[],
   definingIds: Set<string>,
   effectiveIds: Set<string>,
@@ -133,27 +134,28 @@ function FlagForestNode({
   );
 }
 
-interface FlagTreeDialogProps {
+export interface FlagTreeViewProps {
   scheme: Scheme;
   flagsCatalog: FlagInfo[];
   highlightFlag: string | null;
-  onClose: () => void;
   onHighlightFlag: (flagName: string | null) => void;
   onSelectRegion?: (regionId: string) => void;
   /** When set, confirm before applying highlight if caller reports dirty state. */
   confirmUnsaved?: () => boolean;
+  /** Hide scheme highlight actions (embedded read-only browse). */
+  showSchemeActions?: boolean;
 }
 
-/** Standalone «view flag tree» modal (also used from the scheme map). */
-export function FlagTreeDialog({
+/** Two-column flag tree: used flags list + region inheritance tree. */
+export function FlagTreeView({
   scheme,
   flagsCatalog,
   highlightFlag,
-  onClose,
   onHighlightFlag,
   onSelectRegion,
   confirmUnsaved,
-}: FlagTreeDialogProps) {
+  showSchemeActions = true,
+}: FlagTreeViewProps) {
   const { t } = useI18n();
   const [flagTreeName, setFlagTreeName] = useState(highlightFlag ?? '');
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
@@ -173,6 +175,16 @@ export function FlagTreeDialog({
         .map((r) => r.id),
     );
   }, [scheme.regions, flagName]);
+
+  const definingCountByFlag = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of scheme.regions) {
+      for (const name of Object.keys(r.flags || {})) {
+        counts.set(name, (counts.get(name) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [scheme.regions]);
 
   const effective = useMemo(
     () => (flagName ? computeEffectiveFlagsByRegion(scheme) : new Map()),
@@ -226,84 +238,185 @@ export function FlagTreeDialog({
     if (!flagName) return;
     if (confirmUnsaved && !confirmUnsaved()) return;
     onHighlightFlag(flagName);
+  };
+
+  const selectedFlagInfo = flagName
+    ? flagsCatalog.find((flag) => flag.name === flagName)
+    : undefined;
+
+  return (
+    <div className="flags-flag-tree-body">
+      <aside className="flags-flag-tree-flags">
+        <p className="flags-manager-tree-hint">{t('flagsManager.flagTreePick')}</p>
+        {flagPickOptions.length === 0 ? (
+          <p className="flags-manager-empty">{t('flagsManager.flagTreeNoFlags')}</p>
+        ) : (
+          <ul className="flags-tree">
+            {flagPickOptions.map((name) => {
+              const info = flagsCatalog.find((flag) => flag.name === name);
+              const count = definingCountByFlag.get(name) ?? 0;
+              return (
+                <li key={name}>
+                  <div className="flags-tree-row">
+                    <span className="flags-tree-toggle-spacer" />
+                    <button
+                      type="button"
+                      className={[
+                        'flags-tree-item',
+                        flagTreeName === name ? 'selected' : '',
+                      ].filter(Boolean).join(' ')}
+                      onClick={() => setFlagTreeName(name)}
+                      title={info ? `${name} (${info.type})` : name}
+                    >
+                      <span>{name}</span>
+                      <span className="flags-tree-count">{count}</span>
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </aside>
+
+      <section className="flags-flag-tree-regions">
+        <div className="flags-flag-tree-regions-toolbar">
+          {flagName ? (
+            <div className="flag-pick-row">
+              <h3 className="flags-flag-tree-selected-name">{flagName}</h3>
+              <FlagHelpButton name={flagTreeName} flagsCatalog={flagsCatalog} />
+            </div>
+          ) : (
+            <p className="flags-manager-empty">{t('flagsManager.flagTreePickEmpty')}</p>
+          )}
+          {selectedFlagInfo && (
+            <p className="flag-pick-desc">{selectedFlagInfo.type}</p>
+          )}
+          {showSchemeActions && (
+            <div className="modal-actions">
+              <button type="button" onClick={applyFlagTreeHighlight} disabled={!flagName}>
+                {t('flagsManager.flagTreeOnScheme')}
+              </button>
+              {highlightFlag && (
+                <button type="button" onClick={() => onHighlightFlag(null)}>
+                  {t('flagsManager.flagTreeClear')}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+
+        {flagName && (
+          definingIds.size === 0 ? (
+            <p className="flags-manager-empty">{t('flagsManager.flagTreeEmpty')}</p>
+          ) : (
+            <>
+              <p className="flags-manager-tree-hint">{t('flagsManager.flagTreeHint')}</p>
+              <div className="flags-tree-toolbar">
+                <button
+                  type="button"
+                  className="flags-tree-icon-btn"
+                  title={t('app.expandAll')}
+                  onClick={() => setCollapsedIds(new Set())}
+                >
+                  <IconExpandAll size={SIDEBAR_ICON_SIZE} />
+                </button>
+                <button
+                  type="button"
+                  className="flags-tree-icon-btn"
+                  title={t('app.collapseAll')}
+                  onClick={() => setCollapsedIds(new Set(treeIds))}
+                >
+                  <IconCollapseAll size={SIDEBAR_ICON_SIZE} />
+                </button>
+              </div>
+              <ul className="flags-tree">
+                {tree.map((node) => (
+                  <FlagForestNode
+                    key={node.id}
+                    node={node}
+                    regionsById={regionsById}
+                    definingIds={definingIds}
+                    effective={effective}
+                    flagName={flagName}
+                    depth={0}
+                    collapsedIds={collapsedIds}
+                    onSelect={(id) => onSelectRegion?.(id)}
+                    onToggleCollapse={toggleCollapse}
+                  />
+                ))}
+              </ul>
+            </>
+          )
+        )}
+      </section>
+    </div>
+  );
+}
+
+interface FlagTreeDialogProps {
+  scheme: Scheme;
+  flagsCatalog: FlagInfo[];
+  highlightFlag: string | null;
+  onClose: () => void;
+  onHighlightFlag: (flagName: string | null) => void;
+  /** When set, confirm before applying highlight if caller reports dirty state. */
+  confirmUnsaved?: () => boolean;
+}
+
+/**
+ * Compact scheme control: pick a flag (search) and display it on the map.
+ * Full tree browsing lives in FlagsManagerDialog → «дерево флага».
+ */
+export function FlagTreeDialog({
+  scheme,
+  flagsCatalog,
+  highlightFlag,
+  onClose,
+  onHighlightFlag,
+  confirmUnsaved,
+}: FlagTreeDialogProps) {
+  const { t } = useI18n();
+  const usedFlags = useMemo(() => listUsedFlagNames(scheme), [scheme]);
+  const usedCatalog = useMemo(
+    () => usedFlags.map((name) => {
+      const info = flagsCatalog.find((f) => f.name === name);
+      return info ?? { name, type: '', description: '', builtin: false };
+    }),
+    [usedFlags, flagsCatalog],
+  );
+  const [flagName, setFlagName] = useState(highlightFlag ?? '');
+
+  const apply = () => {
+    const name = flagName.trim();
+    if (!name) return;
+    if (confirmUnsaved && !confirmUnsaved()) return;
+    onHighlightFlag(name);
     onClose();
   };
 
   return (
     <ModalOverlay onClose={onClose}>
-      <div className="modal flags-flag-tree-modal" onClick={(e) => e.stopPropagation()}>
+      <div className="modal flags-flag-highlight-modal" onClick={(e) => e.stopPropagation()}>
         <header>
-          <h2>{t('flagsManager.flagTree')}</h2>
+          <h2>{t('flagsManager.flagHighlightTitle')}</h2>
           <button type="button" onClick={onClose}>×</button>
         </header>
-        <div className="modal-body">
-          <div className="flag-pick-row">
-            <label>
-              {t('flagsManager.flagTreePick')}
-              <select value={flagTreeName} onChange={(e) => setFlagTreeName(e.target.value)}>
-                <option value="">{t('flagsManager.flagTreePickEmpty')}</option>
-                {flagPickOptions.map((name) => {
-                  const info = flagsCatalog.find((flag) => flag.name === name);
-                  const label = info ? `${name} (${info.type})` : name;
-                  return <option key={name} value={name}>{label}</option>;
-                })}
-              </select>
-            </label>
-            <FlagHelpButton name={flagTreeName} flagsCatalog={flagsCatalog} />
-          </div>
+        <div className="modal-body flags-flag-highlight-body">
+          <label className="flags-flag-highlight-label">
+            {t('flagsManager.flagTreePick')}
+            <FlagNameCombobox
+              value={flagName}
+              flagsCatalog={usedCatalog}
+              onChange={setFlagName}
+              placeholder={t('flagsManager.namePlaceholder')}
+            />
+          </label>
           <div className="modal-actions">
-            <button type="button" onClick={applyFlagTreeHighlight} disabled={!flagName}>
-              {t('flagsManager.flagTreeOnScheme')}
+            <button type="button" className="primary" onClick={apply} disabled={!flagName.trim()}>
+              {t('flagsManager.flagTreeDisplay')}
             </button>
-            {highlightFlag && (
-              <button type="button" onClick={() => onHighlightFlag(null)}>
-                {t('flagsManager.flagTreeClear')}
-              </button>
-            )}
           </div>
-          {flagName && (
-            definingIds.size === 0 ? (
-              <p className="flags-manager-empty">{t('flagsManager.flagTreeEmpty')}</p>
-            ) : (
-              <>
-                <p className="flags-manager-tree-hint">{t('flagsManager.flagTreeHint')}</p>
-                <div className="flags-tree-toolbar">
-                  <button
-                    type="button"
-                    className="flags-tree-icon-btn"
-                    title={t('app.expandAll')}
-                    onClick={() => setCollapsedIds(new Set())}
-                  >
-                    <IconExpandAll size={SIDEBAR_ICON_SIZE} />
-                  </button>
-                  <button
-                    type="button"
-                    className="flags-tree-icon-btn"
-                    title={t('app.collapseAll')}
-                    onClick={() => setCollapsedIds(new Set(treeIds))}
-                  >
-                    <IconCollapseAll size={SIDEBAR_ICON_SIZE} />
-                  </button>
-                </div>
-                <ul className="flags-tree">
-                  {tree.map((node) => (
-                    <FlagForestNode
-                      key={node.id}
-                      node={node}
-                      regionsById={regionsById}
-                      definingIds={definingIds}
-                      effective={effective}
-                      flagName={flagName}
-                      depth={0}
-                      collapsedIds={collapsedIds}
-                      onSelect={(id) => onSelectRegion?.(id)}
-                      onToggleCollapse={toggleCollapse}
-                    />
-                  ))}
-                </ul>
-              </>
-            )
-          )}
         </div>
       </div>
     </ModalOverlay>

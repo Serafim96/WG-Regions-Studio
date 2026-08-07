@@ -243,6 +243,18 @@ export function IconFlag({ size = GRAPH_ICON_SIZE, className }: SvgIconProps = {
   );
 }
 
+/** Flag-highlight display options (inheritance / conflicts). */
+export function IconFlagHighlightOpts({ size = GRAPH_ICON_SIZE, className }: SvgIconProps = {}) {
+  return (
+    <svg {...strokeSvg(size)} className={className}>
+      <path d="M4.5 15.5V3.5" />
+      <path d="M4.5 3.5h8.2l-1.6 2.8 1.6 2.8H4.5" />
+      <circle cx="13.5" cy="13.5" r="3.2" />
+      <path d="M12.2 13.5h2.6M13.5 12.2v2.6" />
+    </svg>
+  );
+}
+
 /** Re-align / re-layout — Word-style left-align (ragged horizontal bars). */
 export function IconAlign({ size = GRAPH_ICON_SIZE, className }: SvgIconProps = {}) {
   return (

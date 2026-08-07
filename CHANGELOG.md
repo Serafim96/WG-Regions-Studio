@@ -13,7 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Flag conflicts** — analyze inheritance overwrites and spatial overlaps; show pairs on the scheme; ambiguous equal-priority cases appear as errors in the notifications bell.
 - **Notifications bell** — errors and warnings (conflicts, orphans, overwrites); click an item to focus it on the scheme; refresh icon in the panel header rebuilds the list without toast popups.
 - **Temporary regions** — add drafts (including descendants), edit geometry/flags/members, rename and delete any region (cascade / reparent / orphan).
-- **Flag management** — tree editor, bulk operations, catalog, flag tree view on the scheme (collapsible, values, inheritance).
+- **Flag management** — tree editor, bulk operations, catalog; manager tabs **ведение** / **дерево флага**; scheme flag button is search + **Display** only; highlight options (Intersections / Containment / Inheritance / Conflicts) with ∈ / ≈ captions and carrier values.
+- **Region card overlaps** — partial-intersection table with **affected blocks** and **percent**, sortable; spatial edges store `overlapBlocks` from the build.
 - **Scheme tools** — reset scheme (drop temporary regions and rebuild), clear session, edge display modes, branch / containment / intersection highlights, realign layout, lock/unlock nodes.
 - **UI** — dark/light theme, RU/EN, in-app confirm dialogs (no browser `confirm()` for main flows), green save / red delete affordances, natural sort in lists.
 
@@ -23,6 +24,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - File picker filters to YAML and scheme extensions only (`excludeAcceptAllOption`); wrong or corrupt files show an in-app error dialog.
 - Sidebar no longer dumps node counts / auto-collapse stats into the status line (see **Metrics**).
 - Empty scheme: **Save** and actions below it stay disabled until a scheme is loaded.
+- Region card containment labels shortened to **Inside** / **Contains**; flag-scheme containment mark is **∈** (with container value) instead of ∉.
+- Flag highlight: clearer set-vs-inherit styling; orphan parking and overlap separation in layout; conflict-only mode keeps needed inheritance paths.
 
 ### Documentation
 

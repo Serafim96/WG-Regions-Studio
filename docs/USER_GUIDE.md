@@ -44,7 +44,6 @@ Regions without `parent` (except `root`) are highlighted in red and appear in no
 ### Notes
 
 - **`.mrv.json`** is the app’s saved-scheme format: tree, spatial edges, layout, and metrics. Loading it does **not** recompute geometry from YAML.
-- If the open scheme was built from another YAML file, a `sourceHash` mismatch warning may appear.
 
 ---
 
@@ -88,6 +87,7 @@ In the region card:
 
 - **Name** — **Rename** opens the same dialog as the scheme context menu (Latin id only: letters, digits, `_`, `-`); parent/children links and spatial edges are kept.
 - **Parent**, **priority**, **children** — priority is editable; click a name to focus the camera (hidden nodes on the path are revealed if needed). **Edit** next to Parent to change, clear, or set a parent (cycles are rejected). Children and spatial links are shown as bordered tables.
+- **Partial overlaps** — table columns **region**, **affected blocks**, **percent** (share of this region’s volume). Click the blocks or percent header to sort ascending/descending. Full-containment labels are **Inside** and **Contains**.
 - **Type and coordinates** — for non-global regions (including from YAML) you can change cuboid/poly2d and coordinates (**Point 1** / **Point 2**); values are validated as integers and for completeness.
 - **Owners / Members** — editable `players` and `unique-ids` tables.
 - **Flags** — always visible scrollable WorldGuard flags table; **«?»** next to a name opens the catalog description.
@@ -120,7 +120,7 @@ Open **Legend** (bottom-right on the scheme) for visual samples of scheme styles
 
 Edges are not selectable or clickable.
 
-Bottom-right — legend, zoom, and fullscreen. Bottom-left — **edge display mode**: intersects only, containment only, both spatial, hierarchy only, or all. Special highlights are applied on top of that filter — edges hidden by the mode stay hidden.
+Bottom-right — legend, zoom, and fullscreen. Bottom-left — **edge display** with three independent checkboxes: intersections, containment, inheritance (parent). Special highlights are applied on top of that filter — edges hidden by the checkboxes stay hidden.
 
 ---
 
@@ -139,12 +139,14 @@ Bottom-right — legend, zoom, and fullscreen. Bottom-left — **edge display mo
 ## Flag management
 
 1. Click **Flag management** (a built scheme is required). You can also open it from a node **context menu** — then the tree shows regions with flags plus the chosen region and all its parents, ready for editing.
-2. Left: tree of regions with flags (**green** text) and their parents. The left panel width is resizable.
-3. One toolbar row: **expand/collapse all**, **Only with flags** checkbox, and **+** to add a flagless region into the tree.
-4. Right, above the table: **Catalog** and **Bulk operation** (separate dialog).
-5. Flag table: names must exist in the catalog and values must be filled, or **Save** rejects the rows. Name suggestions use a dropdown list.
-6. **Flag tree view** is a **flag icon** bottom-left on the scheme (not inside flag management). The tree is collapsible (same as flag management): **green** marks regions that set the flag (value shown); inheriting regions appear too. **Show on scheme** highlights the path and fits the camera so all flagged nodes are visible, even at opposite ends of the scheme.
-7. Changes apply to the current session and are kept when you save the scheme (`.mrv.json`); the source YAML on disk is not overwritten.
+2. The dialog header has two tabs: **manage** and **flag tree**.
+3. **manage** tab: left — tree of regions with flags (**green** text) and their parents. The left panel width is resizable.
+4. One toolbar row: **expand/collapse all**, **Only with flags** checkbox, a **filter by specific flag** dropdown (keeps only regions that set that flag plus their parents), and **+** to add a region that is not in the current filter. Regions added via **+** during a filter session are not kept after you turn the filter off and on again — the tree is rebuilt from the flag alone.
+5. Right, above the table: **Catalog** and **Bulk operation** (separate dialog).
+6. Flag table: names must exist in the catalog and values must be filled, or **Save** rejects the rows. Name suggestions use a dropdown list.
+7. **flag tree** tab: left — list of flags set somewhere (no green styling, with assignment counts); right — collapsible region tree — **green** marks regions that set the flag (value shown); inheriting regions appear too. **Show on scheme** turns on highlight and closes the dialog.
+8. Scheme highlight: the **flag icon** bottom-left opens a small dialog with flag search and **Display** only. While highlight is active, a button under the flag opens checkboxes (like the edge filter, but for highlight): **Intersections** (regions overlapping a flag carrier — orange border and ≈), **Containment** (fully inside without parent — ∈ plus container value, purple border), **Inheritance** (effective via parent; set vs inherited — thick green vs thin grey dashed), **Conflicts** (participants plus needed paths to defining ancestors). Defaults: all four on.
+9. Changes apply to the current session and are kept when you save the scheme (`.mrv.json`); the source YAML on disk is not overwritten.
 
 ---
 
@@ -158,7 +160,7 @@ The analysis dialog has two tabs:
 
 Clicking a notification (or the on-screen toast) shows the conflict **on the flag scheme**: overlaps highlight only the chosen pair with a red border and spatial edge (plus inheritance parent path); overwrites highlight parent and child; orphans focus the region. The camera fits **all** highlighted nodes, with the same zoom ceiling as single-region focus. When a conflict is fixed, its notification is removed automatically. Warning items also have an × to dismiss that entry only.
 
-Bottom-left on the scheme — a warning-triangle button for problem-region highlight (dropdown: regions in errors / warnings). When active the button lights up and other nodes are dimmed, like flag-scheme mode. Below it, a **clear special highlight** button appears when a notification, conflict-analysis, or branch highlight is active.
+Bottom-left on the scheme — a warning-triangle button for problem-region highlight (dropdown: regions in errors / warnings). When active the button lights up and other nodes are dimmed, like flag-scheme mode. Turn it off with the same **clear special highlight** button used for flag/branch highlights.
 
 On spatial overlaps, the winner is chosen only by higher region `priority`. When priorities are **equal**, the winner is treated as unclear (error) — including for `state` flags, because WorldGuard may pick either region.
 ---
@@ -241,7 +243,7 @@ View state (collapsed nodes, selected region) is stored in **localStorage** sepa
 - Bottom of the sidebar — **Clear scheme**: resets the session to the empty post-startup state (no YAML / no on-screen scheme; language, theme, and sidebar settings are kept).
 - **Legend** shows scheme symbols only. The separate **Flags catalog** button opens Standard and Custom flag tabs.
 - Add custom flags using supported WorldGuard types, import/export their JSON catalog, or delete them. Deleting also removes the flag from every region in the current scheme after a confirmation that lists affected region IDs.
-- Collapse the sidebar with **««** at its top — the panel hides fully; **»»** to restore appears top-left on the scheme. Drag the right edge to resize. On the scheme: **+** (temporary) top-left; collapse/expand all and search top-right; lock, **Align**, flag-tree, problem mode, and edge display mode bottom-left (clear special highlight when active); **Legend**, zoom, and fullscreen bottom-right.
+- Collapse the sidebar with **««** at its top — the panel hides fully; **»»** to restore appears top-left on the scheme. Drag the right edge to resize. On the scheme: **+** (temporary) top-left; collapse/expand all and search top-right; lock, **Align**, flag highlight (plus highlight options when active), edge display, and problem mode bottom-left (clear special highlight when active); **Legend**, zoom, and fullscreen bottom-right.
 - **Hide children** hides only direct children; **Collapse recursively** hides the whole subtree. **Expand all** and **Expand with threshold** recenter the camera like reset scheme.
 - The region card and context menu support **Rename** and **Delete** for any region (with children: reparent to grandparent, leave orphaned, or cascade-delete).
 - The scheme starts locked. The lock icon toggles between closed and open.

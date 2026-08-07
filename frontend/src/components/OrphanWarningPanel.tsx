@@ -16,7 +16,7 @@ export function OrphanWarningPanel({ orphanIds, onClose }: OrphanWarningPanelPro
           <button type="button" onClick={onClose}>×</button>
         </header>
         <div className="modal-body">
-          <p className="hash-warning">
+          <p>
             {t('orphan.message', { count: orphanIds.length })}
           </p>
           <ul className="orphan-list">

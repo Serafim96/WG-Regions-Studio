@@ -111,12 +111,13 @@ export function buildStylesheet(theme: Theme = 'light') {
       selector: 'node.flag-path',
       style: {
         opacity: 1,
-        'border-width': 3,
-        'border-color': '#16a085',
-        'background-opacity': 0.82,
-        color: '#0e6655',
-        'text-opacity': 1,
-        'font-weight': 500,
+        'border-width': 2,
+        'border-color': '#64748b',
+        'border-style': 'dashed',
+        'background-opacity': 0.42,
+        color: '#475569',
+        'text-opacity': 0.92,
+        'font-weight': 400,
       },
     },
     {
@@ -124,29 +125,74 @@ export function buildStylesheet(theme: Theme = 'light') {
       selector: 'node.flag-define',
       style: {
         opacity: 1,
-        'border-width': 5,
-        'border-color': '#1abc9c',
+        'border-width': 7,
+        'border-color': '#047857',
+        'border-style': 'solid',
         'background-opacity': 1,
         color: '#064e3b',
         'text-opacity': 1,
-        'font-weight': 700,
+        'font-weight': 800,
       },
     },
     {
-      // Inherited flag value caption (larger + bold).
+      // Inherited flag value caption (muted vs define).
       selector: 'node.flag-value-inherit',
       style: {
-        color: '#0f766e',
+        color: '#64748b',
+        'font-weight': 500,
+        'text-opacity': 0.9,
+      },
+    },
+    {
+      // Contained spatially but does not inherit the flag.
+      selector: 'node.flag-contained-no-inherit',
+      style: {
+        opacity: 1,
+        'border-width': 4,
+        'border-color': '#a855f7',
+        'border-style': 'dashed',
+        'background-opacity': 0.9,
+        color: '#6b21a8',
+        'text-opacity': 1,
+        'font-weight': 600,
+      },
+    },
+    {
+      // Intersects a flag carrier — partial / approximate influence.
+      selector: 'node.flag-intersect-partial',
+      style: {
+        opacity: 1,
+        'border-width': 4,
+        'border-color': '#c2410c',
+        'border-style': 'dashed',
+        'background-opacity': 0.75,
+        color: '#9a3412',
+        'text-opacity': 1,
+        'font-weight': 600,
+      },
+    },
+    {
+      selector: 'node.flag-value-no-inherit',
+      style: {
+        color: '#7e22ce',
+        'font-weight': 800,
+        'text-opacity': 1,
+      },
+    },
+    {
+      selector: 'node.flag-value-intersect',
+      style: {
+        color: '#c2410c',
         'font-weight': 700,
         'text-opacity': 1,
       },
     },
     {
-      // Local flag value caption (larger + bold).
+      // Local flag value caption (stronger than inherit).
       selector: 'node.flag-value-define',
       style: {
         color: '#065f46',
-        'font-weight': 800,
+        'font-weight': 900,
         'text-opacity': 1,
       },
     },
@@ -246,6 +292,26 @@ export function buildStylesheet(theme: Theme = 'light') {
         'line-color': '#e74c3c',
         'target-arrow-color': '#e74c3c',
         'line-style': 'solid',
+      },
+    },
+    {
+      selector: 'edge.flag-no-inherit-edge',
+      style: {
+        opacity: 1,
+        width: 3,
+        'line-color': '#a855f7',
+        'target-arrow-color': '#a855f7',
+        'line-style': 'dashed',
+      },
+    },
+    {
+      selector: 'edge.flag-intersect-edge',
+      style: {
+        opacity: 1,
+        width: 3,
+        'line-color': '#c2410c',
+        'target-arrow-color': '#c2410c',
+        'line-style': 'dashed',
       },
     },
   ];

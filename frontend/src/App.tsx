@@ -40,6 +40,7 @@ import {
   IconExpandAll,
   IconExpandThreshold,
   IconFlag,
+  IconFlagHighlightOpts,
   IconFullscreen,
   IconFullscreenExit,
   IconLegend,
@@ -52,7 +53,8 @@ import {
 } from './components/GraphControlIcons';
 import {
   GraphView,
-  type EdgeDisplayMode,
+  DEFAULT_EDGE_DISPLAY_FILTERS,
+  type EdgeDisplayFilters,
   type GraphViewHandle,
   type HighlightBranchMode,
 } from './components/GraphView';
@@ -86,7 +88,7 @@ import {
 import { runWorldGuardFlagChecks, type SpatialConflict } from './utils/flagConflicts';
 import { isSchemeFileName, isUserCancelled, isYamlFileName, openSchemeOrYamlWithDialog, saveTextWithDialog } from './utils/fileDialog';
 import { validateSchemeForYamlExport, type SchemeIssue } from './utils/schemeValidation';
-import { attachConflictInheritancePaths, buildFlagHighlight, enrichHighlightWithFlagValues } from './utils/flagTree';
+import { attachConflictInheritancePaths, attachFlagConflicts, buildFlagHighlight, enrichHighlightWithFlagValues, mergeConflictInheritancePaths } from './utils/flagTree';
 import { compareNatural } from './utils/naturalSort';
 import { loadAppSettings, saveAppSettings, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from './utils/settings';
 import { loadViewState, saveViewState, clearViewState } from './utils/viewState';
@@ -195,8 +197,6 @@ export default function App() {
   const [sidebarWidth, setSidebarWidth] = useState(initialSettings.sidebarWidth);
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [graphLocked, setGraphLocked] = useState(true);
-  const [loadedYamlHash, setLoadedYamlHash] = useState<string | null>(null);
-  const [hashWarning, setHashWarning] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<{ id: string; seq: number } | null>(null);
   const [centerRequest, setCenterRequest] = useState<{ id: string; seq: number } | null>(null);
   const [fitRequest, setFitRequest] = useState<{ ids: string[]; seq: number } | null>(null);
@@ -219,8 +219,15 @@ export default function App() {
   const [showFlagTreeDialog, setShowFlagTreeDialog] = useState(false);
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [busyMessage, setBusyMessage] = useState<string | null>(null);
-  const [edgeDisplayMode, setEdgeDisplayMode] = useState<EdgeDisplayMode>('all');
+  const [edgeDisplayFilters, setEdgeDisplayFilters] = useState<EdgeDisplayFilters>(
+    DEFAULT_EDGE_DISPLAY_FILTERS,
+  );
   const [showEdgeModeMenu, setShowEdgeModeMenu] = useState(false);
+  const [flagHighlightShowIntersects, setFlagHighlightShowIntersects] = useState(false);
+  const [flagHighlightShowContains, setFlagHighlightShowContains] = useState(false);
+  const [flagHighlightShowInheritance, setFlagHighlightShowInheritance] = useState(false);
+  const [flagHighlightShowConflicts, setFlagHighlightShowConflicts] = useState(false);
+  const [showFlagHighlightOptsMenu, setShowFlagHighlightOptsMenu] = useState(false);
   const [layoutRequest, setLayoutRequest] = useState<{ seq: number } | null>(null);
   const layoutSeqRef = useRef(0);
   const schemeKeyRef = useRef('default');
@@ -239,6 +246,24 @@ export default function App() {
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, [showEdgeModeMenu]);
+
+  useEffect(() => {
+    if (!showFlagHighlightOptsMenu) return;
+    const close = () => setShowFlagHighlightOptsMenu(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [showFlagHighlightOptsMenu]);
+
+  useEffect(() => {
+    if (!highlightFlag) setShowFlagHighlightOptsMenu(false);
+  }, [highlightFlag]);
+
+  /** Bottom-left scheme control menus: only one submenu open at a time. */
+  const toggleBottomLeftMenu = useCallback((which: 'flagOpts' | 'edge' | 'problems') => {
+    setShowFlagHighlightOptsMenu((open) => (which === 'flagOpts' ? !open : false));
+    setShowEdgeModeMenu((open) => (which === 'edge' ? !open : false));
+    setShowProblemsMenu((open) => (which === 'problems' ? !open : false));
+  }, []);
 
   useEffect(() => {
     fetchFlags().then(setFlagsCatalog);
@@ -361,6 +386,13 @@ export default function App() {
     return getSpatialRelationsGrouped(scheme, detailsId);
   }, [scheme, detailsId]);
 
+  const regionsById = useMemo(() => {
+    const map = new Map<string, RegionData>();
+    if (!scheme) return map;
+    for (const r of scheme.regions) map.set(r.id, r);
+    return map;
+  }, [scheme]);
+
   const regionIdList = useMemo(
     () => (scheme ? scheme.regions.map((r) => r.id).sort(compareNatural) : []),
     [scheme],
@@ -427,7 +459,12 @@ export default function App() {
 
   const flagHighlight = useMemo(() => {
     if (!scheme || !highlightFlag) return null;
-    const base = buildFlagHighlight(scheme, highlightFlag);
+    const base = buildFlagHighlight(scheme, highlightFlag, {
+      showInheritance: flagHighlightShowInheritance,
+      showContains: flagHighlightShowContains,
+      showIntersects: flagHighlightShowIntersects,
+      showConflicts: flagHighlightShowConflicts,
+    });
     let withConflict = base;
     if (conflictSchemeView && conflictSchemeView.flagName === highlightFlag) {
       withConflict = {
@@ -453,9 +490,30 @@ export default function App() {
         ),
         conflictIds: new Set([overwriteSchemeView.parentId, overwriteSchemeView.childId]),
       };
+    } else if (flagHighlightShowConflicts && flagConflicts) {
+      withConflict = attachFlagConflicts(
+        base,
+        flagConflicts.spatialConflicts,
+        highlightFlag,
+      );
+      const pairs = flagConflicts.spatialConflicts
+        .filter((c) => c.flagName === highlightFlag)
+        .map((c) => ({ aId: c.aId, bId: c.bId }));
+      withConflict = mergeConflictInheritancePaths(withConflict, scheme, pairs);
     }
     return enrichHighlightWithFlagValues(withConflict, scheme, highlightFlag, flagsCatalog);
-  }, [scheme, highlightFlag, conflictSchemeView, overwriteSchemeView, flagsCatalog]);
+  }, [
+    scheme,
+    highlightFlag,
+    conflictSchemeView,
+    overwriteSchemeView,
+    flagsCatalog,
+    flagHighlightShowInheritance,
+    flagHighlightShowContains,
+    flagHighlightShowIntersects,
+    flagHighlightShowConflicts,
+    flagConflicts,
+  ]);
 
   useEffect(() => {
     if (!scheme) {
@@ -780,8 +838,6 @@ export default function App() {
     setDeletableRegionIds(new Set());
     setCollapseTarget(null);
     setGraphLocked(true);
-    setLoadedYamlHash(null);
-    setHashWarning(null);
     setFocusRequest(null);
     setCenterRequest(null);
     setFitRequest(null);
@@ -791,8 +847,13 @@ export default function App() {
     setSubtreeHighlightRoot(null);
     setSubtreeHighlightIds(null);
     setSubtreeHighlightMode(null);
-    setEdgeDisplayMode('all');
+    setEdgeDisplayFilters(DEFAULT_EDGE_DISPLAY_FILTERS);
     setShowEdgeModeMenu(false);
+    setFlagHighlightShowIntersects(false);
+    setFlagHighlightShowContains(false);
+    setFlagHighlightShowInheritance(false);
+    setFlagHighlightShowConflicts(false);
+    setShowFlagHighlightOptsMenu(false);
     setShowClearConfirm(false);
     setShowResetConfirm(false);
     setRenameTargetId(null);
@@ -878,7 +939,14 @@ export default function App() {
     setSubtreeHighlightRoot(null);
     setSubtreeHighlightIds(null);
     setSubtreeHighlightMode(null);
+    setProblemFilter(null);
+    setShowProblemsMenu(false);
     setFitRequest(null);
+    setFlagHighlightShowIntersects(false);
+    setFlagHighlightShowContains(false);
+    setFlagHighlightShowInheritance(false);
+    setFlagHighlightShowConflicts(false);
+    setShowFlagHighlightOptsMenu(false);
     setStatus(t('status.specialHighlightCleared'));
   }, [t]);
 
@@ -1072,12 +1140,10 @@ export default function App() {
       if (isYamlFileName(picked.name)) {
         try {
           await runBusy(t('status.building'), async () => {
-            const preview = await parseYaml(picked.file);
+            await parseYaml(picked.file);
             clearCameraRequests();
             const result = await buildScheme();
             applyScheme(result.scheme, true, collapseThreshold);
-            setLoadedYamlHash(preview.source_hash);
-            setHashWarning(null);
             setStatus(t('status.schemeReady'));
           });
         } catch (err) {
@@ -1111,14 +1177,6 @@ export default function App() {
           clearCameraRequests();
           const loaded = await importScheme(parsed);
           applyScheme(loaded, true, collapseThreshold);
-
-          if (loadedYamlHash && loaded.sourceHash !== loadedYamlHash) {
-            setHashWarning(
-              t('warn.schemeMismatch', { schemeHash: loaded.sourceHash, yamlHash: loadedYamlHash }),
-            );
-          } else {
-            setHashWarning(null);
-          }
           setStatus(t('status.schemeLoaded'));
         });
       } catch (err) {
@@ -1144,7 +1202,6 @@ export default function App() {
         clearCameraRequests();
         const result = await buildScheme();
         applyScheme(result.scheme, true, collapseThreshold);
-        setHashWarning(null);
         setStatus(t('status.schemeReady'));
       });
     } catch (err) {
@@ -1637,11 +1694,39 @@ export default function App() {
     if (!name) {
       setConflictSchemeView(null);
       setOverwriteSchemeView(null);
+      setFlagHighlightShowIntersects(false);
+      setFlagHighlightShowContains(false);
+      setFlagHighlightShowInheritance(false);
+      setFlagHighlightShowConflicts(false);
+      setShowFlagHighlightOptsMenu(false);
       return;
     }
+    // Defaults when enabling flag scheme: all highlight layers on.
+    setFlagHighlightShowIntersects(true);
+    setFlagHighlightShowContains(true);
+    setFlagHighlightShowInheritance(true);
+    setFlagHighlightShowConflicts(true);
     if (!scheme) return;
-    const hl = buildFlagHighlight(scheme, name);
-    const ids = Array.from(hl.brightIds);
+    const hl = buildFlagHighlight(scheme, name, {
+      showInheritance: true,
+      showContains: true,
+      showIntersects: true,
+      showConflicts: true,
+    });
+    let fitHl = hl;
+    if (flagConflicts) {
+      fitHl = attachFlagConflicts(hl, flagConflicts.spatialConflicts, name);
+      const pairs = flagConflicts.spatialConflicts
+        .filter((c) => c.flagName === name)
+        .map((c) => ({ aId: c.aId, bId: c.bId }));
+      fitHl = mergeConflictInheritancePaths(fitHl, scheme, pairs);
+    }
+    const ids = Array.from(new Set([
+      ...fitHl.brightIds,
+      ...(fitHl.conflictIds ?? []),
+      ...(fitHl.containedNoInheritIds ?? []),
+      ...(fitHl.intersectPartialIds ?? []),
+    ]));
     if (ids.length > 0) {
       const parentMap = buildParentMap(scheme.regions);
       setHiddenNodes((prev) => {
@@ -1651,7 +1736,7 @@ export default function App() {
       });
       requestFitOnIds(ids);
     }
-  }, [scheme, requestFitOnIds]);
+  }, [scheme, requestFitOnIds, flagConflicts]);
 
   const handleRelayout = useCallback(() => {
     if (!scheme) return;
@@ -1801,41 +1886,6 @@ export default function App() {
           </label>
         </div>
 
-        {hashWarning && <p className="hash-warning">{hashWarning}</p>}
-
-        {highlightFlag && (
-          <p className="hash-warning flag-highlight-banner">
-            {t('flagConflicts.highlightActive', { flag: highlightFlag })}
-            {conflictSchemeView && (
-              <>
-                {' · '}
-                {t('flagConflicts.conflictViewActive', {
-                  a: conflictSchemeView.aId,
-                  b: conflictSchemeView.bId,
-                })}
-              </>
-            )}
-            {overwriteSchemeView && (
-              <>
-                {' · '}
-                {t('flagConflicts.overwriteViewActive', {
-                  parent: overwriteSchemeView.parentId,
-                  child: overwriteSchemeView.childId,
-                })}
-              </>
-            )}
-          </p>
-        )}
-
-        {flagConflicts && flagConflicts.hardErrors.length > 0 && (
-          <p
-            className="hash-warning"
-            style={{ background: '#f8d7da', borderColor: '#842029', color: '#842029' }}
-          >
-            {t('flagConflicts.hardError', { msg: flagConflicts.hardErrors[0] })}
-          </p>
-        )}
-
         <p className="status">{status}</p>
         <div className="sidebar-footer">
           <button
@@ -1963,7 +2013,7 @@ export default function App() {
               attentionBrightIds={attentionBrightIds}
               attentionBrightEdgeKeys={attentionBrightEdgeKeys}
               subtreeHighlightActive={Boolean(subtreeHighlightRoot)}
-              edgeDisplayMode={edgeDisplayMode}
+              edgeDisplayFilters={edgeDisplayFilters}
               onNodeSelect={onNodeSelect}
               onNodeOpen={onNodeOpen}
               onBackgroundTap={clearSelection}
@@ -2078,16 +2128,125 @@ export default function App() {
                 type="button"
                 className={`graph-ctrl-btn${highlightFlag ? ' graph-ctrl-btn--active' : ''}`}
                 onClick={() => setShowFlagTreeDialog(true)}
-                title={t('flagsManager.flagTree')}
+                title={t('flagsManager.flagHighlightTitle')}
                 disabled={Boolean(busyMessage)}
               >
                 <IconFlag />
               </button>
+              {highlightFlag && (
+                <div className="graph-problems-root" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    className={`graph-ctrl-btn${
+                      flagHighlightShowIntersects
+                      || flagHighlightShowContains
+                      || flagHighlightShowInheritance
+                      || flagHighlightShowConflicts
+                        ? ' graph-ctrl-btn--active'
+                        : ''
+                    }`}
+                    onClick={() => toggleBottomLeftMenu('flagOpts')}
+                    title={t('app.flagHighlightOptions')}
+                    aria-pressed={
+                      flagHighlightShowIntersects
+                      || flagHighlightShowContains
+                      || flagHighlightShowInheritance
+                      || flagHighlightShowConflicts
+                    }
+                    aria-expanded={showFlagHighlightOptsMenu}
+                  >
+                    <IconFlagHighlightOpts />
+                  </button>
+                  {showFlagHighlightOptsMenu && (
+                    <div className="graph-problems-menu" role="menu">
+                      <label className="graph-menu-check">
+                        <input
+                          type="checkbox"
+                          checked={flagHighlightShowIntersects}
+                          onChange={(e) => setFlagHighlightShowIntersects(e.target.checked)}
+                        />
+                        <span>{t('app.flagHighlightShowIntersects')}</span>
+                      </label>
+                      <label className="graph-menu-check">
+                        <input
+                          type="checkbox"
+                          checked={flagHighlightShowContains}
+                          onChange={(e) => setFlagHighlightShowContains(e.target.checked)}
+                        />
+                        <span>{t('app.flagHighlightShowContains')}</span>
+                      </label>
+                      <label className="graph-menu-check">
+                        <input
+                          type="checkbox"
+                          checked={flagHighlightShowInheritance}
+                          onChange={(e) => setFlagHighlightShowInheritance(e.target.checked)}
+                        />
+                        <span>{t('app.flagHighlightShowInheritance')}</span>
+                      </label>
+                      <label className="graph-menu-check">
+                        <input
+                          type="checkbox"
+                          checked={flagHighlightShowConflicts}
+                          onChange={(e) => setFlagHighlightShowConflicts(e.target.checked)}
+                        />
+                        <span>{t('app.flagHighlightShowConflicts')}</span>
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="graph-problems-root" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  className={`graph-ctrl-btn${
+                    !(
+                      edgeDisplayFilters.intersects
+                      && edgeDisplayFilters.contains
+                      && edgeDisplayFilters.hierarchy
+                    )
+                      ? ' graph-ctrl-btn--active'
+                      : ''
+                  }`}
+                  onClick={() => toggleBottomLeftMenu('edge')}
+                  title={t('app.edgeDisplayMode')}
+                  aria-pressed={!(
+                    edgeDisplayFilters.intersects
+                    && edgeDisplayFilters.contains
+                    && edgeDisplayFilters.hierarchy
+                  )}
+                  aria-expanded={showEdgeModeMenu}
+                >
+                  <IconEdgeFilter />
+                </button>
+                {showEdgeModeMenu && (
+                  <div className="graph-problems-menu" role="menu">
+                    {(
+                      [
+                        ['intersects', 'app.edgeFilterIntersects'],
+                        ['contains', 'app.edgeFilterContains'],
+                        ['hierarchy', 'app.edgeFilterHierarchy'],
+                      ] as const
+                    ).map(([key, labelKey]) => (
+                      <label key={key} className="graph-menu-check">
+                        <input
+                          type="checkbox"
+                          checked={edgeDisplayFilters[key]}
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            setEdgeDisplayFilters((prev) => ({ ...prev, [key]: on }));
+                          }}
+                        />
+                        <span>{t(labelKey)}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
               <div className="graph-problems-root" onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
                   className={`graph-ctrl-btn${problemFilter ? ' graph-ctrl-btn--warn-active' : ''}`}
-                  onClick={() => setShowProblemsMenu((v) => !v)}
+                  onClick={() => toggleBottomLeftMenu('problems')}
                   title={t('app.problemsMode')}
                   aria-pressed={Boolean(problemFilter)}
                   aria-expanded={showProblemsMenu}
@@ -2100,7 +2259,7 @@ export default function App() {
                       type="button"
                       role="menuitem"
                       className={problemFilter === 'error' ? 'active' : ''}
-                      onClick={() => setProblemsMode(problemFilter === 'error' ? null : 'error')}
+                      onClick={() => setProblemsMode('error')}
                     >
                       {t('app.problemsErrors')}
                     </button>
@@ -2108,62 +2267,14 @@ export default function App() {
                       type="button"
                       role="menuitem"
                       className={problemFilter === 'warning' ? 'active' : ''}
-                      onClick={() => setProblemsMode(problemFilter === 'warning' ? null : 'warning')}
+                      onClick={() => setProblemsMode('warning')}
                     >
                       {t('app.problemsWarnings')}
                     </button>
-                    {problemFilter && (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => setProblemsMode(null)}
-                      >
-                        {t('app.problemsOff')}
-                      </button>
-                    )}
                   </div>
                 )}
               </div>
-              <div className="graph-problems-root" onClick={(e) => e.stopPropagation()}>
-                <button
-                  type="button"
-                  className={`graph-ctrl-btn${edgeDisplayMode !== 'all' ? ' graph-ctrl-btn--active' : ''}`}
-                  onClick={() => setShowEdgeModeMenu((v) => !v)}
-                  title={t('app.edgeDisplayMode')}
-                  aria-pressed={edgeDisplayMode !== 'all'}
-                  aria-expanded={showEdgeModeMenu}
-                >
-                  <IconEdgeFilter />
-                </button>
-                {showEdgeModeMenu && (
-                  <div className="graph-problems-menu" role="menu">
-                    {(
-                      [
-                        ['all', 'app.edgeModeAll'],
-                        ['intersects', 'app.edgeModeIntersects'],
-                        ['contains', 'app.edgeModeContains'],
-                        ['spatial', 'app.edgeModeSpatial'],
-                        ['hierarchy', 'app.edgeModeHierarchy'],
-                      ] as const
-                    ).map(([mode, key]) => (
-                      <button
-                        key={mode}
-                        type="button"
-                        role="menuitem"
-                        className={edgeDisplayMode === mode ? 'active' : ''}
-                        onClick={() => {
-                          setEdgeDisplayMode(mode);
-                          setShowEdgeModeMenu(false);
-                          setStatus(t(key));
-                        }}
-                      >
-                        {t(key)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {(highlightFlag || subtreeHighlightRoot) && (
+              {(highlightFlag || subtreeHighlightRoot || problemFilter) && (
                 <button
                   type="button"
                   className="graph-ctrl-btn"
@@ -2228,6 +2339,8 @@ export default function App() {
           region={detailsRegion}
           childIds={detailsChildIds}
           spatialRelations={detailsSpatialRelations}
+          spatialEdges={scheme?.spatialEdges ?? []}
+          regionsById={regionsById}
           flagsCatalog={flagsCatalog}
           regionIds={regionIdList}
           onClose={() => setDetailsId(null)}
@@ -2276,7 +2389,6 @@ export default function App() {
             applyHighlightFlag(name);
             setShowFlagTreeDialog(false);
           }}
-          onSelectRegion={focusRegion}
         />
       )}
       {showFlagsManager && scheme && (
@@ -2289,6 +2401,12 @@ export default function App() {
           onBulk={handleBulkFlags}
           onOpenCatalog={() => setShowFlagsCatalog(true)}
           initialRegionId={flagsManagerFocusId}
+          highlightFlag={highlightFlag}
+          onHighlightFlag={(name) => {
+            applyHighlightFlag(name);
+            if (name) closeFlagsManager();
+          }}
+          onSelectRegion={focusRegion}
         />
       )}
       {showFlagsCatalog && (

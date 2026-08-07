@@ -39,6 +39,10 @@ interface GraphViewProps {
     definingIds: Set<string>;
     brightIds: Set<string>;
     brightEdgeKeys: Set<string>;
+    containedNoInheritIds?: Set<string>;
+    containedNoInheritEdgeKeys?: Set<string>;
+    intersectPartialIds?: Set<string>;
+    intersectPartialEdgeKeys?: Set<string>;
     conflictIds?: Set<string>;
     conflictEdgeKeys?: Set<string>;
     valueLabels?: Map<string, { text: string; defining: boolean }>;
@@ -59,8 +63,8 @@ interface GraphViewProps {
   layoutRequest: { seq: number } | null;
   locked: boolean;
   subtreeHighlightActive: boolean;
-  /** Which edge families to draw on the scheme. */
-  edgeDisplayMode: EdgeDisplayMode;
+  /** Which edge families to draw on the scheme (independent toggles). */
+  edgeDisplayFilters: EdgeDisplayFilters;
   onNodeSelect: (regionId: string) => void;
   onNodeOpen: (regionId: string) => void;
   onBackgroundTap: () => void;
@@ -85,23 +89,23 @@ export type HighlightBranchMode =
   | 'containment-parents'
   | 'intersects';
 
-export type EdgeDisplayMode =
-  | 'all'
-  | 'intersects'
-  | 'contains'
-  | 'spatial'
-  | 'hierarchy';
+export type EdgeDisplayFilters = {
+  intersects: boolean;
+  contains: boolean;
+  hierarchy: boolean;
+};
 
-function edgeAllowedByDisplayMode(
+export const DEFAULT_EDGE_DISPLAY_FILTERS: EdgeDisplayFilters = {
+  intersects: true,
+  contains: true,
+  hierarchy: true,
+};
+
+function edgeAllowedByDisplayFilters(
   kind: 'hierarchy' | 'intersects' | 'contains',
-  mode: EdgeDisplayMode,
+  filters: EdgeDisplayFilters,
 ): boolean {
-  if (mode === 'all') return true;
-  if (mode === 'hierarchy') return kind === 'hierarchy';
-  if (mode === 'intersects') return kind === 'intersects';
-  if (mode === 'contains') return kind === 'contains';
-  // spatial = contains + intersects
-  return kind === 'intersects' || kind === 'contains';
+  return filters[kind];
 }
 
 interface ContextMenuState {
@@ -216,7 +220,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     layoutRequest,
     locked,
     subtreeHighlightActive,
-    edgeDisplayMode,
+    edgeDisplayFilters,
     onNodeSelect,
     onNodeOpen,
     onBackgroundTap,
@@ -354,14 +358,25 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       const hiddenSuffix = hiddenN > 0 ? `\n${t('graph.hiddenCount', { count: hiddenN })}` : '';
       const valueInfo = flagHighlight?.valueLabels?.get(region.id);
       const valueSuffix = valueInfo
-        ? (valueInfo.defining ? `\n◆ ${valueInfo.text}` : `\n◇ ${valueInfo.text}`)
+        ? (valueInfo.text.startsWith('∈') || valueInfo.text.startsWith('≈')
+          ? `\n${valueInfo.text}`
+          : valueInfo.defining ? `\n◆ ${valueInfo.text}` : `\n◇ ${valueInfo.text}`)
         : '';
       const label = `${region.id}\np:${region.priority} d:${hd}${hiddenSuffix}${valueSuffix}`;
       const m = nodeLabelMetrics(label, hd, baseSize, {
         denseText: Boolean(valueInfo),
         valueEmphasis: Boolean(valueInfo),
       });
-      nodeDims.set(region.id, { width: m.width, height: m.height });
+      const manual = isTemporaryRegion(region);
+      let width = m.width;
+      let height = m.height;
+      if (manual && region.type !== 'global') {
+        width = Math.max(m.width, m.height * 1.4);
+        height = Math.max(m.height * 0.72, m.width * 0.5);
+        width = Math.max(width, m.width);
+        height = Math.max(height, m.height);
+      }
+      nodeDims.set(region.id, { width, height });
     }
 
     const visiblePositions = layoutVisibleForest(scheme, hiddenNodes, nodeDims);
@@ -379,7 +394,9 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       const hiddenSuffix = hiddenN > 0 ? `\n${t('graph.hiddenCount', { count: hiddenN })}` : '';
       const valueInfo = flagHighlight?.valueLabels?.get(region.id);
       const valueSuffix = valueInfo
-        ? (valueInfo.defining ? `\n◆ ${valueInfo.text}` : `\n◇ ${valueInfo.text}`)
+        ? (valueInfo.text.startsWith('∈') || valueInfo.text.startsWith('≈')
+          ? `\n${valueInfo.text}`
+          : valueInfo.defining ? `\n◆ ${valueInfo.text}` : `\n◇ ${valueInfo.text}`)
         : '';
       const label = `${region.id}\np:${region.priority} d:${hd}${hiddenSuffix}${valueSuffix}`;
       const metrics = nodeLabelMetrics(label, hd, baseSize, {
@@ -406,9 +423,21 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
         if (flagHighlight.conflictIds?.has(region.id)) classes.push('flag-conflict-pair');
         if (flagHighlight.definingIds.has(region.id)) classes.push('flag-define');
         else if (flagHighlight.brightIds.has(region.id)) classes.push('flag-path');
-        else if (!flagHighlight.conflictIds?.has(region.id)) classes.push('flag-dim');
+        else if (flagHighlight.containedNoInheritIds?.has(region.id)) {
+          classes.push('flag-contained-no-inherit');
+        } else if (flagHighlight.intersectPartialIds?.has(region.id)) {
+          classes.push('flag-intersect-partial');
+        } else if (!flagHighlight.conflictIds?.has(region.id)) classes.push('flag-dim');
         if (valueInfo?.defining) classes.push('flag-value-define');
-        else if (valueInfo) classes.push('flag-value-inherit');
+        else if (valueInfo) {
+          if (flagHighlight.containedNoInheritIds?.has(region.id)) {
+            classes.push('flag-value-no-inherit');
+          } else if (flagHighlight.intersectPartialIds?.has(region.id)) {
+            classes.push('flag-value-intersect');
+          } else {
+            classes.push('flag-value-inherit');
+          }
+        }
       } else if (attentionBrightIds) {
         if (!attentionBrightIds.has(region.id)) classes.push('flag-dim');
       }
@@ -435,7 +464,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
 
     for (const edge of scheme.hierarchyEdges) {
       if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) continue;
-      if (!edgeAllowedByDisplayMode('hierarchy', edgeDisplayMode)) continue;
+      if (!edgeAllowedByDisplayFilters('hierarchy', edgeDisplayFilters)) continue;
       const edgeKey = `${edge.source}->${edge.target}`;
       const edgeClasses = ['hierarchy'];
       if (flagHighlight) {
@@ -461,7 +490,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
 
     for (const edge of visibleSpatial) {
       if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) continue;
-      if (!edgeAllowedByDisplayMode(edge.relation, edgeDisplayMode)) continue;
+      if (!edgeAllowedByDisplayFilters(edge.relation, edgeDisplayFilters)) continue;
       const spatialClasses: string[] = [edge.relation];
       const edgeKey = `${edge.relation}-${edge.source}-${edge.target}`;
       const edgeKeyAlt = `${edge.relation}-${edge.target}-${edge.source}`;
@@ -471,6 +500,16 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
           || flagHighlight.conflictEdgeKeys?.has(edgeKeyAlt)
         ) {
           spatialClasses.push('flag-conflict-edge');
+        } else if (
+          flagHighlight.containedNoInheritEdgeKeys?.has(edgeKey)
+          || flagHighlight.containedNoInheritEdgeKeys?.has(edgeKeyAlt)
+        ) {
+          spatialClasses.push('flag-no-inherit-edge');
+        } else if (
+          flagHighlight.intersectPartialEdgeKeys?.has(edgeKey)
+          || flagHighlight.intersectPartialEdgeKeys?.has(edgeKeyAlt)
+        ) {
+          spatialClasses.push('flag-intersect-edge');
         } else {
           spatialClasses.push('flag-dim-edge');
         }
@@ -634,7 +673,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     flagHighlight,
     attentionBrightIds,
     attentionBrightEdgeKeys,
-    edgeDisplayMode,
+    edgeDisplayFilters,
     baseSize,
     locale,
     theme,
