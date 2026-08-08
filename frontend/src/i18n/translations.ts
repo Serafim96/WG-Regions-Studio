@@ -3,7 +3,7 @@ export type Locale = 'ru' | 'en';
 export type TranslationKey = keyof typeof ru;
 
 const ru = {
-  'app.title': 'Студия Регионов WG',
+  'app.title': 'WG Regions Studio',
   'app.openFile': 'Открыть файл',
   'app.openYaml': 'Открыть YAML',
   'app.buildScheme': 'Построить схему',

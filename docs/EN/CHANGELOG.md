@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [2.0.4] — 2026-08-08
+
+### Changed
+
+- Sidebar product title stays **WG Regions Studio** in both English and Russian UI.
+
 ## [2.0.3] — 2026-08-08
 
 ### Changed
@@ -65,6 +71,7 @@ Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМ�
 
 Baseline published on GitHub: YAML parse → hierarchy + spatial edges, Cytoscape scheme, collapse/search/legend/metrics, scheme save/load (`.mrv.json`), bilingual UI, pytest suite, local-only `regions.yml` / `all_flags.txt`.
 
+[2.0.4]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.4
 [2.0.3]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.3
 [2.0.2]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.2
 [2.0.1]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.1
