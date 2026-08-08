@@ -46,7 +46,7 @@ FLAGS_PATH = WORKSPACE_ROOT / "all_flags.txt"
 WG_JAR_PATH = WORKSPACE_ROOT / "worldguard-bukkit-7.0.17.jar"
 CUSTOM_FLAGS_PATH = APP_ROOT / "data" / "custom_flags.json"
 
-app = FastAPI(title="Minecraft Regions Viewer", version=APP_VERSION)
+app = FastAPI(title="WG Regions Studio", version=APP_VERSION)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

@@ -3,7 +3,7 @@ export type Locale = 'ru' | 'en';
 export type TranslationKey = keyof typeof ru;
 
 const ru = {
-  'app.title': 'Просмотр Регионов WorldGuard',
+  'app.title': 'Студия Регионов WG',
   'app.openFile': 'Открыть файл',
   'app.openYaml': 'Открыть YAML',
   'app.buildScheme': 'Построить схему',
@@ -460,7 +460,7 @@ const ru = {
 } as const;
 
 const en: Record<TranslationKey, string> = {
-  'app.title': 'WorldGuard Regions Viewer',
+  'app.title': 'WG Regions Studio',
   'app.openFile': 'Open file',
   'app.openYaml': 'Open YAML',
   'app.buildScheme': 'Build scheme',

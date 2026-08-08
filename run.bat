@@ -29,5 +29,5 @@ if errorlevel 1 (
 cd ..
 
 set MRV_OPEN_BROWSER=1
-echo Starting Regions Viewer, browser will open automatically...
+echo Starting WG Regions Studio, browser will open automatically...
 python -m uvicorn backend.main:app --host 127.0.0.1 --port 8000

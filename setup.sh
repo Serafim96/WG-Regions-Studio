@@ -2,7 +2,7 @@
 set -e
 cd "$(dirname "$0")"
 
-echo "=== WorldGuard Region Viewer — setup ==="
+echo "=== WG Regions Studio — setup ==="
 echo
 
 if ! command -v python3 >/dev/null 2>&1; then

@@ -1,4 +1,4 @@
-# WorldGuard Region Viewer
+# WG Regions Studio
 
 Visualize WorldGuard region hierarchies with spatial overlaps (**intersects**) and full containment (**contains**).
 

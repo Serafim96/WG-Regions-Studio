@@ -1,10 +1,16 @@
 # Changelog
 
-All notable changes to [WorldGuard Region Viewer](https://github.com/Serafim96/WorldGuard-Region-Viewer) are documented in this file.
+All notable changes to [WG Regions Studio](https://github.com/Serafim96/WG-Regions-Studio) are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
+
+## [2.0.3] — 2026-08-08
+
+### Changed
+
+- Product rename: **WG Regions Studio** (repository: [Serafim96/WG-Regions-Studio](https://github.com/Serafim96/WG-Regions-Studio)).
 
 ## [2.0.2] — 2026-08-08
 
@@ -59,7 +65,8 @@ Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМ�
 
 Baseline published on GitHub: YAML parse → hierarchy + spatial edges, Cytoscape scheme, collapse/search/legend/metrics, scheme save/load (`.mrv.json`), bilingual UI, pytest suite, local-only `regions.yml` / `all_flags.txt`.
 
-[2.0.2]: https://github.com/Serafim96/WorldGuard-Region-Viewer/releases/tag/v2.0.2
-[2.0.1]: https://github.com/Serafim96/WorldGuard-Region-Viewer/releases/tag/v2.0.1
-[2.0.0]: https://github.com/Serafim96/WorldGuard-Region-Viewer/releases/tag/v2.0.0
-[0.1.0]: https://github.com/Serafim96/WorldGuard-Region-Viewer/tree/6e5bbc9
+[2.0.3]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.3
+[2.0.2]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.2
+[2.0.1]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.1
+[2.0.0]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.0
+[0.1.0]: https://github.com/Serafim96/WG-Regions-Studio/tree/6e5bbc9

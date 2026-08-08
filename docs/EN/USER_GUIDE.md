@@ -1,4 +1,4 @@
-# User Guide — WorldGuard Region Viewer
+# User Guide — WG Regions Studio
 
 Russian version: [ИНСТРУКЦИЯ.md](../RU/ИНСТРУКЦИЯ.md)
 

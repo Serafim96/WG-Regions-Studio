@@ -7,8 +7,8 @@ from typing import Any
 import httpx
 
 # Bump when cutting a GitHub release (tag vX.Y.Z).
-APP_VERSION = "2.0.2"
-GITHUB_REPO = "Serafim96/WorldGuard-Region-Viewer"
+APP_VERSION = "2.0.3"
+GITHUB_REPO = "Serafim96/WG-Regions-Studio"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
 
@@ -63,7 +63,7 @@ def check_for_update(timeout: float = 4.0) -> dict[str, Any]:
                 RELEASES_LATEST_URL,
                 headers={
                     "Accept": "application/vnd.github+json",
-                    "User-Agent": f"WorldGuard-Region-Viewer/{APP_VERSION}",
+                    "User-Agent": f"WG-Regions-Studio/{APP_VERSION}",
                     "X-GitHub-Api-Version": "2022-11-28",
                 },
             )

@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 
-echo === WorldGuard Region Viewer — setup ===
+echo === WG Regions Studio — setup ===
 echo.
 
 where python >nul 2>&1

@@ -26,7 +26,7 @@ def test_check_for_update_outdated() -> None:
     mock_resp.status_code = 200
     mock_resp.json.return_value = {
         "tag_name": "v9.9.9",
-        "html_url": "https://github.com/Serafim96/WorldGuard-Region-Viewer/releases/tag/v9.9.9",
+        "html_url": "https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v9.9.9",
         "name": "v9.9.9",
     }
     mock_client = MagicMock()

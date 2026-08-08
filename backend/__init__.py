@@ -1,1 +1,1 @@
-"""Minecraft Regions Viewer — backend package."""
+"""WG Regions Studio — backend package."""
