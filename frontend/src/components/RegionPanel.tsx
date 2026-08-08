@@ -447,6 +447,7 @@ export function RegionPanel({
   const [saveBusy, setSaveBusy] = useState(false);
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [showClearFlagsConfirm, setShowClearFlagsConfirm] = useState(false);
   const [showCopiedFlash, setShowCopiedFlash] = useState(false);
   const [copiedFlashPos, setCopiedFlashPos] = useState<{ left: number; top: number } | null>(null);
   const copiedFlashTimerRef = useRef<number | null>(null);
@@ -604,6 +605,18 @@ export function RegionPanel({
       { key: `new-${Date.now()}-${prev.length}`, name: '', value: '' },
     ]);
     setFlagsDirty(true);
+  };
+
+  const clearAllFlagRows = () => {
+    if (flagRows.length === 0) return;
+    setFlagRows([]);
+    setFlagsDirty(true);
+    setFlagsError(null);
+  };
+
+  const requestClearFlags = () => {
+    if (!fieldsEditable || flagRows.length === 0) return;
+    setShowClearFlagsConfirm(true);
   };
 
   const markMembersDirty = () => setMembersDirty(true);
@@ -1105,6 +1118,14 @@ export function RegionPanel({
                   <button type="button" disabled={!fieldsEditable} onClick={addFlagRow}>
                     {t('flagsManager.add')}
                   </button>
+                  <button
+                    type="button"
+                    className="warning"
+                    disabled={!fieldsEditable || flagRows.length === 0}
+                    onClick={requestClearFlags}
+                  >
+                    {t('region.clearFlags')}
+                  </button>
                 </div>
               </>
             ) : flagRows.length === 0 ? (
@@ -1167,6 +1188,18 @@ export function RegionPanel({
         message={t('dialog.discardConfirm')}
         onCancel={() => setShowDiscardConfirm(false)}
         onConfirm={discardChanges}
+      />
+    )}
+    {showClearFlagsConfirm && (
+      <ConfirmDialog
+        title={t('region.clearFlagsTitle')}
+        message={t('region.clearFlagsConfirm')}
+        confirmClass="warning"
+        onCancel={() => setShowClearFlagsConfirm(false)}
+        onConfirm={() => {
+          setShowClearFlagsConfirm(false);
+          clearAllFlagRows();
+        }}
       />
     )}
     </>

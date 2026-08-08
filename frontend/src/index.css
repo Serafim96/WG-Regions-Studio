@@ -1897,8 +1897,28 @@ button.success:hover:not(:disabled) {
   cursor: pointer;
 }
 
+.flags-toolbar-btn.warning {
+  background: #f9a825 !important;
+  color: #1a1a1a !important;
+  border-color: #f57f17 !important;
+}
+
+.flags-toolbar-btn.danger {
+  background: #c62828 !important;
+  color: #fff !important;
+  border-color: #b71c1c !important;
+}
+
 .flags-toolbar-btn:hover:not(:disabled) {
   background: var(--color-bg-button-hover) !important;
+}
+
+.flags-toolbar-btn.warning:hover:not(:disabled) {
+  background: #f57f17 !important;
+}
+
+.flags-toolbar-btn.danger:hover:not(:disabled) {
+  background: #b71c1c !important;
 }
 
 .region-geometry-editor,

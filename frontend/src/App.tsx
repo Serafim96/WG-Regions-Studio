@@ -4,6 +4,7 @@ import {
   buildScheme,
   bulkUpdateFlags,
   checkHealth,
+  clearAllRegionFlags,
   clearSession,
   clearManualRegions,
   exportRegionsYaml,
@@ -1880,6 +1881,24 @@ export default function App() {
     }
   }, [scheme, requestFitOnIds, flagConflicts]);
 
+  const handleClearAllFlags = useCallback(async () => {
+    const result = await clearAllRegionFlags();
+    setScheme((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        regions: prev.regions.map((r) => (
+          Object.keys(r.flags).length === 0 ? r : { ...r, flags: {} }
+        )),
+      };
+    });
+    if (highlightFlag) {
+      applyHighlightFlag(null);
+    }
+    setStatus(t('status.flagsClearedAll', { count: result.count }));
+    return { count: result.count };
+  }, [t, highlightFlag, applyHighlightFlag]);
+
   const handleRelayout = useCallback(() => {
     if (!scheme) return;
     layoutSeqRef.current += 1;
@@ -2528,6 +2547,7 @@ export default function App() {
           onClose={closeFlagsManager}
           onSave={handleUpdateFlags}
           onBulk={handleBulkFlags}
+          onClearAllFlags={handleClearAllFlags}
           onOpenCatalog={() => setShowFlagsCatalog(true)}
           initialRegionId={flagsManagerFocusId}
           highlightFlag={highlightFlag}

@@ -134,6 +134,46 @@ def test_bulk_flags_bad_action():
         _reset_session()
 
 
+def test_clear_all_region_flags():
+    _reset_session()
+    _session["regions"] = [
+        Region(id="root", type="global", parent=None, priority=0, flags={"greeting": "hi"}),
+        Region(id="a", type="cuboid", parent="root", priority=0, flags={"pvp": "deny", "build": "allow"}),
+        Region(id="b", type="cuboid", parent="root", priority=0, flags={}),
+    ]
+    _session["scheme"] = {
+        "regions": [
+            {"id": "root", "flags": {"greeting": "hi"}},
+            {"id": "a", "flags": {"pvp": "deny", "build": "allow"}},
+            {"id": "b", "flags": {}},
+        ],
+    }
+    client = TestClient(app)
+    try:
+        res = client.delete("/api/regions/flags")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["count"] == 2
+        assert set(body["updated"]) == {"root", "a"}
+        assert _session["regions"][0].flags == {}
+        assert _session["regions"][1].flags == {}
+        assert _session["regions"][2].flags == {}
+        assert _session["scheme"]["regions"][0]["flags"] == {}
+        assert _session["scheme"]["regions"][1]["flags"] == {}
+    finally:
+        _reset_session()
+
+
+def test_clear_all_region_flags_no_regions():
+    _reset_session()
+    client = TestClient(app)
+    try:
+        res = client.delete("/api/regions/flags")
+        assert res.status_code == 400
+    finally:
+        _reset_session()
+
+
 def test_update_region_parent():
     _reset_session()
     _session["regions"] = [

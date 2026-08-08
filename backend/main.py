@@ -693,6 +693,28 @@ def bulk_update_flags(req: BulkFlagsRequest) -> dict[str, Any]:
     }
 
 
+@app.delete("/api/regions/flags")
+def clear_all_region_flags() -> dict[str, Any]:
+    """Remove every flag from every region in the current session."""
+    regions: list[Region] = list(_session.get("regions") or [])
+    if not regions:
+        raise HTTPException(status_code=400, detail="No regions loaded")
+
+    updated_ids: list[str] = []
+    for region in regions:
+        if not region.flags:
+            continue
+        region.flags = {}
+        _sync_region_flags_to_scheme(region.id, {})
+        updated_ids.append(region.id)
+
+    _session["regions"] = regions
+    return {
+        "updated": updated_ids,
+        "count": len(updated_ids),
+    }
+
+
 @app.get("/api/regions/export/yml")
 def export_regions_yml(
     include_manual: bool = Query(True, description="Include temporary regions"),

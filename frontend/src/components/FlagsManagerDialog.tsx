@@ -43,6 +43,8 @@ interface FlagsManagerDialogProps {
     value?: unknown;
     regionIds: string[] | null;
   }) => Promise<{ count: number }>;
+  /** Remove all flags from every region on the scheme. */
+  onClearAllFlags: () => Promise<{ count: number }>;
   onOpenCatalog: () => void;
   /** Open focused on this region (pinned with parents, ready to edit). */
   initialRegionId?: string | null;
@@ -230,6 +232,7 @@ export function FlagsManagerDialog({
   onClose,
   onSave,
   onBulk,
+  onClearAllFlags,
   onOpenCatalog,
   initialRegionId = null,
   highlightFlag = null,
@@ -279,6 +282,7 @@ export function FlagsManagerDialog({
   const [showBulkSearch, setShowBulkSearch] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkMessage, setBulkMessage] = useState<string | null>(null);
+  const [clearAllBusy, setClearAllBusy] = useState(false);
   const [confirmState, setConfirmState] = useState<{
     title: string;
     message: string;
@@ -507,6 +511,50 @@ export function FlagsManagerDialog({
     });
   };
 
+  const requestClearAllFlags = () => {
+    askUnsaved(() => {
+      setConfirmState({
+        title: t('flagsManager.deleteAllFlagsTitle'),
+        message: t('flagsManager.deleteAllFlagsConfirm'),
+        confirmClass: 'danger',
+        onConfirm: () => {
+          setConfirmState(null);
+          void (async () => {
+            setClearAllBusy(true);
+            setError(null);
+            try {
+              await onClearAllFlags();
+              setRows([]);
+              setDirty(false);
+              setFilterFlag('');
+            } catch (err) {
+              setError(String(err));
+            } finally {
+              setClearAllBusy(false);
+            }
+          })();
+        },
+      });
+    });
+  };
+
+  const requestClearSelectedFlags = () => {
+    if (!selectedId || rows.length === 0) return;
+    setConfirmState({
+      title: t('region.clearFlagsTitle'),
+      message: t('region.clearFlagsConfirm'),
+      confirmClass: 'warning',
+      onConfirm: () => {
+        setConfirmState(null);
+        setRows([]);
+        setDirty(true);
+        setError(null);
+      },
+    });
+  };
+
+  const hasAnyFlags = usedFlagNames.length > 0;
+
   const regionsOutsideTree = useMemo(() => {
     const inTree = new Set(treeIds);
     return allRegionIds.filter((id) => !inTree.has(id));
@@ -688,6 +736,14 @@ export function FlagsManagerDialog({
                     <button type="button" className="flags-toolbar-btn" onClick={onOpenCatalog}>
                       {t('flagsManager.openCatalog')}
                     </button>
+                    <button
+                      type="button"
+                      className="flags-toolbar-btn danger"
+                      disabled={!hasAnyFlags || clearAllBusy}
+                      onClick={requestClearAllFlags}
+                    >
+                      {t('flagsManager.deleteAllFlags')}
+                    </button>
                   </div>
                 </div>
                 {!selectedId ? (
@@ -751,6 +807,14 @@ export function FlagsManagerDialog({
                     {error && <p className="flags-manager-error">{error}</p>}
                     <div className="modal-actions">
                       <button type="button" onClick={addRow}>{t('flagsManager.add')}</button>
+                      <button
+                        type="button"
+                        className="warning"
+                        disabled={rows.length === 0 || saving}
+                        onClick={requestClearSelectedFlags}
+                      >
+                        {t('region.clearFlags')}
+                      </button>
                       <button
                         type="button"
                         className="success"

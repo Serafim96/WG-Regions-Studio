@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [2.0.1] — 2026-08-08
+
+### Added
+
+- **Clear flags** — yellow button on the region card and in flag management (selected region), with yes/no confirmation; clears the draft, then **Save**.
+- **Delete all flags** — red button in flag management that removes every flag from every region on the scheme, with confirmation.
+- Backend `DELETE /api/regions/flags` to clear all region flags in the session.
+
 ## [2.0.0] — 2026-08-08
 
 ### Added
@@ -39,5 +47,6 @@ Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМ�
 
 Baseline published on GitHub: YAML parse → hierarchy + spatial edges, Cytoscape scheme, collapse/search/legend/metrics, scheme save/load (`.mrv.json`), bilingual UI, pytest suite, local-only `regions.yml` / `all_flags.txt`.
 
+[2.0.1]: https://github.com/Serafim96/WorldGuard-Region-Viewer/releases/tag/v2.0.1
 [2.0.0]: https://github.com/Serafim96/WorldGuard-Region-Viewer/releases/tag/v2.0.0
 [0.1.0]: https://github.com/Serafim96/WorldGuard-Region-Viewer/tree/6e5bbc9

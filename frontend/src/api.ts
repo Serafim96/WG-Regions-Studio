@@ -246,6 +246,12 @@ export async function bulkUpdateFlags(payload: {
   }>;
 }
 
+export async function clearAllRegionFlags() {
+  const res = await fetch(`${API}/regions/flags`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json() as Promise<{ updated: string[]; count: number }>;
+}
+
 export async function updateRegionGeometry(
   regionId: string,
   payload: {

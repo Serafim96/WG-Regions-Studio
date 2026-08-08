@@ -95,7 +95,7 @@ In the region card:
 - **Partial overlaps** — table columns **region**, **affected blocks**, **percent** (share of this region’s volume; overlap volume is computed for cuboid and poly2d). Click the blocks or percent header to sort ascending/descending. Full-containment labels are **Inside** and **Contains**.
 - **Type and coordinates** — for non-global regions (including from YAML) you can change cuboid/poly2d and coordinates (**Point 1** / **Point 2**); values are validated as integers and for completeness. If Y is below −64 or above 319, a warning appears next to the coordinates (and in the bell); export is not blocked. For poly2d, **Expand**/**Collapse** (same style as **Rename**) sits next to the points label; min-y/max-y are below. The expanded points table shows about 10 rows with scroll; **Clear** for poly2d coordinates is shown only while the table is expanded.
 - **Owners / Members** — editable `players` and `unique-ids` tables when unlocked.
-- **Flags** — WorldGuard flags table; **«?»** next to a name opens the catalog description.
+- **Flags** — WorldGuard flags table; **«?»** next to a name opens the catalog description. When unlocked, yellow **Clear flags** (yes/no confirm) removes all flag rows for the region (then **Save**).
 - **Copy** icon next to the name — copy region id to the clipboard; a short **Copied** popup appears next to the button (not in the sidebar status line).
 - Closing with unsaved edits asks for confirmation.
 
@@ -147,8 +147,8 @@ Bottom-right — legend, zoom, and fullscreen. Bottom-left — **edge display** 
 2. The dialog header has two tabs: **manage** and **flag tree**.
 3. **manage** tab: left — tree of regions with flags (**green** text) and their parents. The left panel width is resizable.
 4. One toolbar row: **expand/collapse all**, **Only with flags** checkbox, a **filter by specific flag** dropdown (keeps only regions that set that flag plus their parents), and **+** to add a region that is not in the current filter. Regions added via **+** during a filter session are not kept after you turn the filter off and on again — the tree is rebuilt from the flag alone.
-5. Right, above the table: **Catalog** and **Bulk operation** (separate dialog).
-6. Flag table: names must exist in the catalog and values must be filled, or **Save** rejects the rows. Name suggestions use a dropdown list.
+5. Right, above the table: **Catalog**, **Bulk operation** (separate dialog), and red **Delete all flags** (with confirmation: removes every flag from every region on the scheme).
+6. Flag table: names must exist in the catalog and values must be filled, or **Save** rejects the rows. Name suggestions use a dropdown list. Yellow **Clear flags** (with confirmation) clears the selected region’s flags in the draft — then **Save**.
 7. **flag tree** tab: left — list of flags set somewhere (no green styling, with assignment counts); right — collapsible region tree — **green** marks regions that set the flag (value shown); inheriting regions appear too. **Show on scheme** turns on highlight and closes the dialog.
 8. Scheme highlight: the **flag icon** bottom-left opens a small dialog with flag search and **Display** only. While highlight is active, a button under the flag opens checkboxes (like the edge filter, but for highlight): **Intersections** (regions overlapping a flag carrier — orange border and ≈), **Containment** (fully inside without parent — ∈ plus container value, purple border), **Inheritance** (effective via parent; set vs inherited — thick green vs thin grey dashed), **Conflicts** (participants plus needed paths to defining ancestors). Defaults: all four on.
 9. Changes apply to the current session and are kept when you save the scheme (`.mrv.json`); the source YAML on disk is not overwritten.
