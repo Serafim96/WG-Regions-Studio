@@ -262,12 +262,14 @@ def compute_spatial_edges(regions: list[Region]) -> list[SpatialEdge]:
                 key = (x, y, "intersects")
                 if key not in seen:
                     seen.add(key)
+                    vol = intersection_volume(a, b)
                     edges.append(
                         SpatialEdge(
                             source=x,
                             target=y,
                             relation="intersects",
-                            overlap_blocks=intersection_volume(a, b),
+                            # Always store a number when an intersects edge exists.
+                            overlap_blocks=vol if vol is not None else 0,
                         )
                     )
 

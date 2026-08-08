@@ -108,13 +108,15 @@ export function buildStylesheet(theme: Theme = 'light') {
     },
     {
       // On the inheritance path but does not locally set the flag.
+      // Keep fill opaque so edges under the node stay covered (Cytoscape draws
+      // edges under nodes by default; low opacity makes arrows show through).
       selector: 'node.flag-path',
       style: {
         opacity: 1,
         'border-width': 2,
         'border-color': '#64748b',
         'border-style': 'dashed',
-        'background-opacity': 0.42,
+        'background-opacity': 1,
         color: '#475569',
         'text-opacity': 0.92,
         'font-weight': 400,
@@ -151,7 +153,7 @@ export function buildStylesheet(theme: Theme = 'light') {
         'border-width': 4,
         'border-color': '#a855f7',
         'border-style': 'dashed',
-        'background-opacity': 0.9,
+        'background-opacity': 1,
         color: '#6b21a8',
         'text-opacity': 1,
         'font-weight': 600,
@@ -165,7 +167,7 @@ export function buildStylesheet(theme: Theme = 'light') {
         'border-width': 4,
         'border-color': '#c2410c',
         'border-style': 'dashed',
-        'background-opacity': 0.75,
+        'background-opacity': 1,
         color: '#9a3412',
         'text-opacity': 1,
         'font-weight': 600,

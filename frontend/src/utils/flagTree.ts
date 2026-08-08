@@ -59,7 +59,8 @@ export interface FlagHighlight {
   valueLabels?: Map<string, FlagValueLabel>;
 }
 
-const MAX_VALUE_LABEL_LEN = 28;
+/** Max chars shown on a scheme node value caption (also used to reserve layout space). */
+export const MAX_VALUE_LABEL_LEN = 28;
 const SKIP_VALUE_TYPES = new Set(['set of strings', 'set of entity types']);
 
 function formatValue(value: unknown): string {

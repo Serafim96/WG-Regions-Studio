@@ -51,8 +51,12 @@ def build_scheme(
                 "target": e.target,
                 "relation": e.relation,
                 **(
-                    {"overlapBlocks": e.overlap_blocks}
-                    if e.relation == "intersects" and e.overlap_blocks is not None
+                    {
+                        "overlapBlocks": (
+                            e.overlap_blocks if e.overlap_blocks is not None else 0
+                        )
+                    }
+                    if e.relation == "intersects"
                     else {}
                 ),
             }

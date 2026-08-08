@@ -5,6 +5,7 @@ import { ModalOverlay } from './ModalOverlay';
 interface MetricsPanelProps {
   metrics: MetricsData | null;
   onClose: () => void;
+  onSelectRegion?: (regionId: string) => void;
 }
 
 function formatNumber(value: number | null | undefined): string {
@@ -12,7 +13,24 @@ function formatNumber(value: number | null | undefined): string {
   return value.toLocaleString('en-US');
 }
 
-export function MetricsPanel({ metrics, onClose }: MetricsPanelProps) {
+function RegionCell({
+  id,
+  onSelect,
+}: {
+  id: string;
+  onSelect?: (regionId: string) => void;
+}) {
+  if (!onSelect) {
+    return <span className="metrics-id">{id}</span>;
+  }
+  return (
+    <button type="button" className="region-link metrics-id-link" onClick={() => onSelect(id)}>
+      {id}
+    </button>
+  );
+}
+
+export function MetricsPanel({ metrics, onClose, onSelectRegion }: MetricsPanelProps) {
   const { t } = useI18n();
 
   if (!metrics) return null;
@@ -67,7 +85,9 @@ export function MetricsPanel({ metrics, onClose }: MetricsPanelProps) {
                     {metrics.by_volume.slice(0, 20).map((item, index) => (
                       <tr key={item.id}>
                         <td className="metrics-rank">{index + 1}</td>
-                        <td className="metrics-id">{item.id}</td>
+                        <td className="metrics-id">
+                          <RegionCell id={item.id} onSelect={onSelectRegion} />
+                        </td>
                         <td className="metrics-num">{formatNumber(item.volume)}</td>
                       </tr>
                     ))}
@@ -91,7 +111,9 @@ export function MetricsPanel({ metrics, onClose }: MetricsPanelProps) {
                     {metrics.by_points.slice(0, 20).map((item, index) => (
                       <tr key={item.id}>
                         <td className="metrics-rank">{index + 1}</td>
-                        <td className="metrics-id">{item.id}</td>
+                        <td className="metrics-id">
+                          <RegionCell id={item.id} onSelect={onSelectRegion} />
+                        </td>
                         <td className="metrics-num">{formatNumber(item.points)}</td>
                       </tr>
                     ))}
@@ -115,7 +137,9 @@ export function MetricsPanel({ metrics, onClose }: MetricsPanelProps) {
                     {metrics.by_intersections.slice(0, 20).map((item, index) => (
                       <tr key={item.id}>
                         <td className="metrics-rank">{index + 1}</td>
-                        <td className="metrics-id">{item.id}</td>
+                        <td className="metrics-id">
+                          <RegionCell id={item.id} onSelect={onSelectRegion} />
+                        </td>
                         <td className="metrics-num">{formatNumber(item.count)}</td>
                       </tr>
                     ))}

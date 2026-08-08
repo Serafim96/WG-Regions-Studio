@@ -18,6 +18,32 @@ export interface NodeDimensions {
   height: number;
 }
 
+/** Gaps used by the hierarchical packer / overlap separation. */
+export interface LayoutSpacing {
+  hPad: number;
+  vGap: number;
+  levelGap: number;
+  rowGap: number;
+  overlapGap: number;
+}
+
+export const DEFAULT_LAYOUT_SPACING: LayoutSpacing = {
+  hPad: H_PAD,
+  vGap: V_GAP,
+  levelGap: LEVEL_GAP,
+  rowGap: ROW_GAP,
+  overlapGap: 16,
+};
+
+/** Extra room while flag highlight is on (value captions + thicker edges). */
+export const FLAG_HIGHLIGHT_LAYOUT_SPACING: LayoutSpacing = {
+  hPad: 52,
+  vGap: 64,
+  levelGap: 118,
+  rowGap: 78,
+  overlapGap: 36,
+};
+
 interface SubtreeLayout {
   height: number;
   width: number;
@@ -42,11 +68,12 @@ function skylineTopY(
   x: number,
   w: number,
   originY: number,
+  rowGap: number,
 ): number {
   let y = originY;
   for (const p of placed) {
     if (p.x < x + w && p.x + p.w > x) {
-      y = Math.max(y, p.y + p.h + ROW_GAP);
+      y = Math.max(y, p.y + p.h + rowGap);
     }
   }
   return y;
@@ -77,6 +104,7 @@ function findSiblingSlot(
   originY: number,
   xCursor: number,
   itemsInRow: number,
+  rowGap: number,
 ): { x: number; y: number } {
   type Cand = { x: number; y: number };
   const cands: Cand[] = [];
@@ -84,20 +112,20 @@ function findSiblingSlot(
   if (itemsInRow < MAX_CHILDREN_PER_ROW) {
     cands.push({
       x: xCursor,
-      y: skylineTopY(placed, xCursor, width, originY),
+      y: skylineTopY(placed, xCursor, width, originY, rowGap),
     });
   }
 
   // New row / left pocket
   cands.push({
     x: originX,
-    y: skylineTopY(placed, originX, width, originY),
+    y: skylineTopY(placed, originX, width, originY, rowGap),
   });
 
   // Pockets immediately to the right of each placed box (beside tall neighbours).
   for (const p of placed) {
     const x = p.x + p.w;
-    const y = skylineTopY(placed, x, width, originY);
+    const y = skylineTopY(placed, x, width, originY, rowGap);
     // Band already has a full L→R run — do not keep growing it into empty space.
     if (countInYBand(placed, y) >= MAX_CHILDREN_PER_ROW) continue;
     cands.push({ x, y });
@@ -112,6 +140,7 @@ function packMeasuredSubtrees(
   originX: number,
   originY: number,
   out: Map<string, { x: number; y: number }>,
+  rowGap: number,
 ): { width: number; height: number } {
   const placed: PlacedRect[] = [];
   const origins: { x: number; y: number }[] = [];
@@ -125,7 +154,15 @@ function packMeasuredSubtrees(
       itemsInRow = 0;
     }
 
-    const slot = findSiblingSlot(placed, m.width, originX, originY, xCursor, itemsInRow);
+    const slot = findSiblingSlot(
+      placed,
+      m.width,
+      originX,
+      originY,
+      xCursor,
+      itemsInRow,
+      rowGap,
+    );
     placed.push({ x: slot.x, y: slot.y, w: m.width, h: m.height });
     origins.push({ x: slot.x, y: slot.y });
     // Recount from geometry so gap picks cannot reset the row counter to 1.
@@ -163,9 +200,11 @@ export function layoutVisibleForest(
   scheme: Scheme,
   hiddenNodes: Set<string>,
   nodeDims: Map<string, NodeDimensions>,
+  spacing: LayoutSpacing = DEFAULT_LAYOUT_SPACING,
 ): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
   const defaultDim = { width: 80, height: 56 };
+  const { hPad, vGap, levelGap, rowGap, overlapGap } = spacing;
 
   function layoutSubtreeInto(
     node: ForestNode,
@@ -182,7 +221,7 @@ export function layoutVisibleForest(
 
     if (visibleChildren.length === 0) {
       out.set(node.id, { x: leftX + dims.width / 2, y: topY + dims.height / 2 });
-      return { height: dims.height + V_GAP, width: dims.width + H_PAD };
+      return { height: dims.height + vGap, width: dims.width + hPad };
     }
 
     const measured: {
@@ -197,11 +236,11 @@ export function layoutVisibleForest(
       measured.push({ width: size.width, height: size.height, local });
     }
 
-    const childOriginY = topY + dims.height + LEVEL_GAP;
-    const packed = packMeasuredSubtrees(measured, leftX, childOriginY, out);
+    const childOriginY = topY + dims.height + levelGap;
+    const packed = packMeasuredSubtrees(measured, leftX, childOriginY, out, rowGap);
 
-    const contentWidth = Math.max(dims.width + H_PAD, packed.width + H_PAD);
-    const contentHeight = dims.height + LEVEL_GAP + packed.height + V_GAP;
+    const contentWidth = Math.max(dims.width + hPad, packed.width + hPad);
+    const contentHeight = dims.height + levelGap + packed.height + vGap;
     out.set(node.id, {
       x: leftX + contentWidth / 2,
       y: topY + dims.height / 2,
@@ -229,13 +268,13 @@ export function layoutVisibleForest(
   if (measuredRoots.length === 1) {
     for (const [id, pos] of measuredRoots[0].local) positions.set(id, pos);
   } else if (measuredRoots.length > 1) {
-    packMeasuredSubtrees(measuredRoots, 0, 0, positions);
+    packMeasuredSubtrees(measuredRoots, 0, 0, positions, rowGap);
   }
 
   void ROOT_GAP;
 
   pullOrphanRootsNearSpatialPartners(scheme, hiddenNodes, positions, nodeDims);
-  separateOverlappingNodes(positions, nodeDims);
+  separateOverlappingNodes(positions, nodeDims, overlapGap);
   return positions;
 }
 

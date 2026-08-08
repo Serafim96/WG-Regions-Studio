@@ -27,7 +27,8 @@ interface FlagRow {
 interface AddRegionDialogProps {
   regionIds: string[];
   flagsCatalog: FlagInfo[];
-  lockedParent?: string;
+  /** Prefills parent; the field stays editable. */
+  initialParent?: string;
   onAdd: (data: {
     id: string;
     parent: string | null;
@@ -59,13 +60,13 @@ function rowsToFlags(rows: FlagRow[]): Record<string, string> {
 export function AddRegionDialog({
   regionIds,
   flagsCatalog,
-  lockedParent,
+  initialParent,
   onAdd,
   onClose,
 }: AddRegionDialogProps) {
   const { t } = useI18n();
   const [id, setId] = useState('');
-  const [parentQuery, setParentQuery] = useState('');
+  const [parentQuery, setParentQuery] = useState(initialParent ?? '');
   const [priority, setPriority] = useState(0);
   const [geometry, setGeometry] = useState<RegionGeometryState>(() => emptyGeometryState('cuboid'));
   const [flagRows, setFlagRows] = useState<FlagRow[]>([]);
@@ -83,20 +84,18 @@ export function AddRegionDialog({
       .slice(0, 50);
   }, [parentQuery, regionIds]);
 
-  const resolvedParent = lockedParent ?? resolveParentQuery(parentQuery, regionIds);
-  const parentInputInvalid =
-    lockedParent === undefined &&
-    parentQuery.trim() !== '' &&
-    resolvedParent === null;
+  const resolvedParent = resolveParentQuery(parentQuery, regionIds);
+  const parentInputInvalid = parentQuery.trim() !== '' && resolvedParent === null;
 
   const trimmedId = id.trim().toLowerCase();
   const idInvalid = trimmedId !== '' && !isValidRegionId(trimmedId);
   const idExists = trimmedId !== '' && regionIds.some((r) => r.toLowerCase() === trimmedId);
   const canSubmit = isValidRegionId(trimmedId) && !parentInputInvalid && !idExists;
 
+  const initialParentTrimmed = (initialParent ?? '').trim();
   const isDirty =
     trimmedId !== '' ||
-    (lockedParent === undefined && parentQuery.trim() !== '') ||
+    parentQuery.trim() !== initialParentTrimmed ||
     priority !== 0 ||
     JSON.stringify(geometry) !== JSON.stringify(INITIAL_GEOMETRY) ||
     flagRows.some((row) => row.name.trim() !== '' || row.value.trim() !== '');
@@ -164,7 +163,7 @@ export function AddRegionDialog({
     <ModalOverlay onClose={requestClose}>
       <div className="modal">
         <header>
-          <h2>{lockedParent ? t('addRegion.titleDescendant') : t('addRegion.title')}</h2>
+          <h2>{initialParent ? t('addRegion.titleDescendant') : t('addRegion.title')}</h2>
           <button type="button" onClick={requestClose}>×</button>
         </header>
         <div className="modal-body form-grid">
@@ -183,36 +182,32 @@ export function AddRegionDialog({
           {idExists && <p className="form-field-error">{t('addRegion.idExists')}</p>}
           <label>
             {t('addRegion.parent')}
-            {lockedParent !== undefined ? (
-              <input value={lockedParent} readOnly className="readonly-input" />
-            ) : (
-              <>
-                <input
-                  className="search-input"
-                  type="text"
-                  placeholder={t('addRegion.parentPlaceholder')}
-                  value={parentQuery}
-                  onChange={(e) => handleParentChange(e.target.value)}
-                  onFocus={() => setShowParentSuggestions(true)}
-                  onBlur={() => {
-                    window.setTimeout(() => setShowParentSuggestions(false), 150);
-                  }}
-                />
-                <SuggestDropdown
-                  items={parentMatches}
-                  query={parentQuery}
-                  open={showParentSuggestions}
-                  onPick={pickParent}
-                  emptyWhenQuery
-                />
-                {showParentSuggestions && parentInputInvalid && (
-                  <p className="search-empty">{t('addRegion.parentInvalid')}</p>
-                )}
-                {!parentQuery.trim() && (
-                  <p className="hint">{t('addRegion.rootOption')}</p>
-                )}
-              </>
-            )}
+            <>
+              <input
+                className="search-input"
+                type="text"
+                placeholder={t('addRegion.parentPlaceholder')}
+                value={parentQuery}
+                onChange={(e) => handleParentChange(e.target.value)}
+                onFocus={() => setShowParentSuggestions(true)}
+                onBlur={() => {
+                  window.setTimeout(() => setShowParentSuggestions(false), 150);
+                }}
+              />
+              <SuggestDropdown
+                items={parentMatches}
+                query={parentQuery}
+                open={showParentSuggestions}
+                onPick={pickParent}
+                emptyWhenQuery
+              />
+              {showParentSuggestions && parentInputInvalid && (
+                <p className="search-empty">{t('addRegion.parentInvalid')}</p>
+              )}
+              {!parentQuery.trim() && (
+                <p className="hint">{t('addRegion.rootOption')}</p>
+              )}
+            </>
           </label>
           <label>
             {t('addRegion.priority')}

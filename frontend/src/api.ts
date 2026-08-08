@@ -2,6 +2,16 @@ import type { FlagInfo, RegionData, Scheme } from './types';
 
 const API = '/api';
 
+/** Lightweight liveness check for the local FastAPI process. */
+export async function checkHealth(signal?: AbortSignal): Promise<boolean> {
+  try {
+    const res = await fetch(`${API}/health`, { method: 'GET', cache: 'no-store', signal });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function parseYaml(file: File) {
   const form = new FormData();
   form.append('file', file);

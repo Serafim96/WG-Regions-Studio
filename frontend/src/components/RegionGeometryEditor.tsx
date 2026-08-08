@@ -1,4 +1,6 @@
+import { useEffect, useState } from 'react';
 import { useI18n } from '../i18n/I18nContext';
+import { isYOutsideStandardWorld } from '../utils/worldHeight';
 
 export type ManualShapeType = 'global' | 'cuboid' | 'poly2d';
 
@@ -187,19 +189,51 @@ export function geometryIsComplete(state: RegionGeometryState): boolean {
   );
 }
 
+/** Live warning while editing: any parsed Y outside −64…319. */
+export function geometryStateHasNonStandardHeight(state: RegionGeometryState): boolean {
+  if (state.shape === 'global') return false;
+  if (state.shape === 'cuboid') {
+    for (const raw of [state.min.y, state.max.y]) {
+      const y = parseIntStrict(raw);
+      if (y != null && isYOutsideStandardWorld(y)) return true;
+    }
+    return false;
+  }
+  for (const raw of [state.minY, state.maxY]) {
+    const y = parseIntStrict(raw);
+    if (y != null && isYOutsideStandardWorld(y)) return true;
+  }
+  return false;
+}
+
+function ReadonlyValue({ value }: { value: string }) {
+  const trimmed = value.trim();
+  return <span className="geometry-readonly-value">{trimmed === '' ? '—' : trimmed}</span>;
+}
+
 interface RegionGeometryEditorProps {
   value: RegionGeometryState;
   onChange: (next: RegionGeometryState) => void;
   disabled?: boolean;
+  /** When true, fields are plain text (no inputs). Expand/collapse still works. */
+  readOnly?: boolean;
 }
 
 export function RegionGeometryEditor({
   value,
   onChange,
   disabled = false,
+  readOnly = false,
 }: RegionGeometryEditorProps) {
   const { t } = useI18n();
   const isGlobal = value.shape === 'global';
+  const [pointsExpanded, setPointsExpanded] = useState(false);
+  const editing = !disabled && !readOnly;
+  const heightWarn = !isGlobal && geometryStateHasNonStandardHeight(value);
+
+  useEffect(() => {
+    setPointsExpanded(false);
+  }, [value.shape]);
 
   const setShape = (shape: ManualShapeType) => {
     onChange({ ...value, shape });
@@ -233,7 +267,7 @@ export function RegionGeometryEditor({
         <input
           type="checkbox"
           checked={isGlobal}
-          disabled={disabled}
+          disabled={!editing}
           onChange={(e) => setShape(e.target.checked ? 'global' : 'cuboid')}
         />
         <span>{t('addRegion.global')}</span>
@@ -243,116 +277,190 @@ export function RegionGeometryEditor({
         <>
           <label className="geometry-shape-label">
             <span className="geometry-field-caption">{t('region.shapeType')}</span>
-            <select
-              value={value.shape === 'global' ? 'cuboid' : value.shape}
-              disabled={disabled}
-              onChange={(e) => setShape(e.target.value as ManualShapeType)}
-            >
-              <option value="cuboid">cuboid</option>
-              <option value="poly2d">poly2d</option>
-            </select>
+            {readOnly ? (
+              <ReadonlyValue value={value.shape === 'global' ? 'cuboid' : value.shape} />
+            ) : (
+              <select
+                value={value.shape === 'global' ? 'cuboid' : value.shape}
+                disabled={!editing}
+                onChange={(e) => setShape(e.target.value as ManualShapeType)}
+              >
+                <option value="cuboid">cuboid</option>
+                <option value="poly2d">poly2d</option>
+              </select>
+            )}
           </label>
 
           {value.shape === 'cuboid' && (
             <div className="geometry-cuboid">
               <p className="partners-subtitle">{t('region.coordsMin')}</p>
               <div className="geometry-xyz">
-                <label>
-                  X
-                  <input value={value.min.x} disabled={disabled} onChange={(e) => setMin('x', e.target.value)} />
-                </label>
-                <label>
-                  Y
-                  <input value={value.min.y} disabled={disabled} onChange={(e) => setMin('y', e.target.value)} />
-                </label>
-                <label>
-                  Z
-                  <input value={value.min.z} disabled={disabled} onChange={(e) => setMin('z', e.target.value)} />
-                </label>
+                {(['x', 'y', 'z'] as const).map((key) => (
+                  <label key={`min-${key}`}>
+                    {key.toUpperCase()}
+                    {readOnly ? (
+                      <ReadonlyValue value={value.min[key]} />
+                    ) : (
+                      <input
+                        value={value.min[key]}
+                        disabled={!editing}
+                        onChange={(e) => setMin(key, e.target.value)}
+                      />
+                    )}
+                  </label>
+                ))}
               </div>
               <p className="partners-subtitle">{t('region.coordsMax')}</p>
               <div className="geometry-xyz">
-                <label>
-                  X
-                  <input value={value.max.x} disabled={disabled} onChange={(e) => setMax('x', e.target.value)} />
-                </label>
-                <label>
-                  Y
-                  <input value={value.max.y} disabled={disabled} onChange={(e) => setMax('y', e.target.value)} />
-                </label>
-                <label>
-                  Z
-                  <input value={value.max.z} disabled={disabled} onChange={(e) => setMax('z', e.target.value)} />
-                </label>
+                {(['x', 'y', 'z'] as const).map((key) => (
+                  <label key={`max-${key}`}>
+                    {key.toUpperCase()}
+                    {readOnly ? (
+                      <ReadonlyValue value={value.max[key]} />
+                    ) : (
+                      <input
+                        value={value.max[key]}
+                        disabled={!editing}
+                        onChange={(e) => setMax(key, e.target.value)}
+                      />
+                    )}
+                  </label>
+                ))}
               </div>
+              {heightWarn && (
+                <p className="geometry-height-warn" role="status">{t('region.heightWarn')}</p>
+              )}
             </div>
           )}
 
           {value.shape === 'poly2d' && (
             <div className="geometry-poly2d">
-              <div className="geometry-xyz">
+              <div className="geometry-points-header">
+                <p className="partners-subtitle geometry-points-title">
+                  {t('region.poly2dPointsEdit')}
+                  {' '}
+                  <span className="geometry-points-count">({value.points.length})</span>
+                </p>
+                <button
+                  type="button"
+                  className="region-action-btn"
+                  onClick={() => setPointsExpanded((v) => !v)}
+                >
+                  {pointsExpanded ? t('region.collapsePoints') : t('region.expandPoints')}
+                </button>
+              </div>
+
+              <div className="geometry-xyz geometry-poly2d-y">
                 <label>
                   min-y
-                  <input
-                    value={value.minY}
-                    disabled={disabled}
-                    onChange={(e) => onChange({ ...value, minY: e.target.value })}
-                  />
+                  {readOnly ? (
+                    <ReadonlyValue value={value.minY} />
+                  ) : (
+                    <input
+                      value={value.minY}
+                      disabled={!editing}
+                      onChange={(e) => onChange({ ...value, minY: e.target.value })}
+                    />
+                  )}
                 </label>
                 <label>
                   max-y
-                  <input
-                    value={value.maxY}
-                    disabled={disabled}
-                    onChange={(e) => onChange({ ...value, maxY: e.target.value })}
-                  />
+                  {readOnly ? (
+                    <ReadonlyValue value={value.maxY} />
+                  ) : (
+                    <input
+                      value={value.maxY}
+                      disabled={!editing}
+                      onChange={(e) => onChange({ ...value, maxY: e.target.value })}
+                    />
+                  )}
                 </label>
               </div>
-              <p className="partners-subtitle">{t('region.poly2dPointsEdit')}</p>
-              {value.points.map((point, index) => (
-                <div key={index} className="geometry-point-row">
-                  <label>
-                    X
-                    <input
-                      value={point.x}
-                      disabled={disabled}
-                      onChange={(e) => setPoint(index, 'x', e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    Z
-                    <input
-                      value={point.z}
-                      disabled={disabled}
-                      onChange={(e) => setPoint(index, 'z', e.target.value)}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="inline-toggle-btn"
-                    disabled={disabled || value.points.length <= 3}
-                    onClick={() => removePoint(index)}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-              <button type="button" className="inline-toggle-btn" disabled={disabled} onClick={addPoint}>
-                {t('region.addPoint')}
-              </button>
+              {heightWarn && (
+                <p className="geometry-height-warn" role="status">{t('region.heightWarn')}</p>
+              )}
+
+              {pointsExpanded && (
+                <>
+                  <div className="geometry-points-table-wrap">
+                    <table className="geometry-points-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">#</th>
+                          <th scope="col">X</th>
+                          <th scope="col">Z</th>
+                          {!readOnly && <th scope="col" className="geometry-points-actions" />}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {value.points.map((point, index) => (
+                          <tr key={index}>
+                            <td className="geometry-points-index">{index + 1}</td>
+                            <td>
+                              {readOnly ? (
+                                <ReadonlyValue value={point.x} />
+                              ) : (
+                                <input
+                                  value={point.x}
+                                  disabled={!editing}
+                                  onChange={(e) => setPoint(index, 'x', e.target.value)}
+                                />
+                              )}
+                            </td>
+                            <td>
+                              {readOnly ? (
+                                <ReadonlyValue value={point.z} />
+                              ) : (
+                                <input
+                                  value={point.z}
+                                  disabled={!editing}
+                                  onChange={(e) => setPoint(index, 'z', e.target.value)}
+                                />
+                              )}
+                            </td>
+                            {!readOnly && (
+                              <td className="geometry-points-actions">
+                                <button
+                                  type="button"
+                                  className="geometry-point-remove"
+                                  disabled={!editing || value.points.length <= 3}
+                                  onClick={() => removePoint(index)}
+                                  title={t('region.removePoint')}
+                                  aria-label={t('region.removePoint')}
+                                >
+                                  ×
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {!readOnly && (
+                    <div className="modal-actions geometry-points-add">
+                      <button type="button" disabled={!editing} onClick={addPoint}>
+                        {t('region.addPoint')}
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           )}
 
-          <div className="geometry-clear-row">
-            <button
-              type="button"
-              className="warning"
-              disabled={disabled}
-              onClick={() => onChange(emptyGeometryState(value.shape === 'global' ? 'cuboid' : value.shape))}
-            >
-              {t('region.clearGeometry')}
-            </button>
-          </div>
+          {!readOnly && (value.shape !== 'poly2d' || pointsExpanded) && (
+            <div className="geometry-clear-row">
+              <button
+                type="button"
+                className="warning"
+                disabled={!editing}
+                onClick={() => onChange(emptyGeometryState(value.shape === 'global' ? 'cuboid' : value.shape))}
+              >
+                {t('region.clearGeometry')}
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

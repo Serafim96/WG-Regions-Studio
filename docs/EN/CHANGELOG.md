@@ -4,7 +4,9 @@ All notable changes to [WorldGuard Region Viewer](https://github.com/Serafim96/W
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
+
+## [2.0.0] — 2026-08-08
 
 ### Added
 
@@ -26,14 +28,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Empty scheme: **Save** and actions below it stay disabled until a scheme is loaded.
 - Region card containment labels shortened to **Inside** / **Contains**; flag-scheme containment mark is **∈** (with container value) instead of ∉.
 - Flag highlight: clearer set-vs-inherit styling; orphan parking and overlap separation in layout; conflict-only mode keeps needed inheritance paths.
+- Sidebar collapse control stays top-left on the scheme (next to add temporary region), not inside the sidebar.
+- Right-click empty scheme space opens a context menu to add a temporary region; parent is prefilled from a node but remains editable.
 
 ### Documentation
 
-- README, English [USER_GUIDE](docs/USER_GUIDE.md), and Russian [ИНСТРУКЦИЯ](docs/ИНСТРУКЦИЯ.md) updated for the current UI.
+- README and bilingual guides under `docs/EN/` and `docs/RU/` updated for the current UI.
 
 ## [0.1.0] — 2026-08 — initial public tree
 
 Baseline published on GitHub: YAML parse → hierarchy + spatial edges, Cytoscape scheme, collapse/search/legend/metrics, scheme save/load (`.mrv.json`), bilingual UI, pytest suite, local-only `regions.yml` / `all_flags.txt`.
 
-[Unreleased]: https://github.com/Serafim96/WorldGuard-Region-Viewer/compare/6e5bbc9...HEAD
+[2.0.0]: https://github.com/Serafim96/WorldGuard-Region-Viewer/releases/tag/v2.0.0
 [0.1.0]: https://github.com/Serafim96/WorldGuard-Region-Viewer/tree/6e5bbc9

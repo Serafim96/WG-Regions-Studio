@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n/I18nContext';
 import { ModalOverlay } from './ModalOverlay';
 
@@ -23,8 +24,8 @@ export function DeleteManualRegionDialog({
   const hasChildren = childIds.length > 0;
   const hasParent = Boolean(parentId);
 
-  return (
-    <ModalOverlay onClose={onClose}>
+  return createPortal(
+    <ModalOverlay className="confirm-dialog-overlay" onClose={onClose}>
       <div className="modal delete-manual-modal" onClick={(e) => e.stopPropagation()}>
         <header>
           <h2>{t('deleteManual.title')}</h2>
@@ -80,6 +81,7 @@ export function DeleteManualRegionDialog({
           )}
         </div>
       </div>
-    </ModalOverlay>
+    </ModalOverlay>,
+    document.body,
   );
 }

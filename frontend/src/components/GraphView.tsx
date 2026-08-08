@@ -17,7 +17,13 @@ import {
   nodeLabelMetrics,
   remapSpatialEdges,
 } from '../utils/graph';
-import { layoutVisibleForest, type NodeDimensions } from '../utils/layout';
+import {
+  DEFAULT_LAYOUT_SPACING,
+  FLAG_HIGHLIGHT_LAYOUT_SPACING,
+  layoutVisibleForest,
+  type NodeDimensions,
+} from '../utils/layout';
+import { MAX_VALUE_LABEL_LEN } from '../utils/flagTree';
 import { isTemporaryRegion } from '../utils/regions';
 import { useI18n } from '../i18n/I18nContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -70,6 +76,7 @@ interface GraphViewProps {
   onBackgroundTap: () => void;
   onCopyName: (regionId: string) => void;
   onRename?: (regionId: string) => void;
+  onAddManual: () => void;
   onAddDescendant: (regionId: string) => void;
   onDeleteManual: (regionId: string) => void;
   onOpenFlagsManager: (regionId: string) => void;
@@ -111,7 +118,8 @@ function edgeAllowedByDisplayFilters(
 interface ContextMenuState {
   x: number;
   y: number;
-  nodeId: string;
+  /** Absent when the menu was opened on empty canvas. */
+  nodeId?: string;
 }
 
 function applyRegionNodeStyles(cy: Core): void {
@@ -121,6 +129,236 @@ function applyRegionNodeStyles(cy: Core): void {
       node.style('shape', shape);
     }
   });
+}
+
+const FLAG_NODE_CLASSES = [
+  'flag-dim',
+  'flag-path',
+  'flag-define',
+  'flag-contained-no-inherit',
+  'flag-intersect-partial',
+  'flag-conflict-pair',
+  'flag-value-define',
+  'flag-value-inherit',
+  'flag-value-no-inherit',
+  'flag-value-intersect',
+] as const;
+
+const FLAG_EDGE_CLASSES = [
+  'flag-dim-edge',
+  'flag-path-edge',
+  'flag-conflict-edge',
+  'flag-no-inherit-edge',
+  'flag-intersect-edge',
+] as const;
+
+type FlagHighlightState = GraphViewProps['flagHighlight'];
+
+function flagValueSuffix(
+  valueInfo: { text: string; defining: boolean } | undefined,
+): string {
+  if (!valueInfo) return '';
+  if (valueInfo.text.startsWith('∈') || valueInfo.text.startsWith('≈')) {
+    return `\n${valueInfo.text}`;
+  }
+  return valueInfo.defining ? `\n◆ ${valueInfo.text}` : `\n◇ ${valueInfo.text}`;
+}
+
+function sizedManualNode(
+  metrics: { width: number; height: number },
+  manual: boolean,
+  regionType: string,
+): { width: number; height: number } {
+  let { width, height } = metrics;
+  if (manual && regionType !== 'global') {
+    width = Math.max(metrics.width, metrics.height * 1.4);
+    height = Math.max(metrics.height * 0.72, metrics.width * 0.5);
+    width = Math.max(width, metrics.width);
+    height = Math.max(height, metrics.height);
+  }
+  return { width, height };
+}
+
+/** Worst-case value line so flag-mode layout does not grow when inheritance turns on. */
+function reservedFlagValueSuffix(): string {
+  return `\n◆ ${'W'.repeat(MAX_VALUE_LABEL_LEN)}`;
+}
+
+function nodeBoxForLabel(
+  baseLabel: string,
+  depth: number,
+  baseSize: number,
+  manual: boolean,
+  regionType: string,
+  reserveFlagValue: boolean,
+): { width: number; height: number; fontSize: number; textMaxWidth: number } {
+  const label = reserveFlagValue
+    ? `${baseLabel}${reservedFlagValueSuffix()}`
+    : baseLabel;
+  const metrics = nodeLabelMetrics(label, depth, baseSize, {
+    denseText: reserveFlagValue,
+    valueEmphasis: reserveFlagValue,
+  });
+  const sized = sizedManualNode(metrics, manual, regionType);
+  return {
+    ...sized,
+    fontSize: metrics.fontSize,
+    textMaxWidth: Math.max(metrics.textMaxWidth, sized.width - 14),
+  };
+}
+
+/**
+ * Apply / clear flag & attention highlight classes and value captions in place.
+ * Does not move nodes — layout stays stable while toggling highlight layers.
+ */
+function applyHighlightOverlay(
+  cy: Core,
+  flagHighlight: FlagHighlightState,
+  attentionBrightIds: Set<string> | null,
+  attentionBrightEdgeKeys: Set<string> | null,
+  baseSize: number,
+): void {
+  const flagNodeClassStr = FLAG_NODE_CLASSES.join(' ');
+  const flagEdgeClassStr = FLAG_EDGE_CLASSES.join(' ');
+
+  cy.batch(() => {
+    cy.nodes().forEach((node) => {
+      node.removeClass(flagNodeClassStr);
+      const regionId = node.id();
+      const baseLabel = String(node.data('baseLabel') ?? node.data('label') ?? '');
+      const depth = Number(node.data('depth')) || 0;
+      const regionType = String(node.data('regionType') ?? '');
+      const manual = Boolean(node.data('isManual'));
+      const valueInfo = flagHighlight?.valueLabels?.get(regionId);
+      const label = `${baseLabel}${flagValueSuffix(valueInfo)}`;
+      const layoutWidth = Number(node.data('layoutWidth'));
+      const layoutHeight = Number(node.data('layoutHeight'));
+      // While flag highlight is on, keep the reserved box so toggling layers
+      // does not resize/overlap nodes. Outside flag mode, size to content.
+      let width: number;
+      let height: number;
+      let fontSize: number;
+      let textMaxWidth: number;
+      if (flagHighlight && layoutWidth > 0 && layoutHeight > 0) {
+        width = layoutWidth;
+        height = layoutHeight;
+        fontSize = Number(node.data('layoutFontSize')) || Number(node.data('baseFontSize')) || 12;
+        textMaxWidth = Number(node.data('layoutTextMaxWidth'))
+          || Math.max(8, width - 14);
+      } else {
+        const metrics = nodeLabelMetrics(label, depth, baseSize, {
+          denseText: Boolean(valueInfo),
+          valueEmphasis: Boolean(valueInfo),
+        });
+        const sized = sizedManualNode(metrics, manual, regionType);
+        width = sized.width;
+        height = sized.height;
+        fontSize = metrics.fontSize;
+        textMaxWidth = Math.max(metrics.textMaxWidth, width - 14);
+      }
+
+      node.data({
+        label,
+        width,
+        height,
+        fontSize,
+        textMaxWidth,
+      });
+
+      if (flagHighlight) {
+        if (flagHighlight.conflictIds?.has(regionId)) node.addClass('flag-conflict-pair');
+        if (flagHighlight.definingIds.has(regionId)) node.addClass('flag-define');
+        else if (flagHighlight.brightIds.has(regionId)) node.addClass('flag-path');
+        else if (flagHighlight.containedNoInheritIds?.has(regionId)) {
+          node.addClass('flag-contained-no-inherit');
+        } else if (flagHighlight.intersectPartialIds?.has(regionId)) {
+          node.addClass('flag-intersect-partial');
+        } else if (!flagHighlight.conflictIds?.has(regionId)) {
+          node.addClass('flag-dim');
+        }
+        if (valueInfo?.defining) node.addClass('flag-value-define');
+        else if (valueInfo) {
+          if (flagHighlight.containedNoInheritIds?.has(regionId)) {
+            node.addClass('flag-value-no-inherit');
+          } else if (flagHighlight.intersectPartialIds?.has(regionId)) {
+            node.addClass('flag-value-intersect');
+          } else {
+            node.addClass('flag-value-inherit');
+          }
+        }
+      } else if (attentionBrightIds) {
+        if (!attentionBrightIds.has(regionId)) node.addClass('flag-dim');
+      }
+    });
+
+    cy.edges().forEach((edge) => {
+      edge.removeClass(flagEdgeClassStr);
+      const source = edge.data('source') as string;
+      const target = edge.data('target') as string;
+      const isHierarchy = edge.hasClass('hierarchy');
+      const isContains = edge.hasClass('contains');
+      const isIntersects = edge.hasClass('intersects');
+
+      if (flagHighlight) {
+        if (isHierarchy) {
+          const edgeKey = `${source}->${target}`;
+          if (flagHighlight.brightEdgeKeys.has(edgeKey)) edge.addClass('flag-path-edge');
+          else edge.addClass('flag-dim-edge');
+        } else if (isContains || isIntersects) {
+          const relation = isContains ? 'contains' : 'intersects';
+          const edgeKey = `${relation}-${source}-${target}`;
+          const edgeKeyAlt = `${relation}-${target}-${source}`;
+          if (
+            flagHighlight.conflictEdgeKeys?.has(edgeKey)
+            || flagHighlight.conflictEdgeKeys?.has(edgeKeyAlt)
+          ) {
+            edge.addClass('flag-conflict-edge');
+          } else if (
+            flagHighlight.containedNoInheritEdgeKeys?.has(edgeKey)
+            || flagHighlight.containedNoInheritEdgeKeys?.has(edgeKeyAlt)
+          ) {
+            edge.addClass('flag-no-inherit-edge');
+          } else if (
+            flagHighlight.intersectPartialEdgeKeys?.has(edgeKey)
+            || flagHighlight.intersectPartialEdgeKeys?.has(edgeKeyAlt)
+          ) {
+            edge.addClass('flag-intersect-edge');
+          } else {
+            edge.addClass('flag-dim-edge');
+          }
+        }
+      } else if (attentionBrightIds) {
+        if (isHierarchy) {
+          const edgeKey = `${source}->${target}`;
+          const bothBright = attentionBrightIds.has(source) && attentionBrightIds.has(target);
+          if (!bothBright) {
+            edge.addClass('flag-dim-edge');
+          } else if (attentionBrightEdgeKeys && !attentionBrightEdgeKeys.has(edgeKey)) {
+            edge.addClass('flag-dim-edge');
+          }
+        } else if (isContains || isIntersects) {
+          const relation = isContains ? 'contains' : 'intersects';
+          const edgeKey = `${relation}-${source}-${target}`;
+          const edgeKeyAlt = `${relation}-${target}-${source}`;
+          if (attentionBrightEdgeKeys) {
+            if (
+              !attentionBrightEdgeKeys.has(edgeKey)
+              && !attentionBrightEdgeKeys.has(edgeKeyAlt)
+            ) {
+              edge.addClass('flag-dim-edge');
+            }
+          } else if (
+            !attentionBrightIds.has(source)
+            || !attentionBrightIds.has(target)
+          ) {
+            edge.addClass('flag-dim-edge');
+          }
+        }
+      }
+    });
+  });
+
+  applyRegionNodeStyles(cy);
 }
 
 /** Shared zoom ceiling for focus/fit so 1-node and N-node centering look consistent. */
@@ -226,6 +464,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     onBackgroundTap,
     onCopyName,
     onRename,
+    onAddManual,
     onAddDescendant,
     onDeleteManual,
     onOpenFlagsManager,
@@ -249,6 +488,12 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
   const viewStateRef = useRef<{ zoom: number; pan: { x: number; y: number } } | null>(null);
   const lockedRef = useRef(locked);
   lockedRef.current = locked;
+  const flagHighlightRef = useRef(flagHighlight);
+  flagHighlightRef.current = flagHighlight;
+  const attentionBrightIdsRef = useRef(attentionBrightIds);
+  attentionBrightIdsRef.current = attentionBrightIds;
+  const attentionBrightEdgeKeysRef = useRef(attentionBrightEdgeKeys);
+  attentionBrightEdgeKeysRef.current = attentionBrightEdgeKeys;
   const centerRequestRef = useRef(centerRequest);
   centerRequestRef.current = centerRequest;
   const focusRequestRef = useRef(focusRequest);
@@ -261,6 +506,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
   const lastAppliedFitSeqRef = useRef(0);
   const lastViewResetSeqRef = useRef(0);
   const lastLayoutSeqRef = useRef(0);
+  const flagLayoutActive = Boolean(flagHighlight);
 
   useEffect(() => {
     if (!viewResetRequest) return;
@@ -342,9 +588,14 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     el.style.top = `${y}px`;
   }, [contextMenu]);
 
-  // Main graph build — NOT on selectedId changes
+  // Main graph build — NOT on selectedId / flag-highlight layer toggles.
+  // Entering/leaving flag highlight re-lays out once with reserved value space.
   useEffect(() => {
     if (!containerRef.current) return;
+
+    const layoutSpacing = flagLayoutActive
+      ? FLAG_HIGHLIGHT_LAYOUT_SPACING
+      : DEFAULT_LAYOUT_SPACING;
 
     const hierarchyDepths = buildHierarchyDepthMap(scheme);
     const hiddenCounts = buildHiddenDescendantCount(scheme, hiddenNodes);
@@ -356,30 +607,25 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       if (hd === undefined) continue;
       const hiddenN = hiddenCounts.get(region.id) ?? 0;
       const hiddenSuffix = hiddenN > 0 ? `\n${t('graph.hiddenCount', { count: hiddenN })}` : '';
-      const valueInfo = flagHighlight?.valueLabels?.get(region.id);
-      const valueSuffix = valueInfo
-        ? (valueInfo.text.startsWith('∈') || valueInfo.text.startsWith('≈')
-          ? `\n${valueInfo.text}`
-          : valueInfo.defining ? `\n◆ ${valueInfo.text}` : `\n◇ ${valueInfo.text}`)
-        : '';
-      const label = `${region.id}\np:${region.priority} d:${hd}${hiddenSuffix}${valueSuffix}`;
-      const m = nodeLabelMetrics(label, hd, baseSize, {
-        denseText: Boolean(valueInfo),
-        valueEmphasis: Boolean(valueInfo),
-      });
+      const baseLabel = `${region.id}\np:${region.priority} d:${hd}${hiddenSuffix}`;
       const manual = isTemporaryRegion(region);
-      let width = m.width;
-      let height = m.height;
-      if (manual && region.type !== 'global') {
-        width = Math.max(m.width, m.height * 1.4);
-        height = Math.max(m.height * 0.72, m.width * 0.5);
-        width = Math.max(width, m.width);
-        height = Math.max(height, m.height);
-      }
-      nodeDims.set(region.id, { width, height });
+      const box = nodeBoxForLabel(
+        baseLabel,
+        hd,
+        baseSize,
+        manual,
+        region.type,
+        flagLayoutActive,
+      );
+      nodeDims.set(region.id, { width: box.width, height: box.height });
     }
 
-    const visiblePositions = layoutVisibleForest(scheme, hiddenNodes, nodeDims);
+    const visiblePositions = layoutVisibleForest(
+      scheme,
+      hiddenNodes,
+      nodeDims,
+      layoutSpacing,
+    );
     const visibleIds = new Set(visiblePositions.keys());
     const visibleSpatial = remapSpatialEdges(scheme.spatialEdges, hiddenNodes, parentMap);
 
@@ -392,65 +638,44 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
 
       const hiddenN = hiddenCounts.get(region.id) ?? 0;
       const hiddenSuffix = hiddenN > 0 ? `\n${t('graph.hiddenCount', { count: hiddenN })}` : '';
-      const valueInfo = flagHighlight?.valueLabels?.get(region.id);
-      const valueSuffix = valueInfo
-        ? (valueInfo.text.startsWith('∈') || valueInfo.text.startsWith('≈')
-          ? `\n${valueInfo.text}`
-          : valueInfo.defining ? `\n◆ ${valueInfo.text}` : `\n◇ ${valueInfo.text}`)
-        : '';
-      const label = `${region.id}\np:${region.priority} d:${hd}${hiddenSuffix}${valueSuffix}`;
-      const metrics = nodeLabelMetrics(label, hd, baseSize, {
-        denseText: Boolean(valueInfo),
-        valueEmphasis: Boolean(valueInfo),
-      });
+      const baseLabel = `${region.id}\np:${region.priority} d:${hd}${hiddenSuffix}`;
       const manual = isTemporaryRegion(region);
       const nodeShape = regionNodeShape(region.type, manual && region.type !== 'global');
-      let { width, height } = metrics;
-      if (manual && region.type !== 'global') {
-        width = Math.max(metrics.width, metrics.height * 1.4);
-        height = Math.max(metrics.height * 0.72, metrics.width * 0.5);
-        // Keep room for the full multi-line label (id + value).
-        width = Math.max(width, metrics.width);
-        height = Math.max(height, metrics.height);
-      }
+      const box = nodeBoxForLabel(
+        baseLabel,
+        hd,
+        baseSize,
+        manual,
+        region.type,
+        flagLayoutActive,
+      );
+      // Compact font when not showing a value yet; reserved box still holds space.
+      const baseMetrics = nodeLabelMetrics(baseLabel, hd, baseSize);
 
       const classes: string[] = [];
       if (orphanIds.has(region.id)) classes.push('orphan');
       if (conflictRegionIds.has(region.id)) classes.push('flag-conflict');
       if (hiddenN > 0) classes.push('has-collapsed');
       if (manual) classes.push('draft');
-      if (flagHighlight) {
-        if (flagHighlight.conflictIds?.has(region.id)) classes.push('flag-conflict-pair');
-        if (flagHighlight.definingIds.has(region.id)) classes.push('flag-define');
-        else if (flagHighlight.brightIds.has(region.id)) classes.push('flag-path');
-        else if (flagHighlight.containedNoInheritIds?.has(region.id)) {
-          classes.push('flag-contained-no-inherit');
-        } else if (flagHighlight.intersectPartialIds?.has(region.id)) {
-          classes.push('flag-intersect-partial');
-        } else if (!flagHighlight.conflictIds?.has(region.id)) classes.push('flag-dim');
-        if (valueInfo?.defining) classes.push('flag-value-define');
-        else if (valueInfo) {
-          if (flagHighlight.containedNoInheritIds?.has(region.id)) {
-            classes.push('flag-value-no-inherit');
-          } else if (flagHighlight.intersectPartialIds?.has(region.id)) {
-            classes.push('flag-value-intersect');
-          } else {
-            classes.push('flag-value-inherit');
-          }
-        }
-      } else if (attentionBrightIds) {
-        if (!attentionBrightIds.has(region.id)) classes.push('flag-dim');
-      }
 
       elements.push({
         data: {
           id: region.id,
-          label,
+          label: baseLabel,
+          baseLabel,
           color: orphanIds.has(region.id) ? '#ffdddd' : depthColor(hd),
-          width,
-          height,
-          fontSize: metrics.fontSize,
-          textMaxWidth: Math.max(metrics.textMaxWidth, width - 14),
+          width: box.width,
+          height: box.height,
+          layoutWidth: box.width,
+          layoutHeight: box.height,
+          layoutFontSize: box.fontSize,
+          layoutTextMaxWidth: box.textMaxWidth,
+          baseWidth: box.width,
+          baseHeight: box.height,
+          fontSize: flagLayoutActive ? box.fontSize : baseMetrics.fontSize,
+          baseFontSize: baseMetrics.fontSize,
+          textMaxWidth: box.textMaxWidth,
+          baseTextMaxWidth: Math.max(baseMetrics.textMaxWidth, box.width - 14),
           depth: hd,
           hiddenCount: hiddenN,
           regionType: region.type,
@@ -465,76 +690,26 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     for (const edge of scheme.hierarchyEdges) {
       if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) continue;
       if (!edgeAllowedByDisplayFilters('hierarchy', edgeDisplayFilters)) continue;
-      const edgeKey = `${edge.source}->${edge.target}`;
-      const edgeClasses = ['hierarchy'];
-      if (flagHighlight) {
-        if (flagHighlight.brightEdgeKeys.has(edgeKey)) edgeClasses.push('flag-path-edge');
-        else edgeClasses.push('flag-dim-edge');
-      } else if (attentionBrightIds) {
-        const bothBright = attentionBrightIds.has(edge.source) && attentionBrightIds.has(edge.target);
-        if (!bothBright) {
-          edgeClasses.push('flag-dim-edge');
-        } else if (attentionBrightEdgeKeys && !attentionBrightEdgeKeys.has(edgeKey)) {
-          edgeClasses.push('flag-dim-edge');
-        }
-      }
       elements.push({
         data: {
           id: `h-${edge.source}-${edge.target}`,
           source: edge.source,
           target: edge.target,
         },
-        classes: edgeClasses.join(' '),
+        classes: 'hierarchy',
       });
     }
 
     for (const edge of visibleSpatial) {
       if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) continue;
       if (!edgeAllowedByDisplayFilters(edge.relation, edgeDisplayFilters)) continue;
-      const spatialClasses: string[] = [edge.relation];
-      const edgeKey = `${edge.relation}-${edge.source}-${edge.target}`;
-      const edgeKeyAlt = `${edge.relation}-${edge.target}-${edge.source}`;
-      if (flagHighlight) {
-        if (
-          flagHighlight.conflictEdgeKeys?.has(edgeKey)
-          || flagHighlight.conflictEdgeKeys?.has(edgeKeyAlt)
-        ) {
-          spatialClasses.push('flag-conflict-edge');
-        } else if (
-          flagHighlight.containedNoInheritEdgeKeys?.has(edgeKey)
-          || flagHighlight.containedNoInheritEdgeKeys?.has(edgeKeyAlt)
-        ) {
-          spatialClasses.push('flag-no-inherit-edge');
-        } else if (
-          flagHighlight.intersectPartialEdgeKeys?.has(edgeKey)
-          || flagHighlight.intersectPartialEdgeKeys?.has(edgeKeyAlt)
-        ) {
-          spatialClasses.push('flag-intersect-edge');
-        } else {
-          spatialClasses.push('flag-dim-edge');
-        }
-      } else if (attentionBrightIds) {
-        if (attentionBrightEdgeKeys) {
-          if (
-            !attentionBrightEdgeKeys.has(edgeKey)
-            && !attentionBrightEdgeKeys.has(edgeKeyAlt)
-          ) {
-            spatialClasses.push('flag-dim-edge');
-          }
-        } else if (
-          !attentionBrightIds.has(edge.source)
-          || !attentionBrightIds.has(edge.target)
-        ) {
-          spatialClasses.push('flag-dim-edge');
-        }
-      }
       elements.push({
         data: {
           id: `s-${edge.relation}-${edge.source}-${edge.target}`,
           source: edge.source,
           target: edge.target,
         },
-        classes: spatialClasses.join(' '),
+        classes: edge.relation,
       });
     }
 
@@ -598,6 +773,18 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       });
     });
 
+    cy.on('cxttap', (evt) => {
+      if (evt.target !== cy) return;
+      evt.originalEvent.preventDefault();
+      const rendered = evt.renderedPosition;
+      if (!rendered || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      setContextMenu({
+        x: rect.left + rendered.x,
+        y: rect.top + rendered.y,
+      });
+    });
+
     if (selectedId && cy.getElementById(selectedId).nonempty()) {
       cy.getElementById(selectedId).addClass('selected');
     }
@@ -616,6 +803,14 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     // panify: drag on a node pans the viewport (node stays put); cxttap still works.
     if (lockedRef.current) cy.nodes().panify();
     cyRef.current = cy;
+
+    applyHighlightOverlay(
+      cy,
+      flagHighlightRef.current,
+      attentionBrightIdsRef.current,
+      attentionBrightEdgeKeysRef.current,
+      baseSize,
+    );
 
     // Prefer focus (search/partners) over fit / expand-collapse center.
     // Each seq is applied only once so an old search does not keep winning on later rebuilds.
@@ -670,9 +865,8 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     hiddenNodes,
     orphanIds,
     conflictRegionIds,
-    flagHighlight,
-    attentionBrightIds,
-    attentionBrightEdgeKeys,
+    // Re-layout only when entering/leaving flag highlight — not on layer toggles.
+    flagLayoutActive,
     edgeDisplayFilters,
     baseSize,
     locale,
@@ -683,6 +877,19 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     onNodeOpen,
     onBackgroundTap,
   ]);
+
+  // Flag / attention highlight: update classes & captions without re-layout.
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    applyHighlightOverlay(
+      cy,
+      flagHighlight,
+      attentionBrightIds,
+      attentionBrightEdgeKeys,
+      baseSize,
+    );
+  }, [flagHighlight, attentionBrightIds, attentionBrightEdgeKeys, baseSize]);
 
   useEffect(() => {
     const cy = cyRef.current;
@@ -763,7 +970,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     e.preventDefault();
   };
 
-  const contextRegion = contextMenu
+  const contextRegion = contextMenu?.nodeId
     ? scheme.regions.find((region) => region.id === contextMenu.nodeId)
     : undefined;
   const contextIsGlobal = contextRegion?.type === 'global';
@@ -775,7 +982,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
         className="graph-container"
         onContextMenu={blockBrowserMenu}
       />
-      {contextMenu && (
+      {contextMenu && !contextMenu.nodeId && (
         <div
           ref={contextMenuRef}
           className="node-context-menu"
@@ -783,21 +990,40 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
           onClick={(e) => e.stopPropagation()}
           onContextMenu={blockBrowserMenu}
         >
-          <button type="button" onClick={() => { onNodeOpen(contextMenu.nodeId); setContextMenu(null); }}>
+          <button
+            type="button"
+            onClick={() => {
+              onAddManual();
+              setContextMenu(null);
+            }}
+          >
+            {t('graph.addManualRegion')}
+          </button>
+        </div>
+      )}
+      {contextMenu?.nodeId && (
+        <div
+          ref={contextMenuRef}
+          className="node-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={blockBrowserMenu}
+        >
+          <button type="button" onClick={() => { onNodeOpen(contextMenu.nodeId!); setContextMenu(null); }}>
             {t('graph.properties')}
           </button>
-          <button type="button" onClick={() => { onCopyName(contextMenu.nodeId); setContextMenu(null); }}>
+          <button type="button" onClick={() => { onCopyName(contextMenu.nodeId!); setContextMenu(null); }}>
             {t('graph.copyName')}
           </button>
           {onRename && (
-            <button type="button" onClick={() => { onRename(contextMenu.nodeId); setContextMenu(null); }}>
+            <button type="button" onClick={() => { onRename(contextMenu.nodeId!); setContextMenu(null); }}>
               {t('graph.rename')}
             </button>
           )}
-          <button type="button" onClick={() => { onAddDescendant(contextMenu.nodeId); setContextMenu(null); }}>
+          <button type="button" onClick={() => { onAddDescendant(contextMenu.nodeId!); setContextMenu(null); }}>
             {t('graph.addDescendant')}
           </button>
-          <button type="button" onClick={() => { onOpenFlagsManager(contextMenu.nodeId); setContextMenu(null); }}>
+          <button type="button" onClick={() => { onOpenFlagsManager(contextMenu.nodeId!); setContextMenu(null); }}>
             {t('graph.flagsManager')}
           </button>
           <div className="node-context-menu-item has-submenu">
@@ -808,13 +1034,13 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
             <div className="node-context-submenu">
               <button
                 type="button"
-                onClick={() => { onHighlightSubtree(contextMenu.nodeId, 'full'); setContextMenu(null); }}
+                onClick={() => { onHighlightSubtree(contextMenu.nodeId!, 'full'); setContextMenu(null); }}
               >
                 {t('graph.highlightSubtreeFull')}
               </button>
               <button
                 type="button"
-                onClick={() => { onHighlightSubtree(contextMenu.nodeId, 'children'); setContextMenu(null); }}
+                onClick={() => { onHighlightSubtree(contextMenu.nodeId!, 'children'); setContextMenu(null); }}
               >
                 {t('graph.highlightSubtreeChildren')}
               </button>
@@ -823,7 +1049,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
                   <button
                     type="button"
                     onClick={() => {
-                      onHighlightSubtree(contextMenu.nodeId, 'intersects');
+                      onHighlightSubtree(contextMenu.nodeId!, 'intersects');
                       setContextMenu(null);
                     }}
                   >
@@ -838,7 +1064,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
                       <button
                         type="button"
                         onClick={() => {
-                          onHighlightSubtree(contextMenu.nodeId, 'containment-all');
+                          onHighlightSubtree(contextMenu.nodeId!, 'containment-all');
                           setContextMenu(null);
                         }}
                       >
@@ -847,7 +1073,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
                       <button
                         type="button"
                         onClick={() => {
-                          onHighlightSubtree(contextMenu.nodeId, 'containment-children');
+                          onHighlightSubtree(contextMenu.nodeId!, 'containment-children');
                           setContextMenu(null);
                         }}
                       >
@@ -856,7 +1082,7 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
                       <button
                         type="button"
                         onClick={() => {
-                          onHighlightSubtree(contextMenu.nodeId, 'containment-parents');
+                          onHighlightSubtree(contextMenu.nodeId!, 'containment-parents');
                           setContextMenu(null);
                         }}
                       >
@@ -876,20 +1102,20 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
           <button
             type="button"
             className="danger-menu-item"
-            onClick={() => { onDeleteManual(contextMenu.nodeId); setContextMenu(null); }}
+            onClick={() => { onDeleteManual(contextMenu.nodeId!); setContextMenu(null); }}
           >
             {t('graph.deleteManual')}
           </button>
-          <button type="button" onClick={() => { onCollapseChildren(contextMenu.nodeId); setContextMenu(null); }}>
+          <button type="button" onClick={() => { onCollapseChildren(contextMenu.nodeId!); setContextMenu(null); }}>
             {t('graph.hideChildren')}
           </button>
-          <button type="button" onClick={() => { onCollapseRecursive(contextMenu.nodeId); setContextMenu(null); }}>
+          <button type="button" onClick={() => { onCollapseRecursive(contextMenu.nodeId!); setContextMenu(null); }}>
             {t('graph.collapseRecursive')}
           </button>
-          <button type="button" onClick={() => { onExpandChildren(contextMenu.nodeId); setContextMenu(null); }}>
+          <button type="button" onClick={() => { onExpandChildren(contextMenu.nodeId!); setContextMenu(null); }}>
             {t('graph.showChildren')}
           </button>
-          <button type="button" onClick={() => { onExpandRecursive(contextMenu.nodeId); setContextMenu(null); }}>
+          <button type="button" onClick={() => { onExpandRecursive(contextMenu.nodeId!); setContextMenu(null); }}>
             {t('graph.expandRecursive')}
           </button>
         </div>

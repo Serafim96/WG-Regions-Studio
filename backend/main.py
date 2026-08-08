@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import threading
 import webbrowser
@@ -53,6 +54,22 @@ app.add_middleware(
 )
 
 
+class _SkipHealthAccessLog(logging.Filter):
+    """Keep the 2s liveness poll out of the uvicorn console."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            return "/api/health" not in record.getMessage()
+        except Exception:
+            return True
+
+
+def _quiet_health_access_log() -> None:
+    log = logging.getLogger("uvicorn.access")
+    if not any(isinstance(f, _SkipHealthAccessLog) for f in log.filters):
+        log.addFilter(_SkipHealthAccessLog())
+
+
 def _maybe_open_browser() -> None:
     if os.environ.get("MRV_OPEN_BROWSER", "").lower() in ("1", "true", "yes"):
         webbrowser.open("http://127.0.0.1:8000")
@@ -60,6 +77,7 @@ def _maybe_open_browser() -> None:
 
 @app.on_event("startup")
 def on_startup() -> None:
+    _quiet_health_access_log()
     threading.Timer(1.2, _maybe_open_browser).start()
 
 # In-memory session state

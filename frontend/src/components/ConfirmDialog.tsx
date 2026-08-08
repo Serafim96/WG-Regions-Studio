@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n/I18nContext';
 import { ModalOverlay } from './ModalOverlay';
 
@@ -14,7 +15,7 @@ interface ConfirmDialogProps {
   onDismiss?: () => void;
 }
 
-/** App-styled yes/no dialog (replaces window.confirm). */
+/** App-styled yes/no dialog (replaces window.confirm). Always on top via portal. */
 export function ConfirmDialog({
   title,
   message,
@@ -27,9 +28,9 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const { t } = useI18n();
   const dismiss = onDismiss ?? onCancel;
-  return (
-    <ModalOverlay onClose={dismiss}>
-      <div className="modal clear-scheme-modal" onClick={(e) => e.stopPropagation()}>
+  return createPortal(
+    <ModalOverlay className="confirm-dialog-overlay" onClose={dismiss}>
+      <div className="modal clear-scheme-modal confirm-dialog-modal" onClick={(e) => e.stopPropagation()}>
         <header>
           <h2>{title}</h2>
           <button type="button" onClick={dismiss}>×</button>
@@ -46,6 +47,7 @@ export function ConfirmDialog({
           </div>
         </div>
       </div>
-    </ModalOverlay>
+    </ModalOverlay>,
+    document.body,
   );
 }

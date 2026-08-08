@@ -1,19 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo, RegionData, SpatialEdge } from '../types';
 import type { SpatialRelationsGrouped } from '../utils/graph';
 import { compareNatural } from '../utils/naturalSort';
 import { validateFlagRows } from '../utils/flagRows';
 import { isTemporaryRegion } from '../utils/regions';
+import { regionHasNonStandardHeight } from '../utils/worldHeight';
 import {
-  cuboidIntersectionVolume,
   findIntersectOverlapBlocks,
   formatOneDecimal,
+  intersectionVolume,
   regionVolume,
 } from '../utils/volume';
 import { findFlagInfo } from './FlagHelpButton';
 import { FlagNameCombobox } from './FlagNameCombobox';
 import { FlagValueInput } from './FlagValueInput';
+import { IconLock, IconUnlock } from './GraphControlIcons';
 import { ModalOverlay } from './ModalOverlay';
 import { ConfirmDialog } from './ConfirmDialog';
 import { SuggestDropdown } from './SuggestDropdown';
@@ -39,9 +42,12 @@ interface RegionPanelProps {
   regionsById: Map<string, RegionData>;
   flagsCatalog: FlagInfo[];
   regionIds: string[];
+  canGoBack?: boolean;
+  canGoForward?: boolean;
+  onHistoryBack?: () => void;
+  onHistoryForward?: () => void;
   onClose: () => void;
   onFocusRegion: (regionId: string) => void;
-  onCopyName?: (regionId: string) => void;
   onDeleteManual?: (regionId: string) => void;
   canDelete?: boolean;
   onUpdateParent?: (regionId: string, parent: string | null) => Promise<void>;
@@ -120,11 +126,11 @@ function IntersectsPartnerTable({
     return partnerIds.map((id) => {
       const fromEdge = findIntersectOverlapBlocks(spatialEdges, region.id, id);
       let blocks: number | null;
-      if (fromEdge === undefined) {
-        const partner = regionsById.get(id);
-        blocks = partner ? cuboidIntersectionVolume(region, partner) : null;
-      } else {
+      if (typeof fromEdge === 'number') {
         blocks = fromEdge;
+      } else {
+        const partner = regionsById.get(id);
+        blocks = partner ? intersectionVolume(region, partner) : null;
       }
       const percent =
         blocks != null && selfVolume != null && selfVolume > 0
@@ -306,14 +312,40 @@ function StringListEditor({
   values,
   onChange,
   disabled,
+  readOnly,
   addLabel,
 }: {
   label: string;
   values: string[];
   onChange: (next: string[]) => void;
   disabled?: boolean;
+  readOnly?: boolean;
   addLabel: string;
 }) {
+  if (readOnly) {
+    const shown = values.map((v) => v.trim()).filter(Boolean);
+    return (
+      <div className="region-members-subtable">
+        <p className="region-members-sublabel">{label}</p>
+        {shown.length === 0 ? (
+          <p className="partners-empty">—</p>
+        ) : (
+          <div className="region-link-table">
+            <table>
+              <tbody>
+                {shown.map((value, index) => (
+                  <tr key={`${value}-${index}`}>
+                    <td>{value}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="region-members-subtable">
       <p className="region-members-sublabel">{label}</p>
@@ -372,9 +404,12 @@ export function RegionPanel({
   regionsById,
   flagsCatalog,
   regionIds,
+  canGoBack = false,
+  canGoForward = false,
+  onHistoryBack,
+  onHistoryForward,
   onClose,
   onFocusRegion,
-  onCopyName,
   onDeleteManual,
   onUpdateParent,
   onUpdateFlags,
@@ -384,61 +419,66 @@ export function RegionPanel({
   onUpdateMembers,
 }: RegionPanelProps) {
   const { t } = useI18n();
+  const [fieldsLocked, setFieldsLocked] = useState(true);
   const [editingParent, setEditingParent] = useState(false);
   const [parentQuery, setParentQuery] = useState(region.parent ?? '');
-  const [parentBusy, setParentBusy] = useState(false);
   const [parentError, setParentError] = useState<string | null>(null);
 
   const isTemp = isTemporaryRegion(region);
   const canEditGeometry = Boolean(onUpdateGeometry) && (isTemp || region.type !== 'global');
 
   const [geometry, setGeometry] = useState<RegionGeometryState>(() => geometryFromRegion(region));
-  const [geometryBusy, setGeometryBusy] = useState(false);
   const [geometryError, setGeometryError] = useState<string | null>(null);
   const [geometryDirty, setGeometryDirty] = useState(false);
 
   const [flagRows, setFlagRows] = useState<FlagRow[]>(() => flagsToRows(region.flags ?? {}));
   const [flagsDirty, setFlagsDirty] = useState(false);
-  const [flagsBusy, setFlagsBusy] = useState(false);
   const [flagsError, setFlagsError] = useState<string | null>(null);
 
   const [priorityDraft, setPriorityDraft] = useState(String(region.priority));
-  const [priorityBusy, setPriorityBusy] = useState(false);
   const [priorityError, setPriorityError] = useState<string | null>(null);
 
   const [ownersPlayers, setOwnersPlayers] = useState(() => partyFromRegion(region.owners).players);
   const [ownersUniqueIds, setOwnersUniqueIds] = useState(() => partyFromRegion(region.owners).uniqueIds);
   const [membersPlayers, setMembersPlayers] = useState(() => partyFromRegion(region.members).players);
   const [membersUniqueIds, setMembersUniqueIds] = useState(() => partyFromRegion(region.members).uniqueIds);
-  const [membersBusy, setMembersBusy] = useState(false);
   const [membersError, setMembersError] = useState<string | null>(null);
   const [membersDirty, setMembersDirty] = useState(false);
+  const [saveBusy, setSaveBusy] = useState(false);
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [showCopiedFlash, setShowCopiedFlash] = useState(false);
+  const [copiedFlashPos, setCopiedFlashPos] = useState<{ left: number; top: number } | null>(null);
+  const copiedFlashTimerRef = useRef<number | null>(null);
+  const copyBtnRef = useRef<HTMLButtonElement>(null);
+  const [pendingLeave, setPendingLeave] = useState<null | (() => void)>(null);
 
-  useEffect(() => {
-    setGeometry(geometryFromRegion(region));
+  const resetDraftsFromRegion = (source: RegionData) => {
+    setGeometry(geometryFromRegion(source));
     setGeometryDirty(false);
     setGeometryError(null);
-    setFlagRows(flagsToRows(region.flags ?? {}));
+    setFlagRows(flagsToRows(source.flags ?? {}));
     setFlagsDirty(false);
     setFlagsError(null);
-    setParentQuery(region.parent ?? '');
-    setEditingParent(false);
+    setParentQuery(source.parent ?? '');
     setParentError(null);
-    setPriorityDraft(String(region.priority));
+    setEditingParent(false);
+    setPriorityDraft(String(source.priority));
     setPriorityError(null);
-    const owners = partyFromRegion(region.owners);
-    const members = partyFromRegion(region.members);
+    const owners = partyFromRegion(source.owners);
+    const members = partyFromRegion(source.members);
     setOwnersPlayers(owners.players);
     setOwnersUniqueIds(owners.uniqueIds);
     setMembersPlayers(members.players);
     setMembersUniqueIds(members.uniqueIds);
     setMembersDirty(false);
     setMembersError(null);
-  }, [region]);
+  };
 
-  const priorityDirty =
-    Boolean(onUpdatePriority) && priorityDraft.trim() !== String(region.priority);
+  useEffect(() => {
+    resetDraftsFromRegion(region);
+    setFieldsLocked(true);
+  }, [region]);
 
   const parentCandidates = useMemo(() => {
     const q = parentQuery.trim().toLowerCase();
@@ -456,6 +496,18 @@ export function RegionPanel({
     return regionIds.find((id) => id.toLowerCase() === q.toLowerCase() && id !== region.id) ?? undefined;
   }, [parentQuery, regionIds, region.id]);
 
+  const parentDirty = useMemo(() => {
+    if (!onUpdateParent) return false;
+    const draft = parentQuery.trim() || null;
+    const current = region.parent ?? null;
+    if (draft === null && current === null) return false;
+    if (draft === null || current === null) return true;
+    return draft.toLowerCase() !== current.toLowerCase();
+  }, [onUpdateParent, parentQuery, region.parent]);
+
+  const priorityDirty =
+    Boolean(onUpdatePriority) && priorityDraft.trim() !== String(region.priority);
+
   const sortedChildIds = useMemo(() => [...childIds].sort(compareNatural), [childIds]);
 
   const sortedSpatial = useMemo(() => ({
@@ -467,90 +519,73 @@ export function RegionPanel({
   const isDirty =
     geometryDirty
     || flagsDirty
-    || editingParent
+    || parentDirty
     || priorityDirty
     || membersDirty;
 
-  const requestClose = () => {
+  const fieldsEditable = !fieldsLocked && !saveBusy;
+
+  const requestLeave = (action: () => void) => {
     if (isDirty) {
+      setPendingLeave(() => action);
       setShowUnsavedConfirm(true);
       return;
     }
-    onClose();
+    action();
+  };
+
+  const requestClose = () => {
+    requestLeave(onClose);
+  };
+
+  const navigateToRegion = (regionId: string) => {
+    if (regionId === region.id) return;
+    requestLeave(() => onFocusRegion(regionId));
+  };
+
+  const requestHistoryBack = () => {
+    if (!onHistoryBack || !canGoBack) return;
+    requestLeave(onHistoryBack);
+  };
+
+  const requestHistoryForward = () => {
+    if (!onHistoryForward || !canGoForward) return;
+    requestLeave(onHistoryForward);
   };
 
   const copyName = () => {
-    if (onCopyName) onCopyName(region.id);
-    else navigator.clipboard.writeText(region.id);
-  };
-
-  const startEditParent = () => {
-    setParentQuery(region.parent ?? '');
-    setParentError(null);
-    setEditingParent(true);
-  };
-
-  const cancelEditParent = () => {
-    setEditingParent(false);
-    setParentError(null);
-    setParentQuery(region.parent ?? '');
-  };
-
-  const saveParent = async (next: string | null) => {
-    if (!onUpdateParent) return;
-    setParentBusy(true);
-    setParentError(null);
-    try {
-      await onUpdateParent(region.id, next);
-      setEditingParent(false);
-    } catch (err) {
-      setParentError(String(err));
-    } finally {
-      setParentBusy(false);
+    void navigator.clipboard.writeText(region.id);
+    const btn = copyBtnRef.current;
+    if (btn) {
+      const rect = btn.getBoundingClientRect();
+      setCopiedFlashPos({
+        left: rect.left + rect.width / 2,
+        top: rect.top - 6,
+      });
+    } else {
+      setCopiedFlashPos(null);
     }
+    setShowCopiedFlash(true);
+    if (copiedFlashTimerRef.current != null) {
+      window.clearTimeout(copiedFlashTimerRef.current);
+    }
+    copiedFlashTimerRef.current = window.setTimeout(() => {
+      setShowCopiedFlash(false);
+      setCopiedFlashPos(null);
+      copiedFlashTimerRef.current = null;
+    }, 2000);
   };
 
-  const savePriority = async () => {
-    if (!onUpdatePriority) return;
-    const parsed = Number(priorityDraft.trim());
-    if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
-      setPriorityError(t('geometry.invalidNumber'));
-      return;
+  useEffect(() => () => {
+    if (copiedFlashTimerRef.current != null) {
+      window.clearTimeout(copiedFlashTimerRef.current);
     }
-    setPriorityBusy(true);
-    setPriorityError(null);
-    try {
-      await onUpdatePriority(region.id, parsed);
-    } catch (err) {
-      setPriorityError(String(err));
-    } finally {
-      setPriorityBusy(false);
-    }
-  };
+  }, []);
 
   const onGeometryChange = (next: RegionGeometryState) => {
     setGeometry(next);
     setGeometryDirty(true);
     setGeometryError(null);
-  };
-
-  const saveGeometry = async () => {
-    if (!onUpdateGeometry) return;
-    const validated = validateGeometryState(geometry);
-    if (!validated.ok) {
-      setGeometryError(t(validated.errorKey));
-      return;
-    }
-    setGeometryBusy(true);
-    setGeometryError(null);
-    try {
-      await onUpdateGeometry(region.id, validated.payload);
-      setGeometryDirty(false);
-    } catch (err) {
-      setGeometryError(String(err));
-    } finally {
-      setGeometryBusy(false);
-    }
   };
 
   const updateFlagRow = (key: string, patch: Partial<Pick<FlagRow, 'name' | 'value'>>) => {
@@ -571,42 +606,96 @@ export function RegionPanel({
     setFlagsDirty(true);
   };
 
-  const saveFlags = async () => {
-    if (!onUpdateFlags) return;
-    const flagCheck = validateFlagRows(flagRows, flagsCatalog);
-    if (!flagCheck.ok) {
-      setFlagsError(t(flagCheck.errorKey));
-      return;
-    }
-    setFlagsBusy(true);
-    setFlagsError(null);
-    try {
-      await onUpdateFlags(region.id, rowsToFlags(flagRows));
-      setFlagsDirty(false);
-    } catch (err) {
-      setFlagsError(String(err));
-    } finally {
-      setFlagsBusy(false);
-    }
-  };
-
   const markMembersDirty = () => setMembersDirty(true);
 
-  const saveMembers = async () => {
-    if (!onUpdateMembers) return;
-    setMembersBusy(true);
+  const discardChanges = () => {
+    resetDraftsFromRegion(region);
+    setShowDiscardConfirm(false);
+  };
+
+  const requestDiscard = () => {
+    if (!isDirty || saveBusy) return;
+    setShowDiscardConfirm(true);
+  };
+
+  const saveAll = async () => {
+    if (!isDirty || saveBusy) return;
+
+    setParentError(null);
+    setPriorityError(null);
+    setGeometryError(null);
+    setFlagsError(null);
     setMembersError(null);
+
+    if (parentDirty) {
+      if (parentQuery.trim() !== '' && resolvedParent === undefined) {
+        setParentError(t('region.parentInvalid'));
+        return;
+      }
+    }
+
+    let priorityValue: number | null = null;
+    if (priorityDirty) {
+      const parsed = Number(priorityDraft.trim());
+      if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
+        setPriorityError(t('geometry.invalidNumber'));
+        return;
+      }
+      priorityValue = parsed;
+    }
+
+    let geometryPayload: GeometryPayload | null = null;
+    if (geometryDirty && onUpdateGeometry) {
+      const validated = validateGeometryState(geometry);
+      if (!validated.ok) {
+        setGeometryError(t(validated.errorKey));
+        return;
+      }
+      geometryPayload = validated.payload;
+    }
+
+    if (flagsDirty && onUpdateFlags) {
+      const flagCheck = validateFlagRows(flagRows, flagsCatalog);
+      if (!flagCheck.ok) {
+        setFlagsError(t(flagCheck.errorKey));
+        return;
+      }
+    }
+
+    setSaveBusy(true);
     try {
-      await onUpdateMembers(
-        region.id,
-        partyToRecord(ownersPlayers, ownersUniqueIds, region.owners),
-        partyToRecord(membersPlayers, membersUniqueIds, region.members),
-      );
-      setMembersDirty(false);
+      if (parentDirty && onUpdateParent) {
+        await onUpdateParent(region.id, parentQuery.trim() ? resolvedParent! : null);
+      }
+      if (priorityDirty && onUpdatePriority && priorityValue != null) {
+        await onUpdatePriority(region.id, priorityValue);
+      }
+      if (geometryPayload && onUpdateGeometry) {
+        await onUpdateGeometry(region.id, geometryPayload);
+        setGeometryDirty(false);
+      }
+      if (flagsDirty && onUpdateFlags) {
+        await onUpdateFlags(region.id, rowsToFlags(flagRows));
+        setFlagsDirty(false);
+      }
+      if (membersDirty && onUpdateMembers) {
+        await onUpdateMembers(
+          region.id,
+          partyToRecord(ownersPlayers, ownersUniqueIds, region.owners),
+          partyToRecord(membersPlayers, membersUniqueIds, region.members),
+        );
+        setMembersDirty(false);
+      }
+      setFieldsLocked(true);
     } catch (err) {
-      setMembersError(String(err));
+      const message = String(err);
+      if (parentDirty) setParentError(message);
+      else if (priorityDirty) setPriorityError(message);
+      else if (geometryDirty) setGeometryError(message);
+      else if (flagsDirty) setFlagsError(message);
+      else setMembersError(message);
     } finally {
-      setMembersBusy(false);
+      setSaveBusy(false);
     }
   };
 
@@ -615,61 +704,151 @@ export function RegionPanel({
     + sortedSpatial.containedIn.length
     + sortedSpatial.contains.length;
 
+  const lockedParentLabel = parentQuery.trim() || null;
+  const lockedParentNavId =
+    lockedParentLabel == null
+      ? null
+      : (resolvedParent
+        ?? regionIds.find((id) => id.toLowerCase() === lockedParentLabel.toLowerCase())
+        ?? null);
+
   return (
     <>
     <ModalOverlay onClose={requestClose}>
       <div className="modal region-panel-modal" onClick={(e) => e.stopPropagation()}>
         <header className="region-panel-header">
           <div className="region-panel-title">
+            <div className="region-history-nav">
+              <button
+                type="button"
+                className="icon-btn"
+                disabled={!canGoBack}
+                title={t('region.historyBack')}
+                aria-label={t('region.historyBack')}
+                onClick={requestHistoryBack}
+              >
+                ←
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                disabled={!canGoForward}
+                title={t('region.historyForward')}
+                aria-label={t('region.historyForward')}
+                onClick={requestHistoryForward}
+              >
+                →
+              </button>
+            </div>
             <h2>{region.id}</h2>
             {onRequestRename && (
               <button type="button" onClick={() => onRequestRename(region.id)}>
                 {t('region.editName')}
               </button>
             )}
+            <span className="copy-name-wrap">
+              <button
+                ref={copyBtnRef}
+                type="button"
+                className="icon-btn"
+                title={t('region.copyName')}
+                aria-label={t('region.copyName')}
+                onClick={copyName}
+              >
+                <CopyIcon />
+              </button>
+            </span>
+            {showCopiedFlash && copiedFlashPos && createPortal(
+              <span
+                className="copy-name-flash"
+                role="status"
+                style={{ left: copiedFlashPos.left, top: copiedFlashPos.top }}
+              >
+                {t('region.copiedFlash')}
+              </span>,
+              document.body,
+            )}
             <button
               type="button"
-              className="icon-btn"
-              title={t('region.copyName')}
-              aria-label={t('region.copyName')}
-              onClick={copyName}
+              className={`icon-btn region-fields-lock${fieldsLocked ? ' is-locked' : ' is-unlocked'}`}
+              title={t(fieldsLocked ? 'region.unlockFields' : 'region.lockFields')}
+              aria-label={t(fieldsLocked ? 'region.unlockFields' : 'region.lockFields')}
+              disabled={saveBusy}
+              onClick={() => setFieldsLocked((v) => {
+                if (!v) setEditingParent(false);
+                return !v;
+              })}
             >
-              <CopyIcon />
+              {fieldsLocked ? <IconLock /> : <IconUnlock />}
             </button>
           </div>
-          <button type="button" onClick={requestClose}>×</button>
+          <div className="region-panel-header-actions">
+            <button
+              type="button"
+              className="region-action-btn"
+              disabled={!isDirty || saveBusy}
+              onClick={requestDiscard}
+            >
+              {t('region.cancelChanges')}
+            </button>
+            <button
+              type="button"
+              className="region-action-btn success"
+              disabled={!isDirty || saveBusy}
+              onClick={() => void saveAll()}
+            >
+              {saveBusy ? t('region.savingAll') : t('region.saveAll')}
+            </button>
+            <button type="button" onClick={requestClose}>×</button>
+          </div>
         </header>
 
         <div className="modal-body">
           <div className="region-parent-block">
-            <p>
-              <strong>{t('region.parent')}:</strong>{' '}
-              {!editingParent && (
-                <>
-                  {region.parent ? (
-                    <button type="button" className="region-link" onClick={() => onFocusRegion(region.parent!)}>
-                      {region.parent}
-                    </button>
-                  ) : (
-                    '—'
-                  )}
-                  {onUpdateParent && (
-                    <button type="button" className="inline-toggle-btn" onClick={startEditParent}>
-                      {t('region.editParent')}
-                    </button>
-                  )}
-                </>
-              )}
-            </p>
-            {editingParent && onUpdateParent && (
+            {fieldsLocked || !onUpdateParent || !editingParent ? (
+              <p>
+                <strong>{t('region.parent')}:</strong>{' '}
+                {lockedParentLabel == null ? (
+                  '—'
+                ) : lockedParentNavId ? (
+                  <button
+                    type="button"
+                    className="region-link"
+                    onClick={() => navigateToRegion(lockedParentNavId)}
+                  >
+                    {lockedParentLabel}
+                  </button>
+                ) : (
+                  <span>{lockedParentLabel}</span>
+                )}
+                {!fieldsLocked && onUpdateParent && (
+                  <button
+                    type="button"
+                    className="region-action-btn"
+                    disabled={!fieldsEditable}
+                    onClick={() => {
+                      setParentQuery(region.parent ?? '');
+                      setParentError(null);
+                      setEditingParent(true);
+                    }}
+                  >
+                    {t('region.editParent')}
+                  </button>
+                )}
+              </p>
+            ) : (
               <div className="region-parent-edit">
+                <p><strong>{t('region.parent')}:</strong></p>
                 <input
                   className="search-input"
                   type="text"
                   placeholder={t('region.parentPlaceholder')}
                   value={parentQuery}
-                  onChange={(e) => setParentQuery(e.target.value)}
-                  disabled={parentBusy}
+                  onChange={(e) => {
+                    setParentQuery(e.target.value);
+                    setParentError(null);
+                  }}
+                  disabled={!fieldsEditable}
                 />
                 {parentQuery.trim() && resolvedParent === undefined && (
                   <p className="search-empty">{t('region.parentInvalid')}</p>
@@ -677,75 +856,43 @@ export function RegionPanel({
                 <SuggestDropdown
                   items={parentCandidates}
                   query={parentQuery}
-                  open={parentCandidates.length > 0}
+                  open={fieldsEditable && parentCandidates.length > 0}
                   onPick={setParentQuery}
                 />
-                {parentError && <p className="flags-manager-error">{parentError}</p>}
                 <div className="modal-actions">
                   <button
                     type="button"
-                    className="success"
-                    disabled={parentBusy || (parentQuery.trim() !== '' && resolvedParent === undefined)}
-                    onClick={() => void saveParent(parentQuery.trim() ? resolvedParent! : null)}
-                  >
-                    {t('region.saveParent')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={parentBusy || !region.parent}
-                    onClick={() => void saveParent(null)}
+                    disabled={!fieldsEditable || !parentQuery.trim()}
+                    onClick={() => {
+                      setParentQuery('');
+                      setParentError(null);
+                    }}
                   >
                     {t('region.clearParent')}
-                  </button>
-                  <button type="button" disabled={parentBusy} onClick={cancelEditParent}>
-                    {t('region.cancelParent')}
                   </button>
                 </div>
               </div>
             )}
+            {parentError && <p className="flags-manager-error">{parentError}</p>}
           </div>
 
           <div className="region-priority-block">
             <p>
               <strong>{t('region.priority')}:</strong>{' '}
-              {onUpdatePriority ? (
-                <>
-                  <input
-                    className="search-input region-priority-input"
-                    type="number"
-                    step={1}
-                    value={priorityDraft}
-                    disabled={priorityBusy}
-                    onChange={(e) => {
-                      setPriorityDraft(e.target.value);
-                      setPriorityError(null);
-                    }}
-                  />
-                  <span className="region-priority-actions">
-                    <button
-                      type="button"
-                      className="success"
-                      disabled={priorityBusy || !priorityDirty}
-                      onClick={() => void savePriority()}
-                    >
-                      {t('region.savePriority')}
-                    </button>
-                    {priorityDirty && (
-                      <button
-                        type="button"
-                        disabled={priorityBusy}
-                        onClick={() => {
-                          setPriorityDraft(String(region.priority));
-                          setPriorityError(null);
-                        }}
-                      >
-                        {t('region.resetPriority')}
-                      </button>
-                    )}
-                  </span>
-                </>
+              {onUpdatePriority && !fieldsLocked ? (
+                <input
+                  className="search-input region-priority-input"
+                  type="number"
+                  step={1}
+                  value={priorityDraft}
+                  disabled={!fieldsEditable}
+                  onChange={(e) => {
+                    setPriorityDraft(e.target.value);
+                    setPriorityError(null);
+                  }}
+                />
               ) : (
-                region.priority
+                priorityDraft.trim() || region.priority
               )}
             </p>
             {priorityError && <p className="flags-manager-error">{priorityError}</p>}
@@ -758,7 +905,7 @@ export function RegionPanel({
             <PartnerList
               ids={sortedChildIds}
               emptyText={t('region.noChildren')}
-              onFocusRegion={onFocusRegion}
+              onFocusRegion={navigateToRegion}
             />
           </div>
 
@@ -768,21 +915,13 @@ export function RegionPanel({
             <div className="region-geometry-block">
               <p className="region-meta-label">{t('region.geometryTitle')}</p>
               <RegionGeometryEditor
+                key={region.id}
                 value={geometry}
                 onChange={onGeometryChange}
-                disabled={geometryBusy}
+                disabled={saveBusy}
+                readOnly={fieldsLocked}
               />
               {geometryError && <p className="flags-manager-error">{geometryError}</p>}
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="success"
-                  disabled={geometryBusy || !geometryDirty}
-                  onClick={() => void saveGeometry()}
-                >
-                  {geometryBusy ? t('region.savingGeometry') : t('region.saveGeometry')}
-                </button>
-              </div>
             </div>
           ) : (
             <>
@@ -797,6 +936,9 @@ export function RegionPanel({
                 <p>
                   <strong>{t('region.poly2dPoints')}:</strong> {region.points.length}, Y: {region.min_y}–{region.max_y}
                 </p>
+              )}
+              {regionHasNonStandardHeight(region) && (
+                <p className="geometry-height-warn" role="status">{t('region.heightWarn')}</p>
               )}
             </>
           )}
@@ -816,7 +958,7 @@ export function RegionPanel({
                 spatialEdges={spatialEdges}
                 regionsById={regionsById}
                 emptyText={t('region.noIntersects')}
-                onFocusRegion={onFocusRegion}
+                onFocusRegion={navigateToRegion}
               />
             </div>
 
@@ -828,7 +970,7 @@ export function RegionPanel({
               <PartnerList
                 ids={sortedSpatial.containedIn}
                 emptyText=""
-                onFocusRegion={onFocusRegion}
+                onFocusRegion={navigateToRegion}
               />
             </div>
 
@@ -840,7 +982,7 @@ export function RegionPanel({
               <PartnerList
                 ids={sortedSpatial.contains}
                 emptyText=""
-                onFocusRegion={onFocusRegion}
+                onFocusRegion={navigateToRegion}
               />
             </div>
           </div>
@@ -852,7 +994,8 @@ export function RegionPanel({
                 <StringListEditor
                   label={t('region.players')}
                   values={ownersPlayers}
-                  disabled={membersBusy}
+                  disabled={!fieldsEditable}
+                  readOnly={fieldsLocked}
                   addLabel={`+ ${t('region.players')}`}
                   onChange={(next) => {
                     setOwnersPlayers(next);
@@ -862,7 +1005,8 @@ export function RegionPanel({
                 <StringListEditor
                   label={t('region.uniqueIds')}
                   values={ownersUniqueIds}
-                  disabled={membersBusy}
+                  disabled={!fieldsEditable}
+                  readOnly={fieldsLocked}
                   addLabel={`+ ${t('region.uniqueIds')}`}
                   onChange={(next) => {
                     setOwnersUniqueIds(next);
@@ -880,7 +1024,8 @@ export function RegionPanel({
                 <StringListEditor
                   label={t('region.players')}
                   values={membersPlayers}
-                  disabled={membersBusy}
+                  disabled={!fieldsEditable}
+                  readOnly={fieldsLocked}
                   addLabel={`+ ${t('region.players')}`}
                   onChange={(next) => {
                     setMembersPlayers(next);
@@ -890,7 +1035,8 @@ export function RegionPanel({
                 <StringListEditor
                   label={t('region.uniqueIds')}
                   values={membersUniqueIds}
-                  disabled={membersBusy}
+                  disabled={!fieldsEditable}
+                  readOnly={fieldsLocked}
                   addLabel={`+ ${t('region.uniqueIds')}`}
                   onChange={(next) => {
                     setMembersUniqueIds(next);
@@ -898,16 +1044,6 @@ export function RegionPanel({
                   }}
                 />
                 {membersError && <p className="flags-manager-error">{membersError}</p>}
-                <div className="modal-actions">
-                  <button
-                    type="button"
-                    className="success"
-                    disabled={membersBusy || !membersDirty}
-                    onClick={() => void saveMembers()}
-                  >
-                    {t('region.saveMembers')}
-                  </button>
-                </div>
               </>
             ) : (
               <pre className="region-members-readonly">{JSON.stringify(region.members ?? {}, null, 2)}</pre>
@@ -916,7 +1052,7 @@ export function RegionPanel({
 
           <div className="flags-table-wrap">
             <p><strong>{t('region.flags')}</strong></p>
-            {onUpdateFlags ? (
+            {onUpdateFlags && !fieldsLocked ? (
               <>
                 <table className="flags-table flags-edit-table">
                   <thead>
@@ -951,6 +1087,7 @@ export function RegionPanel({
                             <button
                               type="button"
                               className="flags-row-remove"
+                              disabled={!fieldsEditable}
                               onClick={() => removeFlagRow(row.key)}
                               title={t('flagsManager.remove')}
                             >
@@ -965,9 +1102,8 @@ export function RegionPanel({
                 {flagRows.length === 0 && <p>{t('region.noFlags')}</p>}
                 {flagsError && <p className="flags-manager-error">{flagsError}</p>}
                 <div className="modal-actions">
-                  <button type="button" onClick={addFlagRow}>{t('flagsManager.add')}</button>
-                  <button type="button" className="success" disabled={flagsBusy || !flagsDirty} onClick={() => void saveFlags()}>
-                    {flagsBusy ? t('flagsManager.saving') : t('flagsManager.save')}
+                  <button type="button" disabled={!fieldsEditable} onClick={addFlagRow}>
+                    {t('flagsManager.add')}
                   </button>
                 </div>
               </>
@@ -996,6 +1132,7 @@ export function RegionPanel({
                 </tbody>
               </table>
             )}
+            {fieldsLocked && flagsError && <p className="flags-manager-error">{flagsError}</p>}
           </div>
 
           {onDeleteManual && (
@@ -1012,11 +1149,24 @@ export function RegionPanel({
       <ConfirmDialog
         title={t('dialog.unsavedTitle')}
         message={t('dialog.unsavedConfirm')}
-        onCancel={() => setShowUnsavedConfirm(false)}
+        onCancel={() => {
+          setShowUnsavedConfirm(false);
+          setPendingLeave(null);
+        }}
         onConfirm={() => {
           setShowUnsavedConfirm(false);
-          onClose();
+          const action = pendingLeave ?? onClose;
+          setPendingLeave(null);
+          action();
         }}
+      />
+    )}
+    {showDiscardConfirm && (
+      <ConfirmDialog
+        title={t('dialog.discardTitle')}
+        message={t('dialog.discardConfirm')}
+        onCancel={() => setShowDiscardConfirm(false)}
+        onConfirm={discardChanges}
       />
     )}
     </>

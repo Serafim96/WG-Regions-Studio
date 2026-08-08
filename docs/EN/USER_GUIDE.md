@@ -1,5 +1,7 @@
 # User Guide — WorldGuard Region Viewer
 
+Russian version: [ИНСТРУКЦИЯ.md](../RU/ИНСТРУКЦИЯ.md)
+
 ## Table of contents
 
 1. [Install and run](#install-and-run)
@@ -23,10 +25,10 @@
 ## Install and run
 
 1. Install Python 3.11+ and Node.js 18+.
-2. From the project root, run `run.bat` (Windows) or `./run.sh` (Linux/macOS).
-3. Your browser opens at http://127.0.0.1:8000 automatically.
+2. From the project root, run **`setup.bat`** (Windows) or **`./setup.sh`** (Linux/macOS) once — creates the virtual environment and installs all dependencies.
+3. Start the app with `run.bat` or `./run.sh`. Your browser opens at http://127.0.0.1:8000 automatically.
 
-The launcher creates a virtual environment, installs dependencies, and builds the UI on first run.
+While the console (the `run.bat` window / server process) is running, the browser tab stays interactive. If you close the console or stop the server (**Ctrl+C**), the page is blocked by a grey overlay saying the server has stopped: clicks, toast notifications, and keyboard shortcuts (including Ctrl+F) are disabled. After you start `run.bat` / `run.sh` again, the overlay clears by itself — no need to reload the tab.
 
 ---
 
@@ -79,19 +81,22 @@ Regions without `parent` (except `root`) are highlighted in red and appear in no
 
 - **Single click** — select a node (highlight only; graph is not rebuilt).
 - **Double click** — open the region card.
-- **Right click** — context menu: **Properties** (same as double-click), copy name, hide/show children (direct and recursive), and more.
+- **Right click** on a node — context menu: **Properties** (same as double-click), copy name, hide/show children (direct and recursive), and more.
+- **Right click** on empty scheme space — **Add temporary region**.
 - Bottom-right scheme controls: **Legend**, zoom, and **fullscreen** (like F11).
 - Top-right badge **Selected: …** — click to center and zoom the camera on that region.
 
 In the region card:
 
 - **Name** — **Rename** opens the same dialog as the scheme context menu (Latin id only: letters, digits, `_`, `-`); parent/children links and spatial edges are kept.
-- **Parent**, **priority**, **children** — priority is editable; click a name to focus the camera (hidden nodes on the path are revealed if needed). **Edit** next to Parent to change, clear, or set a parent (cycles are rejected). Children and spatial links are shown as bordered tables.
-- **Partial overlaps** — table columns **region**, **affected blocks**, **percent** (share of this region’s volume). Click the blocks or percent header to sort ascending/descending. Full-containment labels are **Inside** and **Contains**.
-- **Type and coordinates** — for non-global regions (including from YAML) you can change cuboid/poly2d and coordinates (**Point 1** / **Point 2**); values are validated as integers and for completeness.
-- **Owners / Members** — editable `players` and `unique-ids` tables.
-- **Flags** — always visible scrollable WorldGuard flags table; **«?»** next to a name opens the catalog description.
-- **Copy** icon next to the name — copy region id to the clipboard.
+- **← / →** in the header — history of jumps to other regions (parent, children, overlaps, etc.); the starting point is the region you opened. Closing the card clears the history.
+- **Lock** (after copy-name) — fields are read-only by default; unlocked lock allows editing. Header right side has shared **Cancel** (confirms with “Are you sure?”) and **Save** for all changes at once.
+- **Parent**, **priority**, **children** — when unlocked, parent has **Edit** (same style as **Rename**); click a name to open that region’s card and focus the camera (hidden nodes on the path are revealed if needed). Children and spatial links are shown as bordered tables.
+- **Partial overlaps** — table columns **region**, **affected blocks**, **percent** (share of this region’s volume; overlap volume is computed for cuboid and poly2d). Click the blocks or percent header to sort ascending/descending. Full-containment labels are **Inside** and **Contains**.
+- **Type and coordinates** — for non-global regions (including from YAML) you can change cuboid/poly2d and coordinates (**Point 1** / **Point 2**); values are validated as integers and for completeness. If Y is below −64 or above 319, a warning appears next to the coordinates (and in the bell); export is not blocked. For poly2d, **Expand**/**Collapse** (same style as **Rename**) sits next to the points label; min-y/max-y are below. The expanded points table shows about 10 rows with scroll; **Clear** for poly2d coordinates is shown only while the table is expanded.
+- **Owners / Members** — editable `players` and `unique-ids` tables when unlocked.
+- **Flags** — WorldGuard flags table; **«?»** next to a name opens the catalog description.
+- **Copy** icon next to the name — copy region id to the clipboard; a short **Copied** popup appears next to the button (not in the sidebar status line).
 - Closing with unsaved edits asks for confirmation.
 
 ---
@@ -156,9 +161,9 @@ When the scheme is built (and after flag edits), the app computes flag values by
 
 The analysis dialog has two tabs:
 - **Overwrites** — a child *explicitly* sets a different value than its parent. This is normal WorldGuard inheritance, not a conflict (e.g. `passthrough` on `root` → different value on `metro`). On scheme open and after edits they appear in the bell as **warnings**.
-- **Region overlaps** — overlapping regions (not parent/child) have different values. The full list is in the dialog; each overlap (and each overwrite) has **Show on scheme**, which highlights only that pair/path — not every region that sets the same flag. **Bell**: equal priority (ambiguous value) → **Errors** tab (title «Flag conflict …»; no Clear button and no per-item ×); higher priority on one region → **Warnings** (after flag edits; Clear and × available). Regions without `parent` (except root) also appear under **Warnings** when the scheme opens. On scheme open/build, errors, overwrites, and orphans are notified immediately (bell + toasts; the toast × hides toasts but keeps bell entries). Opening a new scheme clears old notifications; they are not kept after the app is closed. Notification text can be selected and copied.
+- **Region overlaps** — overlapping regions (not parent/child) have different values. The full list is in the dialog; each overlap (and each overwrite) has **Show on scheme**, which highlights only that pair/path — not every region that sets the same flag. **Bell**: equal priority (ambiguous value) → **Errors** tab (title «Flag conflict …»; no Clear button and no per-item ×); higher priority on one region → **Warnings** (after flag edits; Clear and × available). Regions without `parent` (except root) also appear under **Warnings** when the scheme opens. Regions whose Y coordinates are outside the usual world range (−64…319) are also a **warning** (export is not blocked — custom worlds exist). On scheme open/build, errors, overwrites, orphans, and non-standard height are notified immediately (bell + toasts; the toast × hides toasts but keeps bell entries). Opening a new scheme clears old notifications; they are not kept after the app is closed. Notification text can be selected and copied.
 
-Clicking a notification (or the on-screen toast) shows the conflict **on the flag scheme**: overlaps highlight only the chosen pair with a red border and spatial edge (plus inheritance parent path); overwrites highlight parent and child; orphans focus the region. The camera fits **all** highlighted nodes, with the same zoom ceiling as single-region focus. When a conflict is fixed, its notification is removed automatically. Warning items also have an × to dismiss that entry only.
+Clicking a notification (or the on-screen toast) shows the conflict **on the flag scheme**: overlaps highlight only the chosen pair with a red border and spatial edge (plus inheritance parent path); overwrites highlight parent and child; orphans and non-standard height focus the region. The camera fits **all** highlighted nodes, with the same zoom ceiling as single-region focus. When a conflict is fixed, its notification is removed automatically. Warning items also have an × to dismiss that entry only.
 
 Bottom-left on the scheme — a warning-triangle button for problem-region highlight (dropdown: regions in errors / warnings). When active the button lights up and other nodes are dimmed, like flag-scheme mode. Turn it off with the same **clear special highlight** button used for flag/branch highlights.
 
@@ -192,7 +197,7 @@ After collapsing, the layout stays compact; the camera fits the remaining visibl
 
 ## Temporary region
 
-1. Click **+** on the graph or **+ Temporary region** in the sidebar (requires a built scheme).
+1. Click **+** at the top-left of the graph, or **right-click** empty scheme space → **Add temporary region** (requires a built scheme). From a node context menu → **+ Add descendant**, the parent is prefilled but still editable before save.
 2. Enter id (Latin only), parent, priority; flags use the same UI as the region card.
 3. Type: **global** (no coordinates) or **cuboid** / **poly2d**. Coordinates are validated on save (cuboid — all 6 numbers; poly2d — ≥3 points and min-y/max-y).
 4. In the card you can change type and coordinates; after save, a temporary region with coordinates participates in intersections like a normal region.
@@ -208,6 +213,8 @@ After collapsing, the layout stays compact; the camera fits the remaining visibl
 - top regions by block volume;
 - top poly2d regions by point count;
 - top regions by intersection count.
+
+Region names in the tops are links: they open the region card, center the camera, and close the metrics window.
 
 ---
 
@@ -243,7 +250,7 @@ View state (collapsed nodes, selected region) is stored in **localStorage** sepa
 - Bottom of the sidebar — **Clear scheme**: resets the session to the empty post-startup state (no YAML / no on-screen scheme; language, theme, and sidebar settings are kept).
 - **Legend** shows scheme symbols only. The separate **Flags catalog** button opens Standard and Custom flag tabs.
 - Add custom flags using supported WorldGuard types, import/export their JSON catalog, or delete them. Deleting also removes the flag from every region in the current scheme after a confirmation that lists affected region IDs.
-- Collapse the sidebar with **««** at its top — the panel hides fully; **»»** to restore appears top-left on the scheme. Drag the right edge to resize. On the scheme: **+** (temporary) top-left; collapse/expand all and search top-right; lock, **Align**, flag highlight (plus highlight options when active), edge display, and problem mode bottom-left (clear special highlight when active); **Legend**, zoom, and fullscreen bottom-right.
+- Collapse the sidebar with **«** top-left on the scheme (next to **+** for a temporary region) — the panel hides fully; the same control shows **»** to restore it. Drag the right edge to resize. On the scheme: **«/»** and **+** (temporary) top-left; collapse/expand all and search top-right; lock, **Align**, flag highlight (plus highlight options when active), edge display, and problem mode bottom-left (clear special highlight when active); **Legend**, zoom, and fullscreen bottom-right.
 - **Hide children** hides only direct children; **Collapse recursively** hides the whole subtree. **Expand all** and **Expand with threshold** recenter the camera like reset scheme.
 - The region card and context menu support **Rename** and **Delete** for any region (with children: reparent to grandparent, leave orphaned, or cascade-delete).
 - The scheme starts locked. The lock icon toggles between closed and open.

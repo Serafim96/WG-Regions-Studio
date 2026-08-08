@@ -3,6 +3,7 @@ import {
   addManualRegion,
   buildScheme,
   bulkUpdateFlags,
+  checkHealth,
   clearSession,
   clearManualRegions,
   exportRegionsYaml,
@@ -92,6 +93,7 @@ import { attachConflictInheritancePaths, attachFlagConflicts, buildFlagHighlight
 import { compareNatural } from './utils/naturalSort';
 import { loadAppSettings, saveAppSettings, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from './utils/settings';
 import { loadViewState, saveViewState, clearViewState } from './utils/viewState';
+import { findNonStandardHeightRegionIds } from './utils/worldHeight';
 import { useI18n } from './i18n/I18nContext';
 import type { TranslationKey } from './i18n/translations';
 import { useTheme } from './theme/ThemeContext';
@@ -154,7 +156,12 @@ export default function App() {
   const [scheme, setScheme] = useState<Scheme | null>(null);
   const [status, setStatus] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [detailsNav, setDetailsNav] = useState<{ stack: string[]; index: number } | null>(null);
+  const detailsId = detailsNav?.stack[detailsNav.index] ?? null;
+  const detailsCanGoBack = Boolean(detailsNav && detailsNav.index > 0);
+  const detailsCanGoForward = Boolean(
+    detailsNav && detailsNav.index < detailsNav.stack.length - 1,
+  );
   const [hiddenNodes, setHiddenNodes] = useState<Set<string>>(new Set());
   const [orphanIds, setOrphanIds] = useState<Set<string>>(new Set());
   const [flagsCatalog, setFlagsCatalog] = useState<FlagInfo[]>([]);
@@ -183,7 +190,7 @@ export default function App() {
   const quietNotificationReseedRef = useRef(false);
   const [notificationRefreshSeq, setNotificationRefreshSeq] = useState(0);
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [addDialogLockedParent, setAddDialogLockedParent] = useState<string | undefined>(undefined);
+  const [addDialogInitialParent, setAddDialogInitialParent] = useState<string | undefined>(undefined);
   const [deleteTarget, setDeleteTarget] = useState<{
     regionId: string;
     childIds: string[];
@@ -219,6 +226,7 @@ export default function App() {
   const [showFlagTreeDialog, setShowFlagTreeDialog] = useState(false);
   const [renameTargetId, setRenameTargetId] = useState<string | null>(null);
   const [busyMessage, setBusyMessage] = useState<string | null>(null);
+  const [serverDown, setServerDown] = useState(false);
   const [edgeDisplayFilters, setEdgeDisplayFilters] = useState<EdgeDisplayFilters>(
     DEFAULT_EDGE_DISPLAY_FILTERS,
   );
@@ -271,6 +279,64 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    let wasDown = false;
+
+    const ping = async () => {
+      const ctrl = new AbortController();
+      const timeoutId = window.setTimeout(() => ctrl.abort(), 2500);
+      try {
+        const ok = await checkHealth(ctrl.signal);
+        if (cancelled) return;
+        const down = !ok;
+        if (wasDown && !down) {
+          // Soft nudge toward this tab after restart (no new window needed).
+          try {
+            window.focus();
+          } catch {
+            /* ignore */
+          }
+        }
+        wasDown = down;
+        setServerDown(down);
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    };
+
+    void ping();
+    const intervalId = window.setInterval(() => {
+      void ping();
+    }, 2000);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void ping();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
+  /** While server is down: block app + browser shortcuts (Ctrl+F, F3, …). */
+  useEffect(() => {
+    if (!serverDown) return;
+    const blockKeys = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener('keydown', blockKeys, true);
+    window.addEventListener('keyup', blockKeys, true);
+    window.addEventListener('keypress', blockKeys, true);
+    return () => {
+      window.removeEventListener('keydown', blockKeys, true);
+      window.removeEventListener('keyup', blockKeys, true);
+      window.removeEventListener('keypress', blockKeys, true);
+    };
+  }, [serverDown]);
+
+  useEffect(() => {
     if (!scheme) setStatus(t('status.loadYaml'));
   }, [locale, t, scheme]);
 
@@ -316,7 +382,8 @@ export default function App() {
       if (!(e.ctrlKey || e.metaKey) || e.code !== 'KeyF') return;
       // Only from the main scheme view — never over other dialogs/panels.
       const blocked = Boolean(
-        detailsId
+        serverDown
+        || detailsId
         || deleteTarget
         || showMetrics
         || showLegend
@@ -334,6 +401,7 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [
     scheme,
+    serverDown,
     detailsId,
     deleteTarget,
     showSearch,
@@ -409,6 +477,11 @@ export default function App() {
     [flagConflicts],
   );
 
+  const nonStandardHeightIds = useMemo(() => {
+    if (!scheme) return new Set<string>();
+    return new Set(findNonStandardHeightRegionIds(scheme.regions));
+  }, [scheme]);
+
   const problemBrightIds = useMemo(() => {
     if (!problemFilter || !scheme) return null;
     const ids = new Set<string>();
@@ -429,9 +502,10 @@ export default function App() {
         ids.add(o.childId);
       }
       for (const id of orphanIds) ids.add(id);
+      for (const id of nonStandardHeightIds) ids.add(id);
     }
     return ids;
-  }, [problemFilter, scheme, flagConflicts, orphanIds]);
+  }, [problemFilter, scheme, flagConflicts, orphanIds, nonStandardHeightIds]);
 
   const subtreeBrightIds = useMemo(() => {
     if (!subtreeHighlightRoot || !scheme) return null;
@@ -537,11 +611,13 @@ export default function App() {
     const overwriteKey = (o: { flagName: string; parentId: string; childId: string }) =>
       `ow|${o.flagName}|${o.parentId}|${o.childId}`;
     const orphanKey = (id: string) => `or|${id}`;
+    const heightKey = (id: string) => `ht|${id}`;
 
     const activeKeys = new Set<string>();
     for (const c of spatial) activeKeys.add(spatialKey(c));
     for (const o of overwrites) activeKeys.add(overwriteKey(o));
     for (const id of orphanIds) activeKeys.add(orphanKey(id));
+    for (const id of nonStandardHeightIds) activeKeys.add(heightKey(id));
 
     // Drop notifications for conflicts that no longer exist; allow re-notify later.
     for (const key of [...notifiedConflictKeysRef.current]) {
@@ -638,9 +714,24 @@ export default function App() {
       });
     };
 
+    const pushHeight = (id: string, key: string) => {
+      fresh.push({
+        id: `${key}|${now}`,
+        createdAt: now,
+        level: 'warning',
+        kind: 'height',
+        conflictKey: key,
+        titleKey: 'notifications.heightTitle',
+        bodyKey: 'notifications.heightBody',
+        params: { id },
+        aId: id,
+        read: false,
+      });
+    };
+
     const isReseed = conflictNotifySeededForRef.current !== schemeKey;
 
-    // First analysis for this scheme: replace bell with errors + overwrites + orphans.
+    // First analysis for this scheme: replace bell with errors + overwrites + orphans + height.
     if (isReseed) {
       conflictNotifySeededForRef.current = schemeKey;
       notifiedConflictKeysRef.current = new Set();
@@ -659,8 +750,13 @@ export default function App() {
         notifiedConflictKeysRef.current.add(key);
         pushOrphan(id, key);
       }
+      for (const id of nonStandardHeightIds) {
+        const key = heightKey(id);
+        notifiedConflictKeysRef.current.add(key);
+        pushHeight(id, key);
+      }
     } else {
-      // After edits: errors = no winner; warnings = clear-winner overlaps + overwrites + new orphans.
+      // After edits: errors = no winner; warnings = overlaps + overwrites + orphans + height.
       for (const c of spatial) {
         const key = spatialKey(c);
         if (notifiedConflictKeysRef.current.has(key)) continue;
@@ -679,6 +775,12 @@ export default function App() {
         if (notifiedConflictKeysRef.current.has(key)) continue;
         notifiedConflictKeysRef.current.add(key);
         pushOrphan(id, key);
+      }
+      for (const id of nonStandardHeightIds) {
+        const key = heightKey(id);
+        if (notifiedConflictKeysRef.current.has(key)) continue;
+        notifiedConflictKeysRef.current.add(key);
+        pushHeight(id, key);
       }
     }
 
@@ -716,7 +818,7 @@ export default function App() {
         }, 9500);
       }
     }
-  }, [flagConflicts, scheme, orphanIds, notificationRefreshSeq]);
+  }, [flagConflicts, scheme, orphanIds, nonStandardHeightIds, notificationRefreshSeq]);
 
   useEffect(() => {
     if (!scheme) {
@@ -816,7 +918,7 @@ export default function App() {
 
     setScheme(null);
     setSelectedId(null);
-    setDetailsId(null);
+    setDetailsNav(null);
     setHiddenNodes(new Set());
     setOrphanIds(new Set());
     setShowMetrics(false);
@@ -833,7 +935,7 @@ export default function App() {
     setNotificationToasts([]);
     setShowNotifications(false);
     setShowAddDialog(false);
-    setAddDialogLockedParent(undefined);
+    setAddDialogInitialParent(undefined);
     setDeleteTarget(null);
     setDeletableRegionIds(new Set());
     setCollapseTarget(null);
@@ -992,9 +1094,10 @@ export default function App() {
         ids.add(o.childId);
       }
       for (const id of orphanIds) ids.add(id);
+      for (const id of nonStandardHeightIds) ids.add(id);
     }
     if (ids.size > 0) requestFitOnIds(Array.from(ids));
-  }, [t, scheme, flagConflicts, orphanIds, requestFitOnIds]);
+  }, [t, scheme, flagConflicts, orphanIds, nonStandardHeightIds, requestFitOnIds]);
 
   const focusRegion = useCallback((regionId: string) => {
     if (!scheme) return;
@@ -1008,6 +1111,34 @@ export default function App() {
     focusSeqRef.current += 1;
     setFocusRequest({ id: regionId, seq: focusSeqRef.current });
   }, [scheme]);
+
+  const closeRegionDetails = useCallback(() => {
+    setDetailsNav(null);
+  }, []);
+
+  /** Open or navigate the region card; push history when already open. */
+  const openRegionDetails = useCallback((regionId: string) => {
+    focusRegion(regionId);
+    setDetailsNav((prev) => {
+      if (!prev) return { stack: [regionId], index: 0 };
+      if (prev.stack[prev.index] === regionId) return prev;
+      const stack = [...prev.stack.slice(0, prev.index + 1), regionId];
+      return { stack, index: stack.length - 1 };
+    });
+  }, [focusRegion]);
+
+  const detailsNavRef = useRef(detailsNav);
+  detailsNavRef.current = detailsNav;
+
+  const goDetailsHistory = useCallback((delta: -1 | 1) => {
+    const prev = detailsNavRef.current;
+    if (!prev) return;
+    const nextIndex = prev.index + delta;
+    if (nextIndex < 0 || nextIndex >= prev.stack.length) return;
+    const id = prev.stack[nextIndex];
+    setDetailsNav({ ...prev, index: nextIndex });
+    focusRegion(id);
+  }, [focusRegion]);
 
   const openNotificationOnScheme = useCallback((n: AppNotification) => {
     setNotifications((prev) => prev.map((item) => (item.id === n.id ? { ...item, read: true } : item)));
@@ -1029,7 +1160,7 @@ export default function App() {
     setProblemFilter(null);
     setShowProblemsMenu(false);
 
-    if (n.kind === 'orphan' && n.aId) {
+    if ((n.kind === 'orphan' || n.kind === 'height') && n.aId) {
       setHighlightFlag(null);
       setConflictSchemeView(null);
       setOverwriteSchemeView(null);
@@ -1271,14 +1402,21 @@ export default function App() {
     clearCameraRequests();
   }, [scheme, collapseThreshold, clearCameraRequests]);
 
-  const openAddDialog = useCallback((lockedParent?: string) => {
-    setAddDialogLockedParent(lockedParent);
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((v) => !v);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => graphRef.current?.resize());
+    });
+  }, []);
+
+  const openAddDialog = useCallback((initialParent?: string) => {
+    setAddDialogInitialParent(initialParent);
     setShowAddDialog(true);
   }, []);
 
   const closeAddDialog = useCallback(() => {
     setShowAddDialog(false);
-    setAddDialogLockedParent(undefined);
+    setAddDialogInitialParent(undefined);
   }, []);
 
   const handleAddManual = async (data: {
@@ -1338,7 +1476,7 @@ export default function App() {
   const onNodeOpen = useCallback((id: string) => {
     setSelectedId(id);
     setCollapseTarget(id);
-    setDetailsId(id);
+    setDetailsNav({ stack: [id], index: 0 });
   }, []);
 
   const dismissNotification = useCallback((id: string) => {
@@ -1444,7 +1582,7 @@ export default function App() {
         setCollapseTarget(null);
       }
       if (detailsId && removedIds.has(detailsId)) {
-        setDetailsId(null);
+        setDetailsNav(null);
       }
       setDeleteTarget(null);
       setDeletableRegionIds(collectDeletableRegionIds(result.scheme));
@@ -1503,7 +1641,11 @@ export default function App() {
     await renameRegion(regionId, normalized);
     const result = await buildScheme();
     applyScheme(result.scheme, false, collapseThreshold);
-    setDetailsId(normalized);
+    setDetailsNav((prev) => {
+      if (!prev) return { stack: [normalized], index: 0 };
+      const stack = prev.stack.map((id) => (id === regionId ? normalized : id));
+      return { ...prev, stack };
+    });
     setSelectedId((id) => (id === regionId ? normalized : id));
     setCollapseTarget((id) => (id === regionId ? normalized : id));
     setDeletableRegionIds((prev) => {
@@ -1765,20 +1907,6 @@ export default function App() {
             document.body.classList.add('sidebar-resizing');
           }}
         />
-        <button
-          type="button"
-          className="sidebar-toggle icon-btn"
-          onClick={() => {
-            setSidebarCollapsed(true);
-            // Let flex layout settle, then resize Cytoscape canvas.
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => graphRef.current?.resize());
-            });
-          }}
-          title={t('app.collapseSidebar')}
-        >
-          «
-        </button>
         <h1>{t('app.title')}</h1>
 
         <div className="preferences-row">
@@ -2019,6 +2147,7 @@ export default function App() {
               onBackgroundTap={clearSelection}
               onCopyName={onCopyName}
               onRename={(id) => setRenameTargetId(id)}
+              onAddManual={() => openAddDialog()}
               onAddDescendant={onAddDescendant}
               onDeleteManual={requestDeleteManual}
               onOpenFlagsManager={(id) => openFlagsManager(id)}
@@ -2040,19 +2169,14 @@ export default function App() {
               </button>
             )}
             <div className="graph-map-controls graph-map-controls--top-left">
-              {sidebarCollapsed && (
-                <button
-                  type="button"
-                  className="graph-ctrl-btn"
-                  onClick={() => {
-                    setSidebarCollapsed(false);
-                    requestAnimationFrame(() => requestAnimationFrame(() => graphRef.current?.resize()));
-                  }}
-                  title={t('app.expandSidebar')}
-                >
-                  »
-                </button>
-              )}
+              <button
+                type="button"
+                className="graph-ctrl-btn"
+                onClick={toggleSidebarCollapsed}
+                title={sidebarCollapsed ? t('app.expandSidebar') : t('app.collapseSidebar')}
+              >
+                {sidebarCollapsed ? '»' : '«'}
+              </button>
               <button type="button" className="graph-ctrl-btn" onClick={() => openAddDialog()} title={t('app.addManual')} disabled={Boolean(busyMessage)}>
                 <IconAdd />
               </button>
@@ -2314,21 +2438,16 @@ export default function App() {
           </ErrorBoundary>
         ) : (
           <>
-            {sidebarCollapsed && (
-              <div className="graph-map-controls graph-map-controls--top-left">
-                <button
-                  type="button"
-                  className="graph-ctrl-btn"
-                  onClick={() => {
-                    setSidebarCollapsed(false);
-                    requestAnimationFrame(() => requestAnimationFrame(() => graphRef.current?.resize()));
-                  }}
-                  title={t('app.expandSidebar')}
-                >
-                  »
-                </button>
-              </div>
-            )}
+            <div className="graph-map-controls graph-map-controls--top-left">
+              <button
+                type="button"
+                className="graph-ctrl-btn"
+                onClick={toggleSidebarCollapsed}
+                title={sidebarCollapsed ? t('app.expandSidebar') : t('app.collapseSidebar')}
+              >
+                {sidebarCollapsed ? '»' : '«'}
+              </button>
+            </div>
             <div className="placeholder">{t('app.placeholder')}</div>
           </>
         )}
@@ -2343,9 +2462,12 @@ export default function App() {
           regionsById={regionsById}
           flagsCatalog={flagsCatalog}
           regionIds={regionIdList}
-          onClose={() => setDetailsId(null)}
-          onFocusRegion={focusRegion}
-          onCopyName={onCopyName}
+          canGoBack={detailsCanGoBack}
+          canGoForward={detailsCanGoForward}
+          onHistoryBack={() => goDetailsHistory(-1)}
+          onHistoryForward={() => goDetailsHistory(1)}
+          onClose={closeRegionDetails}
+          onFocusRegion={openRegionDetails}
           onDeleteManual={requestDeleteManual}
           canDelete
           onUpdateParent={handleUpdateParent}
@@ -2366,7 +2488,14 @@ export default function App() {
         />
       )}
       {showMetrics && scheme && (
-        <MetricsPanel metrics={scheme.metrics} onClose={() => setShowMetrics(false)} />
+        <MetricsPanel
+          metrics={scheme.metrics}
+          onClose={() => setShowMetrics(false)}
+          onSelectRegion={(id) => {
+            setShowMetrics(false);
+            openRegionDetails(id);
+          }}
+        />
       )}
       {showLegend && (
         <LegendPanel onClose={() => setShowLegend(false)} />
@@ -2423,10 +2552,10 @@ export default function App() {
       )}
       {showAddDialog && (
         <AddRegionDialog
-          key={addDialogLockedParent ?? 'free'}
+          key={addDialogInitialParent ?? 'free'}
           regionIds={parentOptions}
           flagsCatalog={flagsCatalog}
-          lockedParent={addDialogLockedParent}
+          initialParent={addDialogInitialParent}
           onAdd={handleAddManual}
           onClose={closeAddDialog}
         />
@@ -2554,6 +2683,12 @@ export default function App() {
         <div className="busy-overlay" role="alert" aria-busy="true">
           <div className="busy-spinner" />
           <p className="busy-overlay-message">{busyMessage}</p>
+        </div>
+      )}
+      {serverDown && (
+        <div className="server-down-overlay" role="alert" aria-live="assertive">
+          <p className="server-down-title">{t('server.downTitle')}</p>
+          <p className="server-down-body">{t('server.downBody')}</p>
         </div>
       )}
     </div>

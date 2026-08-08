@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo, Scheme } from '../types';
 import { ModalOverlay } from './ModalOverlay';
@@ -124,8 +125,8 @@ export function FlagsCatalogDialog({
           </div>
         </div>
       </ModalOverlay>
-      {confirmNames && (
-        <div className="modal-overlay catalog-confirm-overlay">
+      {confirmNames && createPortal(
+        <div className="modal-overlay confirm-dialog-overlay">
           <div className="modal catalog-confirm-modal" role="dialog" aria-modal="true">
             <header><h2>{t('catalog.deleteConfirmTitle')}</h2></header>
             <div className="modal-body">
@@ -134,7 +135,8 @@ export function FlagsCatalogDialog({
               <div className="modal-actions"><button type="button" onClick={() => setConfirmNames(null)}>{t('deleteManual.cancel')}</button><button type="button" className="danger" disabled={busy} onClick={confirmDelete}>{t('deleteManual.delete')}</button></div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
