@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [Unreleased]
+
+### Added
+
+- **Update check** — on startup, compare the running version to the latest GitHub release; if outdated, show a toast and a notifications-bell warning with a link to the release page.
+
 ## [2.0.1] — 2026-08-08
 
 ### Added
@@ -13,6 +19,12 @@ Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМ�
 - **Clear flags** — yellow button on the region card and in flag management (selected region), with yes/no confirmation; clears the draft, then **Save**.
 - **Delete all flags** — red button in flag management that removes every flag from every region on the scheme, with confirmation.
 - Backend `DELETE /api/regions/flags` to clear all region flags in the session.
+- **Nesting level** — read-only field on the region card (same as scheme `d:`).
+
+### Changed
+
+- **Flag management** — removed the «flag tree» tab; with a flag filter the tree shows the flag value, and an **Inheritance** checkbox includes inheriting regions.
+- Flag highlight: inherited nodes use light text with an outline so labels stay readable on saturated fills (including purple at depth 2).
 
 ## [2.0.0] — 2026-08-08
 
@@ -23,7 +35,7 @@ Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМ�
 - **Flag conflicts** — analyze inheritance overwrites and spatial overlaps; show pairs on the scheme; ambiguous equal-priority cases appear as errors in the notifications bell.
 - **Notifications bell** — errors and warnings (conflicts, orphans, overwrites); click an item to focus it on the scheme; refresh icon in the panel header rebuilds the list without toast popups.
 - **Temporary regions** — add drafts (including descendants), edit geometry/flags/members, rename and delete any region (cascade / reparent / orphan).
-- **Flag management** — tree editor, bulk operations, catalog; manager tabs **ведение** / **дерево флага**; scheme flag button is search + **Display** only; highlight options (Intersections / Containment / Inheritance / Conflicts) with ∈ / ≈ captions and carrier values.
+- **Flag management** — tree editor, bulk operations, catalog; flag filter shows values and optional inheritance; scheme flag button is search + **Display** only; highlight options (Intersections / Containment / Inheritance / Conflicts) with ∈ / ≈ captions and carrier values.
 - **Region card overlaps** — partial-intersection table with **affected blocks** and **percent**, sortable; spatial edges store `overlapBlocks` from the build.
 - **Scheme tools** — reset scheme (drop temporary regions and rebuild), clear session, edge display modes, branch / containment / intersection highlights, realign layout, lock/unlock nodes.
 - **UI** — dark/light theme, RU/EN, in-app confirm dialogs (no browser `confirm()` for main flows), green save / red delete affordances, natural sort in lists.

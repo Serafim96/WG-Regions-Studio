@@ -15,14 +15,14 @@ From the repository root (the folder with `pytest.ini`, `backend/`, `frontend/`)
 **Windows (PowerShell or CMD):**
 
 ```powershell
-..\.venv\Scripts\activate
+.\.venv\Scripts\activate
 pytest
 ```
 
 **Linux/macOS:**
 
 ```bash
-source ../.venv/bin/activate
+source .venv/bin/activate
 pytest
 ```
 

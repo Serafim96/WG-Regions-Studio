@@ -42,6 +42,8 @@ interface RegionPanelProps {
   regionsById: Map<string, RegionData>;
   flagsCatalog: FlagInfo[];
   regionIds: string[];
+  /** Hierarchy nesting depth from forest (0 = root). Read-only in UI. */
+  hierarchyDepth?: number;
   canGoBack?: boolean;
   canGoForward?: boolean;
   onHistoryBack?: () => void;
@@ -404,6 +406,7 @@ export function RegionPanel({
   regionsById,
   flagsCatalog,
   regionIds,
+  hierarchyDepth = 0,
   canGoBack = false,
   canGoForward = false,
   onHistoryBack,
@@ -909,6 +912,13 @@ export function RegionPanel({
               )}
             </p>
             {priorityError && <p className="flags-manager-error">{priorityError}</p>}
+          </div>
+
+          <div className="region-depth-block">
+            <p>
+              <strong>{t('region.nestingLevel')}:</strong>{' '}
+              {hierarchyDepth}
+            </p>
           </div>
 
           <div className="partners-block children-block">

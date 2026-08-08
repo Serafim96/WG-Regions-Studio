@@ -17,16 +17,16 @@ if errorlevel 1 (
     exit /b 1
 )
 
-set "VENV_DIR=%~dp0..\.venv"
+set "VENV_DIR=%~dp0.venv"
 if not exist "%VENV_DIR%" (
-    echo Creating virtual environment in ..\.venv ...
+    echo Creating virtual environment in .venv ...
     python -m venv "%VENV_DIR%"
     if errorlevel 1 (
         echo ERROR: failed to create virtual environment.
         exit /b 1
     )
 ) else (
-    echo Virtual environment already exists: ..\.venv
+    echo Virtual environment already exists: .venv
 )
 
 call "%VENV_DIR%\Scripts\activate.bat"

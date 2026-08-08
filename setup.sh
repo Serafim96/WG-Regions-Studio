@@ -15,12 +15,12 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-VENV_DIR="$(cd .. && pwd)/.venv"
+VENV_DIR="$(pwd)/.venv"
 if [ ! -d "$VENV_DIR" ]; then
-  echo "Creating virtual environment in ../.venv ..."
+  echo "Creating virtual environment in .venv ..."
   python3 -m venv "$VENV_DIR"
 else
-  echo "Virtual environment already exists: ../.venv"
+  echo "Virtual environment already exists: .venv"
 fi
 
 # shellcheck source=/dev/null

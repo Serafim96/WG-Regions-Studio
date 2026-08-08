@@ -425,7 +425,8 @@ function lightHierarchyPath(
  * When a spatial conflict / overwrite is shown on the flag scheme, light only
  * hierarchy paths for the focused pair (not every region that sets the flag):
  * - each participant → nearest ancestor that sets the flag (if any)
- * - both participants → their lowest common ancestor
+ * - both participants → their lowest common ancestor, but only when that LCA
+ *   itself sets the flag (otherwise the shared parent is unrelated noise)
  */
 function lightConflictPairPaths(
   aId: string,
@@ -447,7 +448,8 @@ function lightConflictPairPaths(
     }
   }
 
-  // Lowest common ancestor — explains why the two regions are related.
+  // LCA only if it assigns the flag (e.g. overwrite under a shared setter).
+  // Skip unrelated shared parents like `root` above two independent setters.
   const bSet = new Set([bId, ...collectAncestors(bId, parentMap)]);
   let lca: string | null = null;
   for (const id of [aId, ...collectAncestors(aId, parentMap)]) {
@@ -456,7 +458,7 @@ function lightConflictPairPaths(
       break;
     }
   }
-  if (lca) {
+  if (lca && definingIds.has(lca)) {
     lightHierarchyPath(aId, lca, parentMap, brightIds, brightEdgeKeys);
     lightHierarchyPath(bId, lca, parentMap, brightIds, brightEdgeKeys);
   }

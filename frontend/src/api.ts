@@ -278,3 +278,22 @@ export async function exportRegionsYaml(includeManual = true): Promise<string> {
   if (!res.ok) throw new Error(await readApiError(res));
   return await res.text();
 }
+
+export interface UpdateCheckResult {
+  current: string;
+  latest: string | null;
+  outdated: boolean;
+  html_url: string;
+  name: string | null;
+}
+
+/** Compare running version to the latest GitHub release (via backend). */
+export async function checkForUpdates(signal?: AbortSignal): Promise<UpdateCheckResult | null> {
+  try {
+    const res = await fetch(`${API}/updates/check`, { method: 'GET', cache: 'no-store', signal });
+    if (!res.ok) return null;
+    return res.json() as Promise<UpdateCheckResult>;
+  } catch {
+    return null;
+  }
+}

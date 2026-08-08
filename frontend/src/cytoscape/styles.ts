@@ -110,6 +110,7 @@ export function buildStylesheet(theme: Theme = 'light') {
       // On the inheritance path but does not locally set the flag.
       // Keep fill opaque so edges under the node stay covered (Cytoscape draws
       // edges under nodes by default; low opacity makes arrows show through).
+      // Light label + dark outline: readable on saturated depth fills (e.g. purple d:2).
       selector: 'node.flag-path',
       style: {
         opacity: 1,
@@ -117,9 +118,12 @@ export function buildStylesheet(theme: Theme = 'light') {
         'border-color': '#64748b',
         'border-style': 'dashed',
         'background-opacity': 1,
-        color: '#475569',
-        'text-opacity': 0.92,
-        'font-weight': 400,
+        color: '#f8fafc',
+        'text-opacity': 1,
+        'font-weight': 500,
+        'text-outline-width': 2,
+        'text-outline-color': '#1e293b',
+        'text-outline-opacity': 0.85,
       },
     },
     {
@@ -137,12 +141,15 @@ export function buildStylesheet(theme: Theme = 'light') {
       },
     },
     {
-      // Inherited flag value caption (muted vs define).
+      // Inherited flag value caption — same contrast treatment as flag-path.
       selector: 'node.flag-value-inherit',
       style: {
-        color: '#64748b',
-        'font-weight': 500,
-        'text-opacity': 0.9,
+        color: '#f1f5f9',
+        'font-weight': 600,
+        'text-opacity': 1,
+        'text-outline-width': 2,
+        'text-outline-color': '#1e293b',
+        'text-outline-opacity': 0.85,
       },
     },
     {

@@ -3,6 +3,7 @@ import {
   addManualRegion,
   buildScheme,
   bulkUpdateFlags,
+  checkForUpdates,
   checkHealth,
   clearAllRegionFlags,
   clearSession,
@@ -71,6 +72,7 @@ import { RenameRegionDialog } from './components/RenameRegionDialog';
 import { SearchPanel } from './components/SearchPanel';
 import type { FlagInfo, ForestNode, RegionData, Scheme } from './types';
 import {
+  buildHierarchyDepthMap,
   buildParentMap,
   collectContainmentChain,
   collectDescendants,
@@ -93,6 +95,7 @@ import { validateSchemeForYamlExport, type SchemeIssue } from './utils/schemeVal
 import { attachConflictInheritancePaths, attachFlagConflicts, buildFlagHighlight, enrichHighlightWithFlagValues, mergeConflictInheritancePaths } from './utils/flagTree';
 import { compareNatural } from './utils/naturalSort';
 import { loadAppSettings, saveAppSettings, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH } from './utils/settings';
+import { dismissUpdateTag, isUpdateTagDismissed } from './utils/updateDismiss';
 import { loadViewState, saveViewState, clearViewState } from './utils/viewState';
 import { findNonStandardHeightRegionIds } from './utils/worldHeight';
 import { useI18n } from './i18n/I18nContext';
@@ -110,6 +113,17 @@ function clearPersistedNotifications() {
   } catch {
     // ignore
   }
+}
+
+/** Update notices are app-level — keep them when the scheme list is rebuilt. */
+function keepUpdateNotifications(list: AppNotification[]): AppNotification[] {
+  return list.filter((n) => n.kind === 'update');
+}
+
+function rememberDismissedUpdate(n: AppNotification) {
+  if (n.kind !== 'update') return;
+  const latest = n.params?.latest;
+  if (latest != null) dismissUpdateTag(String(latest));
 }
 
 function formatFlagValueShort(v: unknown): string {
@@ -277,6 +291,40 @@ export default function App() {
   useEffect(() => {
     fetchFlags().then(setFlagsCatalog);
     clearPersistedNotifications();
+  }, []);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    (async () => {
+      const info = await checkForUpdates(ctrl.signal);
+      if (ctrl.signal.aborted || !info?.outdated || !info.latest) return;
+      if (isUpdateTagDismissed(info.latest)) return;
+      const toast: AppNotification = {
+        id: `update|${info.latest}|${Date.now()}`,
+        createdAt: Date.now(),
+        level: 'warning',
+        kind: 'update',
+        conflictKey: `update|${info.latest}`,
+        titleKey: 'notifications.updateTitle',
+        bodyKey: 'notifications.updateBody',
+        params: { current: info.current, latest: info.latest },
+        url: info.html_url,
+        read: false,
+      };
+      setNotifications((prev) => {
+        if (prev.some((n) => n.kind === 'update' && n.conflictKey === toast.conflictKey)) return prev;
+        const withoutOld = prev.filter((n) => n.kind !== 'update');
+        return [toast, ...withoutOld].slice(0, 100);
+      });
+      setNotificationToasts((prev) => {
+        const withoutOld = prev.filter((n) => n.kind !== 'update');
+        return [toast, ...withoutOld].slice(0, 5);
+      });
+      window.setTimeout(() => {
+        setNotificationToasts((prev) => prev.filter((item) => item.id !== toast.id));
+      }, 20000);
+    })();
+    return () => ctrl.abort();
   }, []);
 
   useEffect(() => {
@@ -461,6 +509,11 @@ export default function App() {
     for (const r of scheme.regions) map.set(r.id, r);
     return map;
   }, [scheme]);
+
+  const hierarchyDepthMap = useMemo(
+    () => (scheme ? buildHierarchyDepthMap(scheme) : new Map<string, number>()),
+    [scheme],
+  );
 
   const regionIdList = useMemo(
     () => (scheme ? scheme.regions.map((r) => r.id).sort(compareNatural) : []),
@@ -786,8 +839,11 @@ export default function App() {
     }
 
     setNotifications((prev) => {
-      if (isReseed) return fresh.slice(0, 100);
-      const pruned = prev.filter((n) => !n.conflictKey || activeKeys.has(n.conflictKey));
+      const keep = keepUpdateNotifications(prev);
+      if (isReseed) return [...keep, ...fresh].slice(0, 100);
+      const pruned = prev.filter(
+        (n) => n.kind === 'update' || !n.conflictKey || activeKeys.has(n.conflictKey),
+      );
       if (fresh.length === 0) return pruned;
       return [...fresh, ...pruned].slice(0, 100);
     });
@@ -807,9 +863,12 @@ export default function App() {
     if (quiet) quietNotificationReseedRef.current = false;
 
     setNotificationToasts((prev) => {
-      if (quiet) return [];
-      if (isReseed) return fresh.slice(0, 5);
-      const pruned = prev.filter((n) => !n.conflictKey || activeKeys.has(n.conflictKey));
+      const keep = keepUpdateNotifications(prev);
+      if (quiet) return keep;
+      if (isReseed) return [...keep, ...fresh].slice(0, 5);
+      const pruned = prev.filter(
+        (n) => n.kind === 'update' || !n.conflictKey || activeKeys.has(n.conflictKey),
+      );
       return fresh.length > 0 ? [...fresh, ...pruned].slice(0, 5) : pruned;
     });
     if (!quiet && fresh.length > 0) {
@@ -850,10 +909,10 @@ export default function App() {
     isFreshSchemeRef.current = fresh;
     applyOrphans(next);
     if (fresh) {
-      // Re-seed bell/toasts for this scheme; drop any previous session entries.
+      // Re-seed bell/toasts for this scheme; drop scheme entries, keep update notice.
       conflictNotifySeededForRef.current = null;
-      setNotifications([]);
-      setNotificationToasts([]);
+      setNotifications((prev) => keepUpdateNotifications(prev));
+      setNotificationToasts((prev) => keepUpdateNotifications(prev));
       setHighlightFlag(null);
       setConflictSchemeView(null);
       setOverwriteSchemeView(null);
@@ -932,8 +991,8 @@ export default function App() {
     setHighlightFlag(null);
     setConflictSchemeView(null);
     setOverwriteSchemeView(null);
-    setNotifications([]);
-    setNotificationToasts([]);
+    setNotifications((prev) => keepUpdateNotifications(prev));
+    setNotificationToasts((prev) => keepUpdateNotifications(prev));
     setShowNotifications(false);
     setShowAddDialog(false);
     setAddDialogInitialParent(undefined);
@@ -1148,6 +1207,11 @@ export default function App() {
     setShowFlagConflictsDialog(false);
     setShowFlagsManager(false);
     setFlagsManagerFocusId(null);
+
+    if (n.kind === 'update') {
+      if (n.url) window.open(n.url, '_blank', 'noopener,noreferrer');
+      return;
+    }
 
     if (n.kind === 'info') {
       if (n.aId) focusRegion(n.aId);
@@ -1481,7 +1545,11 @@ export default function App() {
   }, []);
 
   const dismissNotification = useCallback((id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    setNotifications((prev) => {
+      const target = prev.find((n) => n.id === id);
+      if (target) rememberDismissedUpdate(target);
+      return prev.filter((n) => n.id !== id);
+    });
     setNotificationToasts((prev) => prev.filter((n) => n.id !== id));
   }, []);
 
@@ -2241,7 +2309,12 @@ export default function App() {
                   setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
                 }}
                 onClear={() => {
-                  setNotifications((prev) => prev.filter((n) => n.level !== 'warning'));
+                  setNotifications((prev) => {
+                    for (const n of prev) {
+                      if (n.level === 'warning') rememberDismissedUpdate(n);
+                    }
+                    return prev.filter((n) => n.level !== 'warning');
+                  });
                   setNotificationToasts((prev) => prev.filter((n) => n.level !== 'warning'));
                 }}
                 onDismiss={dismissNotification}
@@ -2249,6 +2322,17 @@ export default function App() {
               />
             </div>
             <div className="graph-map-controls graph-map-controls--bottom-left">
+              {(highlightFlag || subtreeHighlightRoot || problemFilter) && (
+                <button
+                  type="button"
+                  className="graph-ctrl-btn"
+                  onClick={clearSpecialHighlight}
+                  title={t('app.clearSpecialHighlight')}
+                  aria-label={t('app.clearSpecialHighlight')}
+                >
+                  <IconClearHighlight />
+                </button>
+              )}
               <button
                 type="button"
                 className={`graph-ctrl-btn${graphLocked ? ' graph-ctrl-btn--active' : ''}`}
@@ -2417,17 +2501,6 @@ export default function App() {
                   </div>
                 )}
               </div>
-              {(highlightFlag || subtreeHighlightRoot || problemFilter) && (
-                <button
-                  type="button"
-                  className="graph-ctrl-btn"
-                  onClick={clearSpecialHighlight}
-                  title={t('app.clearSpecialHighlight')}
-                  aria-label={t('app.clearSpecialHighlight')}
-                >
-                  <IconClearHighlight />
-                </button>
-              )}
             </div>
             <div className="graph-map-controls graph-map-controls--bottom-right">
               <button
@@ -2481,6 +2554,7 @@ export default function App() {
           regionsById={regionsById}
           flagsCatalog={flagsCatalog}
           regionIds={regionIdList}
+          hierarchyDepth={hierarchyDepthMap.get(detailsRegion.id) ?? 0}
           canGoBack={detailsCanGoBack}
           canGoForward={detailsCanGoForward}
           onHistoryBack={() => goDetailsHistory(-1)}
@@ -2550,12 +2624,6 @@ export default function App() {
           onClearAllFlags={handleClearAllFlags}
           onOpenCatalog={() => setShowFlagsCatalog(true)}
           initialRegionId={flagsManagerFocusId}
-          highlightFlag={highlightFlag}
-          onHighlightFlag={(name) => {
-            applyHighlightFlag(name);
-            if (name) closeFlagsManager();
-          }}
-          onSelectRegion={focusRegion}
         />
       )}
       {showFlagsCatalog && (
@@ -2668,7 +2736,7 @@ export default function App() {
           {notificationToasts.map((toast) => (
             <div
               key={toast.id}
-              className={`notification-toast notification-toast--${toast.level}${toast.kind === 'info' ? ' notification-toast--info' : ''}`}
+              className={`notification-toast notification-toast--${toast.level}${toast.kind === 'info' || toast.kind === 'update' ? ' notification-toast--info' : ''}`}
               role="button"
               tabIndex={0}
               onClick={() => {
@@ -2684,7 +2752,7 @@ export default function App() {
               }}
             >
               <span className="notification-toast-level">
-                {toast.kind === 'info'
+                {toast.kind === 'info' || toast.kind === 'update'
                   ? t('notifications.tabInfo')
                   : toast.level === 'error'
                     ? t('notifications.tabErrors')
@@ -2692,9 +2760,11 @@ export default function App() {
               </span>
               <strong>{t(toast.titleKey, toast.params)}</strong>
               <span>{t(toast.bodyKey, toast.params)}</span>
-              {toast.kind !== 'info' && (
+              {toast.kind === 'update' ? (
+                <span className="notification-toast-hint">{t('notifications.updateHint')}</span>
+              ) : toast.kind !== 'info' ? (
                 <span className="notification-toast-hint">{t('notifications.toastHint')}</span>
-              )}
+              ) : null}
             </div>
           ))}
         </div>

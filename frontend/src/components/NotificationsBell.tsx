@@ -4,7 +4,7 @@ import type { TranslationKey } from '../i18n/translations';
 import { IconBell, IconRefresh } from './GraphControlIcons';
 
 export type NotificationLevel = 'error' | 'warning';
-export type NotificationKind = 'spatial' | 'overwrite' | 'orphan' | 'height' | 'info';
+export type NotificationKind = 'spatial' | 'overwrite' | 'orphan' | 'height' | 'info' | 'update';
 
 export interface AppNotification {
   id: string;
@@ -24,6 +24,8 @@ export interface AppNotification {
   /** Spatial: region B; overwrite: child. */
   bId?: string;
   relation?: 'intersects' | 'contains';
+  /** External link (e.g. GitHub release) opened on click. */
+  url?: string;
   read: boolean;
 }
 

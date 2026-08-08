@@ -37,6 +37,7 @@ from backend.parser.wg_parser import ParseError, parse_regions_yaml, validate_pa
 from backend.scheme.io import build_scheme, load_scheme, save_scheme, source_hash
 from backend.regions_export_yaml import export_regions_yaml
 from backend.util.region_ids import is_valid_region_id
+from backend.version import APP_VERSION, check_for_update
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = APP_ROOT.parent
@@ -45,7 +46,7 @@ FLAGS_PATH = WORKSPACE_ROOT / "all_flags.txt"
 WG_JAR_PATH = WORKSPACE_ROOT / "worldguard-bukkit-7.0.17.jar"
 CUSTOM_FLAGS_PATH = APP_ROOT / "data" / "custom_flags.json"
 
-app = FastAPI(title="Minecraft Regions Viewer")
+app = FastAPI(title="Minecraft Regions Viewer", version=APP_VERSION)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -211,6 +212,17 @@ def _builtin_flag_names() -> set[str]:
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/version")
+def get_version() -> dict[str, str]:
+    return {"version": APP_VERSION}
+
+
+@app.get("/api/updates/check")
+def updates_check() -> dict[str, Any]:
+    """Compare the running app version to the latest GitHub release."""
+    return check_for_update()
 
 
 @app.get("/api/flags")

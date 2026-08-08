@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 
-set "VENV_DIR=%~dp0..\.venv"
+set "VENV_DIR=%~dp0.venv"
 if not exist "%VENV_DIR%\Scripts\activate.bat" (
     echo Virtual environment not found. Run setup.bat first.
     pause

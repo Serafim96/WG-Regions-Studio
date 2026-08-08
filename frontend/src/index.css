@@ -1264,24 +1264,26 @@ button.success:hover:not(:disabled) {
 
 .flags-manager-tabs button {
   padding: 6px 12px;
-  border: 1px solid transparent;
+  border: 1px solid var(--color-border);
   border-radius: 6px;
-  background: transparent;
+  background: var(--color-bg-panel);
   color: var(--color-text-muted, #666);
   font-size: 1.05rem;
-  font-weight: 600;
+  font-weight: 500;
   cursor: pointer;
 }
 
 .flags-manager-tabs button:hover {
   background: var(--color-border-light);
   color: var(--color-text);
+  border-color: var(--color-border);
 }
 
 .flags-manager-tabs button.active {
-  background: var(--color-bg);
-  border-color: var(--color-border);
+  background: color-mix(in srgb, var(--color-accent, #2980b9) 16%, var(--color-bg-panel));
+  border-color: var(--color-accent, #2980b9);
   color: var(--color-text);
+  font-weight: 600;
 }
 
 .flags-manager-modal > .flags-flag-tree-body {
@@ -2615,9 +2617,11 @@ button.success:hover:not(:disabled) {
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
-  min-width: 34px;
-  min-height: 28px;
-  padding: 4px 6px !important;
+  box-sizing: border-box;
+  min-width: 28px;
+  height: 26px;
+  min-height: 26px;
+  padding: 2px 5px !important;
 }
 
 .flag-value-set {

@@ -30,6 +30,8 @@ Russian version: [ИНСТРУКЦИЯ.md](../RU/ИНСТРУКЦИЯ.md)
 
 While the console (the `run.bat` window / server process) is running, the browser tab stays interactive. If you close the console or stop the server (**Ctrl+C**), the page is blocked by a grey overlay saying the server has stopped: clicks, toast notifications, and keyboard shortcuts (including Ctrl+F) are disabled. After you start `run.bat` / `run.sh` again, the overlay clears by itself — no need to reload the tab.
 
+On startup the app compares its version to the **latest GitHub release**. If a newer version exists, a toast and a **notifications bell** warning show the release number; click opens the release page to download. Dismiss / Clear hides the notice for that version until an even newer one appears. Offline, the check fails quietly.
+
 ---
 
 ## Open a file (YAML or scheme)
@@ -91,7 +93,7 @@ In the region card:
 - **Name** — **Rename** opens the same dialog as the scheme context menu (Latin id only: letters, digits, `_`, `-`); parent/children links and spatial edges are kept.
 - **← / →** in the header — history of jumps to other regions (parent, children, overlaps, etc.); the starting point is the region you opened. Closing the card clears the history.
 - **Lock** (after copy-name) — fields are read-only by default; unlocked lock allows editing. Header right side has shared **Cancel** (confirms with “Are you sure?”) and **Save** for all changes at once.
-- **Parent**, **priority**, **children** — when unlocked, parent has **Edit** (same style as **Rename**); click a name to open that region’s card and focus the camera (hidden nodes on the path are revealed if needed). Children and spatial links are shown as bordered tables.
+- **Parent**, **priority**, **nesting level** (read-only, same as `d:` on the scheme), **children** — when unlocked, parent has **Edit** (same style as **Rename**); click a name to open that region’s card and focus the camera (hidden nodes on the path are revealed if needed). Children and spatial links are shown as bordered tables.
 - **Partial overlaps** — table columns **region**, **affected blocks**, **percent** (share of this region’s volume; overlap volume is computed for cuboid and poly2d). Click the blocks or percent header to sort ascending/descending. Full-containment labels are **Inside** and **Contains**.
 - **Type and coordinates** — for non-global regions (including from YAML) you can change cuboid/poly2d and coordinates (**Point 1** / **Point 2**); values are validated as integers and for completeness. If Y is below −64 or above 319, a warning appears next to the coordinates (and in the bell); export is not blocked. For poly2d, **Expand**/**Collapse** (same style as **Rename**) sits next to the points label; min-y/max-y are below. The expanded points table shows about 10 rows with scroll; **Clear** for poly2d coordinates is shown only while the table is expanded.
 - **Owners / Members** — editable `players` and `unique-ids` tables when unlocked.
@@ -144,14 +146,12 @@ Bottom-right — legend, zoom, and fullscreen. Bottom-left — **edge display** 
 ## Flag management
 
 1. Click **Flag management** (a built scheme is required). You can also open it from a node **context menu** — then the tree shows regions with flags plus the chosen region and all its parents, ready for editing.
-2. The dialog header has two tabs: **manage** and **flag tree**.
-3. **manage** tab: left — tree of regions with flags (**green** text) and their parents. The left panel width is resizable.
-4. One toolbar row: **expand/collapse all**, **Only with flags** checkbox, a **filter by specific flag** dropdown (keeps only regions that set that flag plus their parents), and **+** to add a region that is not in the current filter. Regions added via **+** during a filter session are not kept after you turn the filter off and on again — the tree is rebuilt from the flag alone.
-5. Right, above the table: **Catalog**, **Bulk operation** (separate dialog), and red **Delete all flags** (with confirmation: removes every flag from every region on the scheme).
-6. Flag table: names must exist in the catalog and values must be filled, or **Save** rejects the rows. Name suggestions use a dropdown list. Yellow **Clear flags** (with confirmation) clears the selected region’s flags in the draft — then **Save**.
-7. **flag tree** tab: left — list of flags set somewhere (no green styling, with assignment counts); right — collapsible region tree — **green** marks regions that set the flag (value shown); inheriting regions appear too. **Show on scheme** turns on highlight and closes the dialog.
-8. Scheme highlight: the **flag icon** bottom-left opens a small dialog with flag search and **Display** only. While highlight is active, a button under the flag opens checkboxes (like the edge filter, but for highlight): **Intersections** (regions overlapping a flag carrier — orange border and ≈), **Containment** (fully inside without parent — ∈ plus container value, purple border), **Inheritance** (effective via parent; set vs inherited — thick green vs thin grey dashed), **Conflicts** (participants plus needed paths to defining ancestors). Defaults: all four on.
-9. Changes apply to the current session and are kept when you save the scheme (`.mrv.json`); the source YAML on disk is not overwritten.
+2. Left — tree of regions with flags (**green** text) and their parents. The left panel width is resizable.
+3. One toolbar row: **expand/collapse all**, **Only with flags** checkbox, a **filter by specific flag** dropdown (keeps only regions that set that flag plus their parents; the **flag value** is shown next to the name), **Inheritance** checkbox (with a flag filter — also regions where the flag is effective via parent, in a muted style), and **+** to add a region that is not in the current filter. Regions added via **+** during a filter session are not kept after you turn the filter off and on again — the tree is rebuilt from the flag alone.
+4. Right, above the table: **Catalog**, **Bulk operation** (separate dialog), and red **Delete all flags** (with confirmation: removes every flag from every region on the scheme).
+5. Flag table: names must exist in the catalog and values must be filled, or **Save** rejects the rows. Name suggestions use a dropdown list. Yellow **Clear flags** (with confirmation) clears the selected region’s flags in the draft — then **Save**.
+6. Scheme highlight: the **flag icon** bottom-left opens a small dialog with flag search and **Display** only. While highlight is active, a button under the flag opens checkboxes (like the edge filter, but for highlight): **Intersections** (regions overlapping a flag carrier — orange border and ≈), **Containment** (fully inside without parent — ∈ plus container value, purple border), **Inheritance** (effective via parent; set vs inherited — thick green vs thin grey dashed), **Conflicts** (participants plus needed paths to defining ancestors). Defaults: all four on.
+7. Changes apply to the current session and are kept when you save the scheme (`.mrv.json`); the source YAML on disk is not overwritten.
 
 ---
 

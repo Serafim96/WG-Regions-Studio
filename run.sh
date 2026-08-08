@@ -2,7 +2,7 @@
 set -e
 cd "$(dirname "$0")"
 
-VENV_DIR="$(cd .. && pwd)/.venv"
+VENV_DIR="$(pwd)/.venv"
 if [ ! -f "$VENV_DIR/bin/activate" ]; then
   echo "Virtual environment not found. Run ./setup.sh first."
   exit 1
