@@ -86,7 +86,7 @@ Regions without `parent` (except `root`) are highlighted in red and appear in no
 - **Right click** on a node — context menu: **Properties** (same as double-click), copy name, hide/show children (direct and recursive), and more.
 - **Right click** on empty scheme space — **Add temporary region**.
 - Bottom-right scheme controls: **Legend**, zoom, and **fullscreen** (like F11).
-- Top-right badge **Selected: …** — click to center and zoom the camera on that region. On the flag scheme, a **Flag: …** badge appears above it (or alone): click the name to refit the camera to the highlight; to the left — flag help (**?**) and **flag management** (filtered to that flag).
+- Top-right badge **Region: …** — click to center and zoom the camera on that region. On the flag scheme, a **Flag: …** badge appears above it (or alone): click the name to refit the camera to the highlight; to the left — flag help (**?**) and **flag management** (filtered to that flag).
 
 In the region card:
 
@@ -105,7 +105,7 @@ In the region card:
 
 ## Collapse and expand
 
-1. Select a node (click) — a **Selected: name** badge appears top-right; click it to center and zoom. Click empty space on the scheme to deselect.
+1. Select a node (click) — a **Region: name** badge appears top-right; click it to center and zoom. Click empty space on the scheme to deselect.
 2. Right-click → **− Hide children**, **− Collapse recursively**, **+ Show children**, **+ Expand recursively**.
 3. Top-right **expand / collapse** buttons always affect the **whole** scheme. Below them — **expand with threshold** (same as auto-collapse).
 4. Right-click → **Highlight branch** → submenu: **Entire** (ancestors + descendants), **Children only**; for non-global regions also **Intersections** and **Containment** → **All** / **Children only** / **Parents only**. If no related regions exist — a toast notification. The camera fits the selection. When a parent is collapsed, remapped spatial highlight edges stay bright. **Clear branch highlight** turns the mode off. A new special highlight clears the previous one (including conflict highlight).
