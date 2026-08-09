@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import threading
 import webbrowser
 from pathlib import Path
@@ -39,12 +40,27 @@ from backend.regions_export_yaml import export_regions_yaml
 from backend.util.region_ids import is_valid_region_id
 from backend.version import APP_VERSION, check_for_update
 
-APP_ROOT = Path(__file__).resolve().parents[1]
-WORKSPACE_ROOT = APP_ROOT.parent
+
+def _runtime_roots() -> tuple[Path, Path]:
+    """Return (bundle_root for read-only assets, writable_root next to install)."""
+    if getattr(sys, "frozen", False):
+        meipass = Path(getattr(sys, "_MEIPASS"))
+        return meipass, Path(sys.executable).resolve().parent
+    app_root = Path(__file__).resolve().parents[1]
+    return app_root, app_root
+
+
+BUNDLE_ROOT, WRITABLE_ROOT = _runtime_roots()
+APP_ROOT = BUNDLE_ROOT
+WORKSPACE_ROOT = APP_ROOT.parent if not getattr(sys, "frozen", False) else BUNDLE_ROOT
 STATIC_DIR = APP_ROOT / "backend" / "static"
-FLAGS_PATH = WORKSPACE_ROOT / "all_flags.txt"
-WG_JAR_PATH = WORKSPACE_ROOT / "worldguard-bukkit-7.0.17.jar"
-CUSTOM_FLAGS_PATH = APP_ROOT / "data" / "custom_flags.json"
+if getattr(sys, "frozen", False):
+    FLAGS_PATH = BUNDLE_ROOT / "all_flags.txt"
+    WG_JAR_PATH = BUNDLE_ROOT / "worldguard-bukkit-7.0.17.jar"
+else:
+    FLAGS_PATH = WORKSPACE_ROOT / "all_flags.txt"
+    WG_JAR_PATH = WORKSPACE_ROOT / "worldguard-bukkit-7.0.17.jar"
+CUSTOM_FLAGS_PATH = WRITABLE_ROOT / "data" / "custom_flags.json"
 
 app = FastAPI(title="WG Regions Studio", version=APP_VERSION)
 app.add_middleware(

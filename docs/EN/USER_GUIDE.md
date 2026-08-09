@@ -24,11 +24,18 @@ Russian version: [ИНСТРУКЦИЯ.md](../RU/ИНСТРУКЦИЯ.md)
 
 ## Install and run
 
-1. Install Python 3.11+ and Node.js 18+.
-2. From the project root, run **`setup.bat`** (Windows) or **`./setup.sh`** (Linux/macOS) once — creates the virtual environment and installs all dependencies.
-3. Start the app with `run.bat` or `./run.sh`. Your browser opens at http://127.0.0.1:8000 automatically.
+One click: the launcher checks dependencies, installs what is missing when possible, then starts the app. The browser opens at http://127.0.0.1:8000.
 
-While the console (the `run.bat` window / server process) is running, the browser tab stays interactive. If you close the console or stop the server (**Ctrl+C**), the page is blocked by a grey overlay saying the server has stopped: clicks, toast notifications, and keyboard shortcuts (including Ctrl+F) are disabled. After you start `run.bat` / `run.sh` again, the overlay clears by itself — no need to reload the tab.
+| Platform | Click |
+|----------|--------|
+| **Windows (release)** | Unpack the zip → **`WG-Regions-Studio.exe`** (keep `_internal` beside it) |
+| **Windows (from source)** | **`WG-Regions-Studio.bat`** (may install Python/Node via winget) |
+| **macOS** | **`WG-Regions-Studio.app`** or **`WG-Regions-Studio.command`** (may install Python/Node via Homebrew) |
+| **Linux** | **`./WG-Regions-Studio.sh`** |
+
+Windows zip: [Releases](https://github.com/Serafim96/WG-Regions-Studio/releases). A frozen macOS binary (no Python/Node) needs Mac/CI; today’s `.app` is a bootstrap wrapper around the sources.
+
+While the console (exe window / Terminal) is running, the browser tab stays interactive. If you close the console or stop the server (**Ctrl+C**), the page is blocked by a grey overlay. After you start the launcher again, the overlay clears by itself — no need to reload the tab.
 
 On startup the app compares its version to the **latest GitHub release**. If a newer version exists, a toast and a **notifications bell** warning show the release number; click opens the release page to download. Dismiss / Clear hides the notice for that version until an even newer one appears. Offline, the check fails quietly.
 

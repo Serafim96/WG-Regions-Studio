@@ -14,24 +14,24 @@ Load your own `regions.yml` or a saved scheme, explore the tree, manage flags, a
 - Temporary regions, rename/delete, flag manager + catalog, **Export YAML**
 - Dark/light theme, Russian / English UI
 - Startup check against the latest GitHub release
-## Requirements
+## Download / one-click start
 
-- Python 3.11+
-- Node.js 18+
+| Platform | What to click | Notes |
+|----------|---------------|--------|
+| **Windows (release)** | `WG-Regions-Studio.exe` inside the zip | No Python/Node needed; keep `_internal` next to the exe |
+| **Windows (from source)** | `WG-Regions-Studio.bat` | Checks deps; can install Python/Node via winget; then venv + frontend + start |
+| **macOS** | `WG-Regions-Studio.app` or `WG-Regions-Studio.command` | Same bootstrap; may install Python/Node via Homebrew if available |
+| **Linux** | `./WG-Regions-Studio.sh` | Same bootstrap (`chmod +x` once if needed) |
 
-## Setup
+Windows zip: [Releases](https://github.com/Serafim96/WG-Regions-Studio/releases) → **`WG-Regions-Studio-*-windows.zip`**. Rebuild: `packaging\build_windows.bat`.
 
-Double-click **`setup.bat`** (Windows) or run **`./setup.sh`** (Linux/macOS).
+A frozen macOS `.app` binary (no Python/Node) needs a Mac build machine / CI — not produced on Windows. Until then the `.app` / `.command` wrappers bootstrap from source.
 
-That creates the virtual environment and installs all dependencies (Python packages and the frontend build). No manual steps.
+## Requirements (bootstrap / from source)
 
-## Run
+- Python 3.11+ and Node.js 18+ on PATH, **or** winget (Windows) / Homebrew (macOS) so the launcher can install them
 
-**Windows:** double-click `run.bat`
-
-**Linux/macOS:** `chmod +x run.sh && ./run.sh`
-
-Rebuilds the UI and starts the server. Open http://127.0.0.1:8000 in your browser if it was not opened automatically.
+Optional: `setup.bat` / `./setup.sh` only installs (does not start). `run.sh` is a thin alias of `WG-Regions-Studio.sh`.
 
 ## Documentation
 

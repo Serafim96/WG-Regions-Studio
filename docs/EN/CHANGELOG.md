@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [2.0.7] — 2026-08-09
+
+### Added
+
+- Windows packaged build: `WG-Regions-Studio.exe` (daisy + **WGS** icon) with helper files in a zip (`packaging\build_windows.bat`).
+- One-click launchers: `WG-Regions-Studio.bat` (Windows), `.command` / `.app` (macOS), `.sh` (Linux) — check/install deps then start (`launch.py`).
+
+### Changed
+
+- Removed `run.bat`; `setup.*` / `run.sh` wrap the new launchers.
+
 ## [2.0.6] — 2026-08-09
 
 ### Changed

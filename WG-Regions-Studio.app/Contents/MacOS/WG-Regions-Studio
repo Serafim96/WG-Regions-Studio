@@ -1,0 +1,20 @@
+#!/bin/bash
+# Inside WG-Regions-Studio.app — project root is the folder that contains the .app.
+set -e
+ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
+cd "$ROOT"
+chmod +x ./WG-Regions-Studio.sh ./WG-Regions-Studio.command 2>/dev/null || true
+
+# .app double-click has no Terminal by default; open one so setup logs are visible.
+if [[ -z "$MRV_FROM_TERMINAL" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
+  # Re-launch inside Terminal for readable setup output.
+  osascript <<EOF
+tell application "Terminal"
+  activate
+  do script "export MRV_FROM_TERMINAL=1; cd $(printf %q "$ROOT"); ./WG-Regions-Studio.sh; echo; echo Press Enter to close...; read"
+end tell
+EOF
+  exit 0
+fi
+
+exec ./WG-Regions-Studio.sh "$@"
