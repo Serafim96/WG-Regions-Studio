@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 
 # Bump when cutting a GitHub release (tag vX.Y.Z).
-APP_VERSION = "2.0.7"
+APP_VERSION = "2.0.8"
 GITHUB_REPO = "Serafim96/WG-Regions-Studio"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"

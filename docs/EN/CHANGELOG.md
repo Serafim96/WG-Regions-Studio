@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [2.0.8] — 2026-08-09
+
+### Changed
+
+- App icon: refined daisy + **WGS** (letter size, spacing, stroke weight); Windows `.exe` / zip rebuilt with the new icon.
+
 ## [2.0.7] — 2026-08-09
 
 ### Added
@@ -104,6 +110,8 @@ Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМ�
 
 Baseline published on GitHub: YAML parse → hierarchy + spatial edges, Cytoscape scheme, collapse/search/legend/metrics, scheme save/load (`.mrv.json`), bilingual UI, pytest suite, local-only `regions.yml` / `all_flags.txt`.
 
+[2.0.8]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.8
+[2.0.7]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.7
 [2.0.6]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.6
 [2.0.5]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.5
 [2.0.4]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.4
