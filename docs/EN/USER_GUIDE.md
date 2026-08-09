@@ -28,14 +28,14 @@ One click: the launcher checks dependencies, installs what is missing when possi
 
 | Platform | Click |
 |----------|--------|
-| **Windows (release)** | Unpack the zip → **`WG-Regions-Studio.exe`** (keep `_internal` beside it) |
+| **Windows (release)** | Unpack the zip → **`WG-Regions-Studio.bat`** (exe and `_internal` stay beside it) |
 | **Windows (from source)** | **`WG-Regions-Studio.bat`** (may install Python/Node via winget) |
 | **macOS** | **`WG-Regions-Studio.app`** or **`WG-Regions-Studio.command`** (may install Python/Node via Homebrew) |
 | **Linux** | **`./WG-Regions-Studio.sh`** |
 
 Windows zip: [Releases](https://github.com/Serafim96/WG-Regions-Studio/releases). A frozen macOS binary (no Python/Node) needs Mac/CI; today’s `.app` is a bootstrap wrapper around the sources.
 
-While the console (exe window / Terminal) is running, the browser tab stays interactive. If you close the console or stop the server (**Ctrl+C**), the page is blocked by a grey overlay. After you start the launcher again, the overlay clears by itself — no need to reload the tab.
+On Windows the server opens in a **separate** classic console window with the app icon (not a Windows Terminal tab — even if you start the `.exe` directly); closing that window stops the server. While the console is running, the browser tab stays interactive. If you close the console or stop the server (**Ctrl+C**), the page is blocked by a grey overlay. After you start the launcher again, the overlay clears by itself — no need to reload the tab.
 
 On startup the app compares its version to the **latest GitHub release**. If a newer version exists, a toast and a **notifications bell** warning show the release number; click opens the release page to download. Dismiss / Clear hides the notice for that version until an even newer one appears. Offline, the check fails quietly.
 

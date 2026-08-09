@@ -10,6 +10,7 @@ echo.%*|findstr /I /C:"--setup-only" >nul && set "SETUP_ONLY=1"
 
 REM Packaged release only: exe sitting next to this launcher (zip layout).
 REM Do NOT prefer dist\… — that skips launch.py rebuilds during development.
+REM Classic console is ensured inside the app (conhost self-relaunch).
 if "%SETUP_ONLY%"=="0" if exist "%~dp0WG-Regions-Studio.exe" (
     echo Starting packaged WG-Regions-Studio.exe ...
     start "WG Regions Studio" /D "%~dp0" "%~dp0WG-Regions-Studio.exe"
@@ -22,9 +23,14 @@ call :ensure_node
 if errorlevel 1 goto fail
 
 echo Checking project dependencies and starting...
-python "%~dp0launch.py" %*
-set "ERR=%ERRORLEVEL%"
-if not "%ERR%"=="0" goto fail
+if "%SETUP_ONLY%"=="1" (
+    python "%~dp0launch.py" %*
+    set "ERR=%ERRORLEVEL%"
+    if not "%ERR%"=="0" goto fail
+    exit /b 0
+)
+REM App self-relaunches under conhost for a classic console window/icon.
+start "WG Regions Studio" /D "%~dp0" python "%~dp0launch.py" %*
 exit /b 0
 
 :ensure_python

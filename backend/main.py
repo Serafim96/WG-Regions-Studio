@@ -765,6 +765,13 @@ def export_regions_yml(
 
 # Serve frontend static files when built
 if STATIC_DIR.exists():
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon() -> FileResponse:
+        icon_path = STATIC_DIR / "favicon.ico"
+        if icon_path.exists():
+            return FileResponse(icon_path)
+        raise HTTPException(status_code=404)
+
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
     @app.get("/{full_path:path}")

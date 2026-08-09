@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
 import sys
 from pathlib import Path
 
 
 APP_USER_MODEL_ID = "Serafim96.WGRegionsStudio"
+CONSOLE_TITLE = "WG Regions Studio"
+_CLASSIC_ENV = "MRV_CLASSIC_CONSOLE"
 
 
 def _icon_candidates() -> list[Path]:
@@ -34,8 +38,39 @@ def resolve_icon_ico() -> Path | None:
     return None
 
 
+def ensure_classic_console() -> bool:
+    """Relaunch once under conhost.exe and return True (caller should exit).
+
+    Wrapping in conhost disables Windows Terminal delegation regardless of the
+    system Default Terminal setting (including Explorer double-click handoff).
+    Guarded by MRV_CLASSIC_CONSOLE to avoid an infinite relaunch loop.
+    """
+    if sys.platform != "win32":
+        return False
+    if os.environ.get(_CLASSIC_ENV) == "1":
+        return False
+
+    env = os.environ.copy()
+    env[_CLASSIC_ENV] = "1"
+    env.pop("WT_SESSION", None)
+    env.pop("WT_PROFILE_ID", None)
+
+    if getattr(sys, "frozen", False):
+        cmd = ["conhost.exe", sys.executable, *sys.argv[1:]]
+        cwd = str(Path(sys.executable).resolve().parent)
+    else:
+        cmd = ["conhost.exe", sys.executable, "-m", "backend", *sys.argv[1:]]
+        cwd = str(Path(__file__).resolve().parents[1])
+
+    try:
+        subprocess.Popen(cmd, cwd=cwd, env=env, close_fds=False)
+    except OSError:
+        return False
+    return True
+
+
 def apply_windows_console_icon() -> None:
-    """Set AppUserModelID + console WM_SETICON so the taskbar shows our .ico."""
+    """Set AppUserModelID, console title, WM_SETICON, and class icons for taskbar."""
     if sys.platform != "win32":
         return
 
@@ -44,6 +79,11 @@ def apply_windows_console_icon() -> None:
 
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+    except Exception:
+        pass
+
+    try:
+        ctypes.windll.kernel32.SetConsoleTitleW(CONSOLE_TITLE)
     except Exception:
         pass
 
@@ -61,6 +101,8 @@ def apply_windows_console_icon() -> None:
     WM_SETICON = 0x0080
     ICON_SMALL = 0
     ICON_BIG = 1
+    GCLP_HICON = -14
+    GCLP_HICONSM = -34
 
     LoadImageW = user32.LoadImageW
     LoadImageW.argtypes = [
@@ -82,3 +124,15 @@ def apply_windows_console_icon() -> None:
         user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, h_small)
     elif h_big:
         user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, h_big)
+
+    set_class = getattr(user32, "SetClassLongPtrW", None) or getattr(user32, "SetClassLongW", None)
+    if set_class is None:
+        return
+    set_class.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
+    set_class.restype = ctypes.c_void_p
+    if h_big:
+        set_class(hwnd, GCLP_HICON, h_big)
+    if h_small:
+        set_class(hwnd, GCLP_HICONSM, h_small)
+    elif h_big:
+        set_class(hwnd, GCLP_HICONSM, h_big)

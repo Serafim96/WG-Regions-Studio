@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [2.0.9] — 2026-08-09
+
+### Changed
+
+- Windows: server always relaunches under classic `conhost` (including Explorer double-click when Default Terminal is Windows Terminal), so the console is a separate window with the app icon — not a Windows Terminal tab.
+- Browser tab uses the app favicon.
+
+### Fixed
+
+- Double-clicking `WG-Regions-Studio.exe` no longer opens inside Windows Terminal when it is the system default terminal.
+
 ## [2.0.8] — 2026-08-09
 
 ### Changed

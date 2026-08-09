@@ -1,4 +1,4 @@
-"""Generate app icon: daisy + WGS on a green square (based on icon_keep)."""
+"""Generate app icon: daisy + WGS on a green square."""
 
 from __future__ import annotations
 
@@ -339,16 +339,20 @@ def write_ico(path: Path, master: Image.Image, sizes: tuple[int, ...] = ICO_SIZE
 
 
 def sync_derived(master: Image.Image) -> None:
-    """Write icon.ico + frontend sidebar PNG from the master image."""
+    """Write icon.ico + frontend sidebar PNG + favicon from the master image."""
     ico_path = OUT_DIR / "icon.ico"
     write_ico(ico_path, master)
     fe_icon = OUT_DIR.parent / "frontend" / "src" / "assets" / "app-icon.png"
     fe_icon.parent.mkdir(parents=True, exist_ok=True)
     master.save(fe_icon)
+    favicon = OUT_DIR.parent / "frontend" / "public" / "favicon.ico"
+    favicon.parent.mkdir(parents=True, exist_ok=True)
+    favicon.write_bytes(ico_path.read_bytes())
     data = ico_path.read_bytes()
     _r, _t, count = struct.unpack_from("<HHH", data, 0)
     print(f"Wrote {ico_path} ({count} sizes)")
     print(f"Wrote {fe_icon}")
+    print(f"Wrote {favicon}")
 
 
 def main(argv: list[str] | None = None) -> None:

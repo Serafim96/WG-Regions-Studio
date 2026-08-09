@@ -7,7 +7,11 @@ import os
 
 def main() -> None:
     os.environ.setdefault("MRV_OPEN_BROWSER", "1")
-    from backend.win_console_icon import apply_windows_console_icon
+    from backend.win_console_icon import apply_windows_console_icon, ensure_classic_console
+
+    # Double-click under Win11 default terminal (WT) → relaunch in classic conhost.
+    if ensure_classic_console():
+        raise SystemExit(0)
 
     apply_windows_console_icon()
 
