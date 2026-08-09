@@ -368,7 +368,7 @@ const CAMERA_FOCUS_MIN_ZOOM = 0.25;
 /** Padding used by expand-all / initial fit — also defines the zoom-out floor. */
 const FIT_PADDING = 40;
 /** Keep this much of the graph inside the viewport when panning (not flush to the edge). */
-const PAN_EDGE_MARGIN = 360;
+const PAN_EDGE_MARGIN = 432;
 /** Keep the familiar wheel feel (do not globally lower — intermittent “speed mode” is separate). */
 const WHEEL_SENSITIVITY = 3.5;
 const CY_MAX_ZOOM = 12;

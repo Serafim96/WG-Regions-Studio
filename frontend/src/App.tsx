@@ -34,6 +34,7 @@ import { FlagsManagerDialog } from './components/FlagsManagerDialog';
 import { FlagsCatalogDialog } from './components/FlagsCatalogDialog';
 import { ValidationResultDialog } from './components/ValidationResultDialog';
 import { FlagTreeDialog } from './components/FlagTreeDialog';
+import { FlagHelpButton } from './components/FlagHelpButton';
 import {
   IconAdd,
   IconAlign,
@@ -186,6 +187,7 @@ export default function App() {
   const [showSearch, setShowSearch] = useState(false);
   const [showFlagsManager, setShowFlagsManager] = useState(false);
   const [flagsManagerFocusId, setFlagsManagerFocusId] = useState<string | null>(null);
+  const [flagsManagerFilterFlag, setFlagsManagerFilterFlag] = useState<string | null>(null);
   const [showFlagConflictsDialog, setShowFlagConflictsDialog] = useState(false);
   const [highlightFlag, setHighlightFlag] = useState<string | null>(null);
   const [conflictSchemeView, setConflictSchemeView] = useState<SpatialConflict | null>(null);
@@ -1767,14 +1769,16 @@ export default function App() {
     setStatus(t('status.membersUpdated', { id: regionId }));
   }, [t]);
 
-  const openFlagsManager = useCallback((regionId?: string) => {
+  const openFlagsManager = useCallback((regionId?: string, filterFlag?: string) => {
     setFlagsManagerFocusId(regionId ?? null);
+    setFlagsManagerFilterFlag(filterFlag?.trim() || null);
     setShowFlagsManager(true);
   }, []);
 
   const closeFlagsManager = useCallback(() => {
     setShowFlagsManager(false);
     setFlagsManagerFocusId(null);
+    setFlagsManagerFilterFlag(null);
   }, []);
 
   const handleBulkFlags = useCallback(async (payload: {
@@ -2246,15 +2250,45 @@ export default function App() {
               onHighlightSubtree={highlightSubtree}
               onClearSubtreeHighlight={clearSubtreeHighlight}
             />
-            {collapseTarget && (
-              <button
-                type="button"
-                className="graph-selected-label"
-                title={t('app.selectedLabelHint', { id: collapseTarget })}
-                onClick={() => focusRegion(collapseTarget)}
-              >
-                {t('app.selectedLabel', { id: collapseTarget })}
-              </button>
+            {(highlightFlag || collapseTarget) && (
+              <div className="graph-selected-labels">
+                {highlightFlag && (
+                  <div className="graph-selected-flag-row">
+                    <FlagHelpButton
+                      name={highlightFlag}
+                      flagsCatalog={flagsCatalog}
+                      placement="inline"
+                    />
+                    <button
+                      type="button"
+                      className="flag-help-btn flag-scheme-btn"
+                      title={t('app.selectedFlagOpenManager')}
+                      aria-label={t('app.selectedFlagOpenManager')}
+                      onClick={() => openFlagsManager(undefined, highlightFlag)}
+                    >
+                      <span aria-hidden>⚑</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="graph-selected-label"
+                      title={t('app.selectedFlagLabelHint', { flag: highlightFlag })}
+                      onClick={() => applyHighlightFlag(highlightFlag)}
+                    >
+                      {t('app.selectedFlagLabel', { flag: highlightFlag })}
+                    </button>
+                  </div>
+                )}
+                {collapseTarget && (
+                  <button
+                    type="button"
+                    className="graph-selected-label"
+                    title={t('app.selectedLabelHint', { id: collapseTarget })}
+                    onClick={() => focusRegion(collapseTarget)}
+                  >
+                    {t('app.selectedLabel', { id: collapseTarget })}
+                  </button>
+                )}
+              </div>
             )}
             <div className="graph-map-controls graph-map-controls--top-left">
               <button
@@ -2610,7 +2644,6 @@ export default function App() {
         <FlagTreeDialog
           scheme={scheme}
           flagsCatalog={flagsCatalog}
-          highlightFlag={highlightFlag}
           onClose={() => setShowFlagTreeDialog(false)}
           onHighlightFlag={(name) => {
             applyHighlightFlag(name);
@@ -2620,7 +2653,7 @@ export default function App() {
       )}
       {showFlagsManager && scheme && (
         <FlagsManagerDialog
-          key={flagsManagerFocusId ?? 'flags-manager'}
+          key={`${flagsManagerFocusId ?? ''}|${flagsManagerFilterFlag ?? ''}|flags-manager`}
           scheme={scheme}
           flagsCatalog={flagsCatalog}
           onClose={closeFlagsManager}
@@ -2629,6 +2662,7 @@ export default function App() {
           onClearAllFlags={handleClearAllFlags}
           onOpenCatalog={() => setShowFlagsCatalog(true)}
           initialRegionId={flagsManagerFocusId}
+          initialFilterFlag={flagsManagerFilterFlag}
           onShowFlagOnScheme={(flagName) => {
             closeFlagsManager();
             applyHighlightFlag(flagName);

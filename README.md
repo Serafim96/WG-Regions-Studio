@@ -7,11 +7,13 @@ Load your own `regions.yml` or a saved scheme, explore the tree, manage flags, a
 ## Features
 
 - Open **YAML** or **`.mrv.json`** from one **Open file** button
-- Hierarchy graph with spatial edges, collapse/expand, search, legend, metrics
+- Hierarchy graph with spatial edges, collapse/expand, search, metrics
+- **Legend** with separate **Scheme** / **Flag scheme** tabs (labeled samples)
 - **Visualize flag inheritance** on the scheme and **see conflicts** (overwrites + overlaps)
+- Flag scheme badge (fit camera / help / open flag management filtered to that flag)
 - Temporary regions, rename/delete, flag manager + catalog, **Export YAML**
 - Dark/light theme, Russian / English UI
-
+- Startup check against the latest GitHub release
 ## Requirements
 
 - Python 3.11+

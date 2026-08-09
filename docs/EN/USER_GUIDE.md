@@ -86,7 +86,7 @@ Regions without `parent` (except `root`) are highlighted in red and appear in no
 - **Right click** on a node — context menu: **Properties** (same as double-click), copy name, hide/show children (direct and recursive), and more.
 - **Right click** on empty scheme space — **Add temporary region**.
 - Bottom-right scheme controls: **Legend**, zoom, and **fullscreen** (like F11).
-- Top-right badge **Selected: …** — click to center and zoom the camera on that region.
+- Top-right badge **Selected: …** — click to center and zoom the camera on that region. On the flag scheme, a **Flag: …** badge appears above it (or alone): click the name to refit the camera to the highlight; to the left — flag help (**?**) and **flag management** (filtered to that flag).
 
 In the region card:
 
@@ -123,7 +123,7 @@ Spatial edges of hidden nodes are remapped to the nearest visible ancestor.
 | **Thin dashed orange** | Partial overlap (`intersects`), no arrow |
 | **Thin purple arrow** | Full containment (`contains`): inner region → outer container |
 
-Open **Legend** (bottom-right on the scheme) for visual samples of scheme styles and flag-highlight styles (both sections are always shown).
+Open **Legend** (bottom-right on the scheme) for visual samples: tabs **Scheme** and **Flag scheme**.
 
 Edges are not selectable or clickable.
 
@@ -220,7 +220,7 @@ Region names in the tops are links: they open the region card, center the camera
 
 ## Legend and language
 
-- **Legend** (button bottom-right on the scheme) — node/edge styles for the scheme and for flag highlighting (flag section is always present).
+- **Legend** (button bottom-right on the scheme) — two tabs: regular scheme styles and flag-scheme styles.
 - WorldGuard flags catalog — separate **Flags catalog** button in the sidebar.
 - In the flags manager, flag names use typeahead suggestions while typing (unknown/custom names are still allowed).
 - In flag tables (region card, flags manager, conflicts) the **«?»** button opens a short description tip for known flags only.

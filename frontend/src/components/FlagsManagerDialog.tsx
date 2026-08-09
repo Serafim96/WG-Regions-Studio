@@ -47,6 +47,8 @@ interface FlagsManagerDialogProps {
   onOpenCatalog: () => void;
   /** Open focused on this region (pinned with parents, ready to edit). */
   initialRegionId?: string | null;
+  /** Pre-select the flag filter dropdown (regions that set this flag + parents). */
+  initialFilterFlag?: string | null;
   /** Open flag highlight scheme for a saved flag name. */
   onShowFlagOnScheme?: (flagName: string) => void;
 }
@@ -234,6 +236,7 @@ export function FlagsManagerDialog({
   onClearAllFlags,
   onOpenCatalog,
   initialRegionId = null,
+  initialFilterFlag = null,
   onShowFlagOnScheme,
 }: FlagsManagerDialogProps) {
   const { t } = useI18n();
@@ -257,7 +260,7 @@ export function FlagsManagerDialog({
 
   const [showAllRegions, setShowAllRegions] = useState(false);
   /** When non-empty, tree shows only regions that set this flag (+ parents / pins). */
-  const [filterFlag, setFilterFlag] = useState('');
+  const [filterFlag, setFilterFlag] = useState(() => initialFilterFlag?.trim() ?? '');
   /** With flag filter: also show regions that inherit the flag via parent. */
   const [showInheritance, setShowInheritance] = useState(false);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());

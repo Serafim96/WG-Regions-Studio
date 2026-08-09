@@ -2720,12 +2720,61 @@ button.success:hover:not(:disabled) {
   color: #f5a623;
 }
 
-.graph-selected-label {
+.graph-selected-labels {
   position: absolute;
   top: 14px;
   right: 58px;
   z-index: 9;
-  max-width: min(320px, calc(100% - 220px));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: min(420px, calc(100% - 220px));
+  pointer-events: none;
+}
+
+.graph-selected-labels .graph-selected-label,
+.graph-selected-labels .graph-selected-flag-row {
+  pointer-events: auto;
+}
+
+.graph-selected-flag-row {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 6px;
+  max-width: 100%;
+}
+
+.graph-selected-flag-row .graph-selected-label {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.graph-selected-flag-row .flag-help-btn {
+  width: auto;
+  min-width: 34px;
+  height: auto;
+  align-self: stretch;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border-input);
+  background: var(--color-bg-panel);
+  box-shadow: 0 1px 4px var(--color-shadow);
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1.3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.graph-selected-flag-row .flag-help-btn:hover {
+  background: var(--color-bg-button-hover);
+}
+
+.graph-selected-label {
+  position: static;
+  max-width: 100%;
   padding: 6px 12px;
   border: 1px solid var(--color-border-input);
   border-radius: 6px;
@@ -3363,80 +3412,142 @@ button.success:hover:not(:disabled) {
 
 .legend-visual-sample {
   flex-shrink: 0;
-  width: 72px;
+  width: 96px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .legend-node {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 44px;
   height: 32px;
   border-radius: 50%;
   border: 2px solid #333;
+  box-sizing: border-box;
+}
+
+.legend-node--labeled {
+  width: auto;
+  min-width: 72px;
+  height: auto;
+  min-height: 44px;
+  padding: 6px 10px;
+  border-radius: 50% / 45%;
+}
+
+.legend-node-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  text-align: center;
+  line-height: 1.15;
+  max-width: 88px;
+}
+
+.legend-node-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.legend-node-sub {
+  font-size: 0.62rem;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .legend-node--normal {
   background: hsl(137.5, 65%, 55%);
+  color: #222;
 }
 
 .legend-node--global {
   background: #f5f5f5;
   border-color: #888;
+  color: #222;
 }
 
 .legend-node--manual {
   background: #f5f5f5;
   border: 2px dashed #c60;
-  border-radius: 4px;
+  border-radius: 6px;
+  color: #222;
 }
 
 .legend-node--orphan {
   background: #ffdddd;
   border-color: #cc0000;
+  color: #900;
 }
 
 .legend-node--selected {
   background: hsl(200, 65%, 55%);
   border: 4px solid #2980b9;
+  color: #222;
 }
 
 .legend-node--collapsed {
   background: hsl(137.5, 65%, 55%);
   border: 4px double #d35400;
+  color: #222;
 }
 
 .legend-node--flag-define {
   background: hsl(160, 55%, 48%);
-  border: 7px solid #047857;
+  border: 5px solid #047857;
+  color: #ecfdf5;
+  text-shadow:
+    -1px -1px 0 #047857,
+    1px -1px 0 #047857,
+    -1px 1px 0 #047857,
+    1px 1px 0 #047857,
+    0 0 3px #047857;
 }
 
 .legend-node--flag-path {
   background: hsl(215, 16%, 78%);
   opacity: 1;
   border: 2px dashed #64748b;
+  color: #1e293b;
 }
 
 .legend-node--flag-dim {
   background: #e4e4e8;
   opacity: 1;
   border: 1px solid #c5c5cc;
+  color: #9a9aa3;
 }
 
 .legend-node--flag-conflict-pair {
   background: hsl(10, 55%, 60%);
-  border: 5px solid #e74c3c;
+  border: 4px solid #e74c3c;
+  color: #fef2f2;
+  text-shadow:
+    -1px -1px 0 #b91c1c,
+    1px -1px 0 #b91c1c,
+    -1px 1px 0 #b91c1c,
+    1px 1px 0 #b91c1c,
+    0 0 3px #b91c1c;
 }
 
 .legend-node--flag-contained-no-inherit {
   background: hsl(280, 40%, 70%);
-  border: 4px dashed #a855f7;
+  border: 3px dashed #a855f7;
+  color: #6b21a8;
 }
 
 .legend-node--flag-intersect-partial {
   background: hsl(24, 70%, 70%);
-  border: 4px dashed #c2410c;
+  border: 3px dashed #c2410c;
+  color: #9a3412;
 }
 
 .legend-edge {
@@ -3534,6 +3645,7 @@ button.success:hover:not(:disabled) {
 [data-theme='dark'] .legend-node--manual {
   background: #3a3f47;
   border-color: #9aa0a6;
+  color: #e8eaed;
 }
 
 [data-theme='dark'] .legend-node--manual {
@@ -3543,6 +3655,11 @@ button.success:hover:not(:disabled) {
 [data-theme='dark'] .legend-node--orphan {
   background: #4a2020;
   border-color: #ff6666;
+  color: #ffb3b3;
+}
+
+[data-theme='dark'] .legend-node--flag-path {
+  color: #e2e8f0;
 }
 
 [data-theme='dark'] .legend-edge--hierarchy {

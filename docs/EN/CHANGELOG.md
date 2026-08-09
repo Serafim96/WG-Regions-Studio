@@ -6,16 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
-## [Unreleased]
-
-### Changed
-
-- Flag-scheme dimming uses washed/muted opaque node colors instead of low opacity (edges no longer show through).
-- Reverted experimental flag-scheme pan/zoom tricks that hurt visual quality (viewport hide, cheaper curves/labels).
+## [2.0.5] — 2026-08-09
 
 ### Added
 
 - Next to flag help (**?**) in region flags / flag management — icon button to open that flag on the scheme; unsaved edits show a short “save first” flash.
+- On the flag scheme, top-right — **Flag: …** badge (click the name to refit the camera; help and flag-management filter buttons to the left).
+- Map legend tabs **Scheme** / **Flag scheme**, with labeled node samples (including ◆ / ◇ / ∈ / ≈ and text glow).
+
+### Changed
+
+- Flag-scheme dimming uses washed/muted opaque node colors instead of low opacity (edges no longer show through).
+- Flag-scheme spatial edges: highlighted intersections/containment use solid strokes; dim intersections stay washed dashed; fewer expensive dash+alpha combinations while panning.
+- Text glow (`text-outline`) only on regions that set the flag (green) and conflict participants (red).
+- Wider camera pan margin around the scheme; flag-pick dialog always opens with an empty name field.
+- Sidebar starts expanded; camera zoom/pan limits included.
 
 ## [2.0.4] — 2026-08-08
 
@@ -82,6 +87,7 @@ Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМ�
 
 Baseline published on GitHub: YAML parse → hierarchy + spatial edges, Cytoscape scheme, collapse/search/legend/metrics, scheme save/load (`.mrv.json`), bilingual UI, pytest suite, local-only `regions.yml` / `all_flags.txt`.
 
+[2.0.5]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.5
 [2.0.4]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.4
 [2.0.3]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.3
 [2.0.2]: https://github.com/Serafim96/WG-Regions-Studio/releases/tag/v2.0.2

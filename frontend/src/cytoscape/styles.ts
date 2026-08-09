@@ -139,9 +139,12 @@ export function buildStylesheet(theme: Theme = 'light') {
         'border-color': '#047857',
         'border-style': 'solid',
         'background-opacity': 1,
-        color: '#064e3b',
+        color: '#ecfdf5',
         'text-opacity': 1,
         'font-weight': 800,
+        'text-outline-width': 2,
+        'text-outline-color': '#047857',
+        'text-outline-opacity': 0.9,
       },
     },
     {
@@ -198,39 +201,49 @@ export function buildStylesheet(theme: Theme = 'light') {
       },
     },
     {
-      // Local flag value caption (stronger than inherit).
+      // Local flag value caption — same green glow as flag-define.
       selector: 'node.flag-value-define',
       style: {
-        color: '#065f46',
+        color: '#ecfdf5',
         'font-weight': 900,
         'text-opacity': 1,
+        'text-outline-width': 2,
+        'text-outline-color': '#047857',
+        'text-outline-opacity': 0.9,
       },
     },
     {
-      // Spatial-conflict participant while a flag highlight is active.
+      // Spatial-conflict participant — red glow (overrides define green when both).
       selector: 'node.flag-conflict-pair',
       style: {
         opacity: 1,
         'border-width': 5,
         'border-color': '#e74c3c',
         'background-opacity': 1,
-        color: '#7f1d1d',
+        color: '#fef2f2',
         'text-opacity': 1,
         'font-weight': 800,
+        'text-outline-width': 2,
+        'text-outline-color': '#b91c1c',
+        'text-outline-opacity': 0.9,
       },
     },
     {
       selector: 'node.flag-conflict-pair.flag-value-define',
       style: {
-        color: '#7f1d1d',
+        color: '#fef2f2',
         'font-weight': 800,
+        'text-outline-color': '#b91c1c',
       },
     },
     {
       selector: 'node.flag-conflict-pair.flag-value-inherit',
       style: {
-        color: '#b91c1c',
+        color: '#fef2f2',
         'font-weight': 800,
+        'text-outline-width': 2,
+        'text-outline-color': '#b91c1c',
+        'text-outline-opacity': 0.9,
       },
     },
     {
@@ -278,11 +291,37 @@ export function buildStylesheet(theme: Theme = 'light') {
         'curve-style': 'bezier',
       },
     },
-    // Dim / path / conflict must come after base edge styles so opacity wins.
+    // Dim / path / conflict must come after base edge styles so overrides win.
     {
+      // Hierarchy dim: faint via opacity (few edges when inheritance lights most).
       selector: 'edge.flag-dim-edge',
       style: {
         opacity: 0.12,
+      },
+    },
+    {
+      // Spatial dim intersects: washed dashed (same language as normal scheme;
+      // bright flag-intersect stays solid so it stands out).
+      selector: 'edge.intersects.flag-dim-edge',
+      style: {
+        opacity: 1,
+        width: 1,
+        'line-style': 'dashed',
+        'line-color': isDark ? '#5a534c' : '#ead9c8',
+        'curve-style': 'bezier',
+        'target-arrow-shape': 'none',
+      },
+    },
+    {
+      selector: 'edge.contains.flag-dim-edge',
+      style: {
+        opacity: 1,
+        width: 1,
+        'line-style': 'solid',
+        'line-color': isDark ? '#4e4858' : '#ddd0e6',
+        'target-arrow-shape': 'none',
+        'curve-style': 'haystack',
+        'haystack-radius': 0,
       },
     },
     {
@@ -305,23 +344,27 @@ export function buildStylesheet(theme: Theme = 'light') {
       },
     },
     {
+      // Bright containment highlight — solid (color/width carry meaning; dash is costly).
       selector: 'edge.flag-no-inherit-edge',
       style: {
         opacity: 1,
         width: 3,
         'line-color': '#a855f7',
         'target-arrow-color': '#a855f7',
-        'line-style': 'dashed',
+        'line-style': 'solid',
       },
     },
     {
+      // Bright intersection highlight — solid haystack (no arrows on intersects).
       selector: 'edge.flag-intersect-edge',
       style: {
         opacity: 1,
         width: 3,
         'line-color': '#c2410c',
-        'target-arrow-color': '#c2410c',
-        'line-style': 'dashed',
+        'line-style': 'solid',
+        'curve-style': 'haystack',
+        'haystack-radius': 0,
+        'target-arrow-shape': 'none',
       },
     },
   ];

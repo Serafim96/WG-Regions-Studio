@@ -35,7 +35,6 @@ export function filterForestForFlag(
 interface FlagTreeDialogProps {
   scheme: Scheme;
   flagsCatalog: FlagInfo[];
-  highlightFlag: string | null;
   onClose: () => void;
   onHighlightFlag: (flagName: string | null) => void;
   /** When set, confirm before applying highlight if caller reports dirty state. */
@@ -46,7 +45,6 @@ interface FlagTreeDialogProps {
 export function FlagTreeDialog({
   scheme,
   flagsCatalog,
-  highlightFlag,
   onClose,
   onHighlightFlag,
   confirmUnsaved,
@@ -60,7 +58,7 @@ export function FlagTreeDialog({
     }),
     [usedFlags, flagsCatalog],
   );
-  const [flagName, setFlagName] = useState(highlightFlag ?? '');
+  const [flagName, setFlagName] = useState('');
 
   const apply = () => {
     const name = flagName.trim();
