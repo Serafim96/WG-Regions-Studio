@@ -142,6 +142,12 @@ function packMeasuredSubtrees(
   out: Map<string, { x: number; y: number }>,
   rowGap: number,
 ): { width: number; height: number } {
+  // Skyline pocket search is O(n²–n³); for large sibling sets use simple wrap rows
+  // (same MAX_CHILDREN_PER_ROW). Keeps visual identity on typical WG forests.
+  if (measured.length >= 120) {
+    return packMeasuredSubtreesSimple(measured, originX, originY, out, rowGap);
+  }
+
   const placed: PlacedRect[] = [];
   const origins: { x: number; y: number }[] = [];
 
@@ -184,6 +190,44 @@ function packMeasuredSubtrees(
     maxRight = Math.max(maxRight, p.x + p.w);
     maxBottom = Math.max(maxBottom, p.y + p.h);
   }
+  return {
+    width: Math.max(0, maxRight - originX),
+    height: Math.max(0, maxBottom - originY),
+  };
+}
+
+/** Simple L→R wrap of MAX_CHILDREN_PER_ROW — O(n) for large sibling sets. */
+function packMeasuredSubtreesSimple(
+  measured: { width: number; height: number; local: Map<string, { x: number; y: number }> }[],
+  originX: number,
+  originY: number,
+  out: Map<string, { x: number; y: number }>,
+  rowGap: number,
+): { width: number; height: number } {
+  let x = originX;
+  let y = originY;
+  let rowH = 0;
+  let itemsInRow = 0;
+  let maxRight = originX;
+  let maxBottom = originY;
+
+  for (const m of measured) {
+    if (itemsInRow >= MAX_CHILDREN_PER_ROW) {
+      x = originX;
+      y += rowH + rowGap;
+      rowH = 0;
+      itemsInRow = 0;
+    }
+    for (const [id, pos] of m.local) {
+      out.set(id, { x: pos.x + x, y: pos.y + y });
+    }
+    maxRight = Math.max(maxRight, x + m.width);
+    maxBottom = Math.max(maxBottom, y + m.height);
+    x += m.width;
+    rowH = Math.max(rowH, m.height);
+    itemsInRow += 1;
+  }
+
   return {
     width: Math.max(0, maxRight - originX),
     height: Math.max(0, maxBottom - originY),
@@ -308,33 +352,147 @@ function separateOverlappingNodes(
 ): void {
   const ids = [...positions.keys()];
   const defaultDim = { width: 80, height: 56 };
+  const n = ids.length;
+  const useGrid = n >= 80;
+
   for (let iter = 0; iter < 6; iter++) {
     let moved = false;
-    for (let i = 0; i < ids.length; i++) {
-      for (let j = i + 1; j < ids.length; j++) {
-        const aId = ids[i];
-        const bId = ids[j];
-        const aBox = nodeAabb(aId, positions, nodeDims, defaultDim, gap / 2);
-        const bBox = nodeAabb(bId, positions, nodeDims, defaultDim, gap / 2);
-        if (!aBox || !bBox || !aabbsOverlap(aBox, bBox)) continue;
-
-        const pa = positions.get(aId)!;
-        const pb = positions.get(bId)!;
-        const overlapX = Math.min(aBox.x1, bBox.x1) - Math.max(aBox.x0, bBox.x0);
-        if (overlapX <= 0) continue;
-        const push = overlapX / 2 + 1;
-        if (pa.x <= pb.x) {
-          positions.set(aId, { x: pa.x - push, y: pa.y });
-          positions.set(bId, { x: pb.x + push, y: pb.y });
-        } else {
-          positions.set(aId, { x: pa.x + push, y: pa.y });
-          positions.set(bId, { x: pb.x - push, y: pb.y });
+    if (!useGrid) {
+      for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+          if (separatePair(ids[i], ids[j], positions, nodeDims, defaultDim, gap)) {
+            moved = true;
+          }
         }
-        moved = true;
+      }
+    } else {
+      const cell = 96;
+      const buckets = new Map<string, string[]>();
+      for (const id of ids) {
+        const box = nodeAabb(id, positions, nodeDims, defaultDim, gap / 2);
+        if (!box) continue;
+        const x0 = Math.floor(box.x0 / cell);
+        const x1 = Math.floor(box.x1 / cell);
+        const y0 = Math.floor(box.y0 / cell);
+        const y1 = Math.floor(box.y1 / cell);
+        for (let gx = x0; gx <= x1; gx++) {
+          for (let gy = y0; gy <= y1; gy++) {
+            const key = `${gx}:${gy}`;
+            let bucket = buckets.get(key);
+            if (!bucket) {
+              bucket = [];
+              buckets.set(key, bucket);
+            }
+            bucket.push(id);
+          }
+        }
+      }
+      const seen = new Set<string>();
+      for (const bucket of buckets.values()) {
+        for (let i = 0; i < bucket.length; i++) {
+          for (let j = i + 1; j < bucket.length; j++) {
+            const a = bucket[i];
+            const b = bucket[j];
+            const pairKey = a < b ? `${a}|${b}` : `${b}|${a}`;
+            if (seen.has(pairKey)) continue;
+            seen.add(pairKey);
+            if (separatePair(a, b, positions, nodeDims, defaultDim, gap)) {
+              moved = true;
+            }
+          }
+        }
       }
     }
     if (!moved) break;
   }
+}
+
+function separatePair(
+  aId: string,
+  bId: string,
+  positions: Map<string, { x: number; y: number }>,
+  nodeDims: Map<string, NodeDimensions>,
+  defaultDim: NodeDimensions,
+  gap: number,
+): boolean {
+  const aBox = nodeAabb(aId, positions, nodeDims, defaultDim, gap / 2);
+  const bBox = nodeAabb(bId, positions, nodeDims, defaultDim, gap / 2);
+  if (!aBox || !bBox || !aabbsOverlap(aBox, bBox)) return false;
+
+  const pa = positions.get(aId)!;
+  const pb = positions.get(bId)!;
+  const overlapX = Math.min(aBox.x1, bBox.x1) - Math.max(aBox.x0, bBox.x0);
+  if (overlapX <= 0) return false;
+  const push = overlapX / 2 + 1;
+  if (pa.x <= pb.x) {
+    positions.set(aId, { x: pa.x - push, y: pa.y });
+    positions.set(bId, { x: pb.x + push, y: pb.y });
+  } else {
+    positions.set(aId, { x: pa.x + push, y: pa.y });
+    positions.set(bId, { x: pb.x - push, y: pb.y });
+  }
+  return true;
+}
+
+/** Grid index of node AABBs for fast overlap queries. */
+function buildAabbGrid(
+  positions: Map<string, { x: number; y: number }>,
+  nodeDims: Map<string, NodeDimensions>,
+  defaultDim: NodeDimensions,
+  pad: number,
+  cell = 128,
+): Map<string, string[]> {
+  const buckets = new Map<string, string[]>();
+  for (const id of positions.keys()) {
+    const box = nodeAabb(id, positions, nodeDims, defaultDim, pad);
+    if (!box) continue;
+    const x0 = Math.floor(box.x0 / cell);
+    const x1 = Math.floor(box.x1 / cell);
+    const y0 = Math.floor(box.y0 / cell);
+    const y1 = Math.floor(box.y1 / cell);
+    for (let gx = x0; gx <= x1; gx++) {
+      for (let gy = y0; gy <= y1; gy++) {
+        const key = `${gx}:${gy}`;
+        let bucket = buckets.get(key);
+        if (!bucket) {
+          bucket = [];
+          buckets.set(key, bucket);
+        }
+        bucket.push(id);
+      }
+    }
+  }
+  return buckets;
+}
+
+function gridOverlapHits(
+  box: { x0: number; y0: number; x1: number; y1: number },
+  exclude: Set<string>,
+  positions: Map<string, { x: number; y: number }>,
+  nodeDims: Map<string, NodeDimensions>,
+  defaultDim: NodeDimensions,
+  pad: number,
+  buckets: Map<string, string[]>,
+  cell = 128,
+): boolean {
+  const x0 = Math.floor(box.x0 / cell);
+  const x1 = Math.floor(box.x1 / cell);
+  const y0 = Math.floor(box.y0 / cell);
+  const y1 = Math.floor(box.y1 / cell);
+  const checked = new Set<string>();
+  for (let gx = x0; gx <= x1; gx++) {
+    for (let gy = y0; gy <= y1; gy++) {
+      const bucket = buckets.get(`${gx}:${gy}`);
+      if (!bucket) continue;
+      for (const otherId of bucket) {
+        if (exclude.has(otherId) || checked.has(otherId)) continue;
+        checked.add(otherId);
+        const other = nodeAabb(otherId, positions, nodeDims, defaultDim, pad);
+        if (other && aabbsOverlap(box, other)) return true;
+      }
+    }
+  }
+  return false;
 }
 
 function pullOrphanRootsNearSpatialPartners(
@@ -354,6 +512,8 @@ function pullOrphanRootsNearSpatialPartners(
 
   const defaultDim = { width: 80, height: 56 };
   let parkIndex = 0;
+  const useGrid = positions.size >= 80;
+  let buckets = useGrid ? buildAabbGrid(positions, nodeDims, defaultDim, 8) : null;
 
   const roots = [...(scheme.forest?.roots ?? [])].sort((a, b) => compareNatural(a.id, b.id));
   for (const root of roots) {
@@ -399,6 +559,7 @@ function pullOrphanRootsNearSpatialPartners(
     const subtreeSet = new Set(subtreeIds);
 
     let extra = 0;
+    let moved = false;
     for (let guard = 0; guard < 24; guard++) {
       const targetX =
         avgX + side * (dims.width / 2 + maxPartnerHalfW + ORPHAN_NEAR_GAP + row * 24 + extra);
@@ -406,26 +567,46 @@ function pullOrphanRootsNearSpatialPartners(
       const dx = targetX - current.x;
       const dy = targetY - current.y;
 
-      const trial = new Map(positions);
-      for (const id of subtreeIds) {
-        const pos = trial.get(id);
-        if (!pos) continue;
-        trial.set(id, { x: pos.x + dx, y: pos.y + dy });
-      }
-
       let hits = false;
-      for (const id of subtreeIds) {
-        const box = nodeAabb(id, trial, nodeDims, defaultDim, 8);
-        if (!box) continue;
-        for (const [otherId] of trial) {
-          if (subtreeSet.has(otherId)) continue;
-          const other = nodeAabb(otherId, trial, nodeDims, defaultDim, 8);
-          if (other && aabbsOverlap(box, other)) {
+      if (buckets) {
+        for (const id of subtreeIds) {
+          const pos = positions.get(id);
+          if (!pos) continue;
+          const trialPos = { x: pos.x + dx, y: pos.y + dy };
+          const d = nodeDims.get(id) ?? defaultDim;
+          const hw = d.width / 2 + 8;
+          const hh = d.height / 2 + 8;
+          const box = {
+            x0: trialPos.x - hw,
+            y0: trialPos.y - hh,
+            x1: trialPos.x + hw,
+            y1: trialPos.y + hh,
+          };
+          if (gridOverlapHits(box, subtreeSet, positions, nodeDims, defaultDim, 8, buckets)) {
             hits = true;
             break;
           }
         }
-        if (hits) break;
+      } else {
+        const trial = new Map(positions);
+        for (const id of subtreeIds) {
+          const pos = trial.get(id);
+          if (!pos) continue;
+          trial.set(id, { x: pos.x + dx, y: pos.y + dy });
+        }
+        for (const id of subtreeIds) {
+          const box = nodeAabb(id, trial, nodeDims, defaultDim, 8);
+          if (!box) continue;
+          for (const [otherId] of trial) {
+            if (subtreeSet.has(otherId)) continue;
+            const other = nodeAabb(otherId, trial, nodeDims, defaultDim, 8);
+            if (other && aabbsOverlap(box, other)) {
+              hits = true;
+              break;
+            }
+          }
+          if (hits) break;
+        }
       }
       if (!hits || guard === 23) {
         if (Math.abs(dx) >= 1 || Math.abs(dy) >= 1) {
@@ -434,10 +615,14 @@ function pullOrphanRootsNearSpatialPartners(
             if (!pos) continue;
             positions.set(id, { x: pos.x + dx, y: pos.y + dy });
           }
+          moved = true;
         }
         break;
       }
       extra += 28;
+    }
+    if (moved && useGrid) {
+      buckets = buildAabbGrid(positions, nodeDims, defaultDim, 8);
     }
   }
 }

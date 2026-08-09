@@ -450,6 +450,11 @@ const ru = {
   'notifications.updateBody': 'У вас установлена {current}. На GitHub вышел релиз {latest} — скачайте обновление.',
   'notifications.updateHint': 'Нажмите, чтобы открыть страницу релиза',
 
+  'whatsNew.title': 'Что нового в {version}',
+  'whatsNew.ok': 'Понятно',
+  'whatsNew.close': 'Закрыть',
+  'whatsNew.empty': 'В этой версии нет краткого списка изменений.',
+
   'flagConflicts.dialogTitle': 'Флаги: перезаписи и конфликты',
   'flagConflicts.hardErrorsTitle': 'Экспорт заблокирован:',
   'flagConflicts.tabOverwrites': 'Перезаписи',
@@ -917,6 +922,11 @@ const en: Record<TranslationKey, string> = {
   'notifications.updateTitle': 'New version available: {latest}',
   'notifications.updateBody': 'You have {current}. GitHub has release {latest} — download the update.',
   'notifications.updateHint': 'Click to open the release page',
+
+  'whatsNew.title': "What's new in {version}",
+  'whatsNew.ok': 'Got it',
+  'whatsNew.close': 'Close',
+  'whatsNew.empty': 'No short changelog for this version.',
 
   'flagConflicts.dialogTitle': 'Flags: overwrites and conflicts',
   'flagConflicts.hardErrorsTitle': 'Export is blocked due to:',

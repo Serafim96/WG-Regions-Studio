@@ -9,6 +9,7 @@ import yaml
 from backend.manual_geometry import incomplete_manual_regions, is_manual_region
 from backend.models.region import Region
 from backend.parser.wg_parser import validate_parent_links
+from backend.util.parent_links import resolve_parent_skipping
 
 
 def export_type_of(region: Region) -> str:
@@ -22,11 +23,11 @@ def _export_parent(
     by_id: dict[str, Region],
 ) -> str | None:
     """Skip excluded ancestors so parent always points to an exported region."""
-    parent = region.parent
-    while parent and parent not in selected_ids:
-        ancestor = by_id.get(parent)
-        parent = ancestor.parent if ancestor else None
-    return parent
+    return resolve_parent_skipping(
+        region.parent,
+        lambda pid: pid not in selected_ids,
+        by_id,
+    )
 
 
 def export_regions_yaml(

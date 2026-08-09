@@ -2,15 +2,38 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import httpx
 
 # Bump when cutting a GitHub release (tag vX.Y.Z).
-APP_VERSION = "2.0.9"
+# Full checklist: docs/dev/RELEASE.md
+APP_VERSION = "2.0.10"
 GITHUB_REPO = "Serafim96/WG-Regions-Studio"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
+
+# Short bilingual bullets for the "What's New" dialog (current build only).
+# On every release: rewrite these for the new version, and put matching `-` bullets
+# in the GitHub Release body (old clients read that body for the update toast).
+CURRENT_HIGHLIGHTS: dict[str, list[str]] = {
+    "ru": [
+        "Окно «Что нового» при первом запуске версии",
+        "В уведомлении об обновлении — краткий список изменений из релиза",
+        "Исправлена вспышка консоли при старте Windows EXE",
+    ],
+    "en": [
+        "What's New dialog on first launch of a version",
+        "Update notification includes a short summary from the GitHub release",
+        "Fixed console flash when starting the Windows EXE",
+    ],
+}
+
+_BULLET_RE = re.compile(r"^\s*[-*•]\s+(.+)$")
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
+_MD_BOLD_RE = re.compile(r"\*\*([^*]+)\*\*|__([^_]+)__")
+_MD_CODE_RE = re.compile(r"`([^`]+)`")
 
 
 def normalize_version(tag: str) -> str:
@@ -43,6 +66,36 @@ def is_newer(remote: str, local: str) -> bool:
     return a_pad > b_pad
 
 
+def _strip_markdown_inline(text: str) -> str:
+    s = _MD_LINK_RE.sub(r"\1", text)
+    s = _MD_BOLD_RE.sub(lambda m: m.group(1) or m.group(2) or "", s)
+    s = _MD_CODE_RE.sub(r"\1", s)
+    return " ".join(s.split()).strip()
+
+
+def highlights_from_release_body(body: str | None, *, limit: int = 4) -> list[str]:
+    """Extract short plain-text bullets from a GitHub release markdown body."""
+    if not body or not body.strip():
+        return []
+    out: list[str] = []
+    for raw_line in body.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        m = _BULLET_RE.match(line)
+        if not m:
+            continue
+        cleaned = _strip_markdown_inline(m.group(1))
+        if not cleaned:
+            continue
+        if len(cleaned) > 160:
+            cleaned = cleaned[:157].rstrip() + "…"
+        out.append(cleaned)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def check_for_update(timeout: float = 4.0) -> dict[str, Any]:
     """
     Compare ``APP_VERSION`` to the latest GitHub release tag.
@@ -56,6 +109,7 @@ def check_for_update(timeout: float = 4.0) -> dict[str, Any]:
         "outdated": False,
         "html_url": RELEASES_PAGE_URL,
         "name": None,
+        "highlights": [],
     }
     try:
         with httpx.Client(timeout=timeout, follow_redirects=True) as client:
@@ -75,6 +129,7 @@ def check_for_update(timeout: float = 4.0) -> dict[str, Any]:
             return result
         html_url = data.get("html_url")
         name = data.get("name")
+        body = data.get("body")
         latest = normalize_version(tag)
         result["latest"] = latest
         result["html_url"] = (
@@ -84,6 +139,10 @@ def check_for_update(timeout: float = 4.0) -> dict[str, Any]:
         )
         result["name"] = name if isinstance(name, str) else tag
         result["outdated"] = is_newer(tag, APP_VERSION)
+        if result["outdated"]:
+            result["highlights"] = highlights_from_release_body(
+                body if isinstance(body, str) else None
+            )
     except Exception:
         return result
     return result

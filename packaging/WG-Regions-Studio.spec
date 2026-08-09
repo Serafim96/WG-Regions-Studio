@@ -72,7 +72,9 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    console=True,
+    # Windows subsystem: no interim console flash before conhost self-relaunch.
+    # Classic console is allocated under conhost (see win_console_icon.ensure_*).
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,

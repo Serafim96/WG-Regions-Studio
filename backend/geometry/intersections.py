@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from shapely.geometry import Polygon
+from shapely.geometry.base import BaseGeometry
 
 from backend.models.region import Region, Vec2, Vec3
 
 SpatialRelation = Literal["intersects", "contains"]
+
+# Below this count, full pairwise is cheaper than grid bookkeeping.
+_GRID_PAIR_THRESHOLD = 64
+# Default XZ cell size for spatial hashing (blocks); adaptive override below.
+_DEFAULT_GRID_CELL = 64.0
 
 
 @dataclass(frozen=True)
@@ -24,7 +30,7 @@ class SpatialEdge:
         if self.relation == "intersects":
             a, b = sorted((self.source, self.target))
             return (a, b, "intersects")
-        return (self.source, self.target, "contains")
+        return (self.source, self.target, self.relation)
 
 
 def cuboid_volume(region: Region) -> int | None:
@@ -237,40 +243,251 @@ def region_contains(outer: Region, inner: Region) -> bool:
     return _polygon_contains(poly_outer, poly_inner)
 
 
+@dataclass
+class _CachedGeom:
+    """Per-region geometry cache for one ``compute_spatial_edges`` call."""
+
+    region: Region
+    y0: int
+    y1: int
+    min_x: float
+    max_x: float
+    min_z: float
+    max_z: float
+    is_cuboid: bool
+    _poly: Polygon | None = field(default=None, repr=False)
+
+    def poly(self) -> Polygon | None:
+        if self._poly is not None:
+            return self._poly
+        r = self.region
+        if r.type == "cuboid":
+            self._poly = _cuboid_to_polygon_xz(r)
+        else:
+            self._poly = _poly_to_polygon(r)
+        return self._poly
+
+
+def _build_cache(region: Region) -> _CachedGeom | None:
+    y = _get_y_range(region)
+    if y is None:
+        return None
+    if region.type == "cuboid" and region.min and region.max:
+        return _CachedGeom(
+            region=region,
+            y0=y[0],
+            y1=y[1],
+            min_x=float(region.min.x),
+            max_x=float(region.max.x),
+            min_z=float(region.min.z),
+            max_z=float(region.max.z),
+            is_cuboid=True,
+        )
+    poly = _poly_to_polygon(region)
+    if poly is None or poly.is_empty:
+        return None
+    min_x, min_z, max_x, max_z = poly.bounds
+    return _CachedGeom(
+        region=region,
+        y0=y[0],
+        y1=y[1],
+        min_x=float(min_x),
+        max_x=float(max_x),
+        min_z=float(min_z),
+        max_z=float(max_z),
+        is_cuboid=False,
+        _poly=poly,
+    )
+
+
+def _xz_aabb_positive_overlap(a: _CachedGeom, b: _CachedGeom) -> bool:
+    """Positive-area XZ AABB overlap; touch-only edges do not count."""
+    if a.max_x < b.min_x or b.max_x < a.min_x:
+        return False
+    if a.max_z < b.min_z or b.max_z < a.min_z:
+        return False
+    if a.max_x == b.min_x or b.max_x == a.min_x:
+        return False
+    if a.max_z == b.min_z or b.max_z == a.min_z:
+        return False
+    return True
+
+
+def _y_covers(outer: _CachedGeom, inner: _CachedGeom) -> bool:
+    return outer.y0 <= inner.y0 and outer.y1 >= inner.y1
+
+
+def _cached_contains(outer: _CachedGeom, inner: _CachedGeom) -> bool:
+    if not _y_covers(outer, inner):
+        return False
+    if outer.is_cuboid and inner.is_cuboid:
+        assert outer.region.min and outer.region.max and inner.region.min and inner.region.max
+        return _cuboid_contains(
+            outer.region.min, outer.region.max, inner.region.min, inner.region.max
+        )
+    # Outer AABB must at least cover inner AABB on XZ (cheap reject).
+    if (
+        outer.min_x > inner.min_x
+        or outer.max_x < inner.max_x
+        or outer.min_z > inner.min_z
+        or outer.max_z < inner.max_z
+    ):
+        return False
+    poly_o = outer.poly()
+    poly_i = inner.poly()
+    if poly_o is None or poly_i is None:
+        return False
+    return _polygon_contains(poly_o, poly_i)
+
+
+def _cached_intersect_volume(
+    a: _CachedGeom,
+    b: _CachedGeom,
+) -> tuple[bool, int | None]:
+    """Return (intersects?, overlap_blocks). Reuses one Shapely intersection when needed."""
+    if not _y_ranges_overlap(a.y0, a.y1, b.y0, b.y1):
+        return False, None
+    if not _xz_aabb_positive_overlap(a, b):
+        return False, None
+
+    height = _inclusive_axis_overlap(a.y0, a.y1, b.y0, b.y1)
+    if height is None:
+        return False, None
+
+    if a.is_cuboid and b.is_cuboid:
+        assert a.region.min and a.region.max and b.region.min and b.region.max
+        if not _cuboid_aabb_overlap(
+            a.region.min, a.region.max, b.region.min, b.region.max
+        ):
+            return False, None
+        dx = _inclusive_axis_overlap(a.region.min.x, a.region.max.x, b.region.min.x, b.region.max.x)
+        dy = _inclusive_axis_overlap(a.region.min.y, a.region.max.y, b.region.min.y, b.region.max.y)
+        dz = _inclusive_axis_overlap(a.region.min.z, a.region.max.z, b.region.min.z, b.region.max.z)
+        if dx is None or dy is None or dz is None:
+            return False, None
+        return True, dx * dy * dz
+
+    poly_a = a.poly()
+    poly_b = b.poly()
+    if poly_a is None or poly_b is None:
+        return False, None
+    inter: BaseGeometry = poly_a.intersection(poly_b)
+    if inter.is_empty or inter.area <= 0:
+        return False, None
+    return True, int(inter.area * height)
+
+
+def _adaptive_cell_size(cached: list[_CachedGeom]) -> float:
+    if not cached:
+        return _DEFAULT_GRID_CELL
+    widths = [c.max_x - c.min_x for c in cached]
+    depths = [c.max_z - c.min_z for c in cached]
+    # Median-ish via sorted mid; prefer larger of median width/depth.
+    widths.sort()
+    depths.sort()
+    mid = len(widths) // 2
+    med = max(widths[mid], depths[mid], 1.0)
+    # Cell roughly 1–2× median extent keeps neighbor buckets small.
+    return max(med * 1.25, 8.0)
+
+
+def _cells_for(c: _CachedGeom, cell: float) -> list[tuple[int, int]]:
+    x0 = int(c.min_x // cell)
+    x1 = int(c.max_x // cell)
+    z0 = int(c.min_z // cell)
+    z1 = int(c.max_z // cell)
+    return [(x, z) for x in range(x0, x1 + 1) for z in range(z0, z1 + 1)]
+
+
+def _candidate_pairs(cached: list[_CachedGeom]) -> list[tuple[int, int]]:
+    n = len(cached)
+    if n < 2:
+        return []
+    if n < _GRID_PAIR_THRESHOLD:
+        return [(i, j) for i in range(n) for j in range(i + 1, n)]
+
+    cell = _adaptive_cell_size(cached)
+    buckets: dict[tuple[int, int], list[int]] = {}
+    for i, c in enumerate(cached):
+        for key in _cells_for(c, cell):
+            buckets.setdefault(key, []).append(i)
+
+    seen: set[tuple[int, int]] = set()
+    pairs: list[tuple[int, int]] = []
+    for indices in buckets.values():
+        m = len(indices)
+        if m < 2:
+            continue
+        for a in range(m):
+            ia = indices[a]
+            for b in range(a + 1, m):
+                ib = indices[b]
+                i, j = (ia, ib) if ia < ib else (ib, ia)
+                if (i, j) not in seen:
+                    seen.add((i, j))
+                    pairs.append((i, j))
+    return pairs
+
+
 def compute_spatial_edges(regions: list[Region]) -> list[SpatialEdge]:
-    """O(n²) pairwise spatial relation detection."""
-    spatial = [r for r in regions if is_spatial(r)]
+    """Pairwise spatial relation detection with AABB + grid prefilter and geom cache."""
+    cached: list[_CachedGeom] = []
+    for r in regions:
+        if not is_spatial(r):
+            continue
+        entry = _build_cache(r)
+        if entry is not None:
+            cached.append(entry)
+
     edges: list[SpatialEdge] = []
     seen: set[tuple[str, str, SpatialRelation]] = set()
 
-    for i, a in enumerate(spatial):
-        for b in spatial[i + 1 :]:
-            if region_contains(a, b):
-                key = (b.id, a.id, "contains")
-                if key not in seen:
-                    seen.add(key)
-                    edges.append(SpatialEdge(source=b.id, target=a.id, relation="contains"))
-                continue
-            if region_contains(b, a):
-                key = (a.id, b.id, "contains")
-                if key not in seen:
-                    seen.add(key)
-                    edges.append(SpatialEdge(source=a.id, target=b.id, relation="contains"))
-                continue
-            if regions_intersect(a, b):
-                x, y = sorted((a.id, b.id))
-                key = (x, y, "intersects")
-                if key not in seen:
-                    seen.add(key)
-                    vol = intersection_volume(a, b)
-                    edges.append(
-                        SpatialEdge(
-                            source=x,
-                            target=y,
-                            relation="intersects",
-                            # Always store a number when an intersects edge exists.
-                            overlap_blocks=vol if vol is not None else 0,
-                        )
+    for i, j in _candidate_pairs(cached):
+        a = cached[i]
+        b = cached[j]
+
+        y_ok = _y_ranges_overlap(a.y0, a.y1, b.y0, b.y1) or _y_covers(a, b) or _y_covers(b, a)
+        if not y_ok:
+            continue
+
+        xz_overlap = _xz_aabb_positive_overlap(a, b)
+        xz_cover = (
+            (a.min_x <= b.min_x and a.max_x >= b.max_x and a.min_z <= b.min_z and a.max_z >= b.max_z)
+            or (b.min_x <= a.min_x and b.max_x >= a.max_x and b.min_z <= a.min_z and b.max_z >= a.max_z)
+        )
+        if not xz_overlap and not xz_cover:
+            continue
+
+        if _cached_contains(a, b):
+            key = (b.region.id, a.region.id, "contains")
+            if key not in seen:
+                seen.add(key)
+                edges.append(
+                    SpatialEdge(source=b.region.id, target=a.region.id, relation="contains")
+                )
+            continue
+        if _cached_contains(b, a):
+            key = (a.region.id, b.region.id, "contains")
+            if key not in seen:
+                seen.add(key)
+                edges.append(
+                    SpatialEdge(source=a.region.id, target=b.region.id, relation="contains")
+                )
+            continue
+
+        intersects, vol = _cached_intersect_volume(a, b)
+        if intersects:
+            x, y = sorted((a.region.id, b.region.id))
+            key = (x, y, "intersects")
+            if key not in seen:
+                seen.add(key)
+                edges.append(
+                    SpatialEdge(
+                        source=x,
+                        target=y,
+                        relation="intersects",
+                        overlap_blocks=vol if vol is not None else 0,
                     )
+                )
 
     return edges

@@ -270,6 +270,26 @@ button.warning:hover:not(:disabled) {
   justify-content: flex-end;
 }
 
+.whats-new-modal {
+  max-width: 440px;
+}
+
+.whats-new-list {
+  margin: 0 0 1rem;
+  padding-left: 1.15rem;
+  line-height: 1.45;
+  color: var(--color-text);
+}
+
+.whats-new-list li + li {
+  margin-top: 0.45rem;
+}
+
+.whats-new-empty {
+  margin: 0 0 1rem;
+  color: var(--color-text-muted);
+}
+
 .validation-result-modal {
   max-width: 520px;
   width: min(520px, 92vw);
@@ -3108,6 +3128,11 @@ button.success:hover:not(:disabled) {
   font-size: 0.75rem;
   line-height: 1.35;
   color: var(--color-text-muted);
+  white-space: pre-wrap;
+}
+
+.notifications-item-detail {
+  white-space: pre-line;
 }
 
 .notifications-item-dismiss {
@@ -3207,6 +3232,13 @@ button.success:hover:not(:disabled) {
 
 .notification-toast > span:not(.notification-toast-level):not(.notification-toast-hint) {
   font-size: 0.8rem;
+  color: var(--color-text-muted);
+  line-height: 1.35;
+}
+
+.notification-toast-detail {
+  white-space: pre-line;
+  font-size: 0.78rem;
   color: var(--color-text-muted);
   line-height: 1.35;
 }

@@ -38,16 +38,72 @@ def resolve_icon_ico() -> Path | None:
     return None
 
 
+def _hide_and_detach_console() -> None:
+    """Hide then detach any inherited console so the interim process does not flash."""
+    import ctypes
+
+    kernel32 = ctypes.windll.kernel32
+    user32 = ctypes.windll.user32
+    SW_HIDE = 0
+    hwnd = kernel32.GetConsoleWindow()
+    if hwnd:
+        user32.ShowWindow(hwnd, SW_HIDE)
+    try:
+        kernel32.FreeConsole()
+    except Exception:
+        pass
+
+
+def _rebind_stdio_to_console() -> None:
+    """Point Python stdio at the console (needed for windowed / frozen builds)."""
+    try:
+        sys.stdin = open("CONIN$", "r", encoding="utf-8", errors="replace")
+        sys.stdout = open("CONOUT$", "w", encoding="utf-8", errors="replace", buffering=1)
+        sys.stderr = open("CONOUT$", "w", encoding="utf-8", errors="replace", buffering=1)
+    except OSError:
+        pass
+
+
+def ensure_console_stdio() -> None:
+    """Ensure a console exists and stdio is usable (AllocConsole if still detached)."""
+    if sys.platform != "win32":
+        return
+
+    import ctypes
+
+    kernel32 = ctypes.windll.kernel32
+    if not kernel32.GetConsoleWindow():
+        if not kernel32.AllocConsole():
+            return
+    _rebind_stdio_to_console()
+
+
 def ensure_classic_console() -> bool:
     """Relaunch once under conhost.exe and return True (caller should exit).
 
     Wrapping in conhost disables Windows Terminal delegation regardless of the
     system Default Terminal setting (including Explorer double-click handoff).
     Guarded by MRV_CLASSIC_CONSOLE to avoid an infinite relaunch loop.
+
+    Packaged builds use the Windows subsystem (PyInstaller ``console=False``):
+    there is no interim console to flash, and WT does not hand off GUI apps, so
+    we stay in-process and ``ensure_console_stdio()`` allocates a classic console.
+
+    Dev / console-subsystem parents still relaunch under conhost; the interim
+    console is hidden and detached before spawn to avoid a visible flash.
     """
     if sys.platform != "win32":
         return False
     if os.environ.get(_CLASSIC_ENV) == "1":
+        return False
+
+    import ctypes
+
+    has_console = bool(ctypes.windll.kernel32.GetConsoleWindow())
+
+    # Windowed frozen EXE: no console, no WT handoff — AllocConsole in-process.
+    if getattr(sys, "frozen", False) and not has_console:
+        os.environ[_CLASSIC_ENV] = "1"
         return False
 
     env = os.environ.copy()
@@ -62,9 +118,14 @@ def ensure_classic_console() -> bool:
         cmd = ["conhost.exe", sys.executable, "-m", "backend", *sys.argv[1:]]
         cwd = str(Path(__file__).resolve().parents[1])
 
+    # Hide interim console before the child window appears (dev / console parent).
+    _hide_and_detach_console()
+
     try:
         subprocess.Popen(cmd, cwd=cwd, env=env, close_fds=False)
     except OSError:
+        # Relaunch failed — try to restore a console for logging in this process.
+        ensure_console_stdio()
         return False
     return True
 

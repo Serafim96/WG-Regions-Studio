@@ -225,9 +225,12 @@ function pickWinnerForSpatial(
 export function runWorldGuardFlagChecks({
   scheme,
   flagsCatalog,
+  precomputedEffective,
 }: {
   scheme: Scheme;
   flagsCatalog: FlagInfo[];
+  /** Optional precomputed effective flags (avoids a second walk). */
+  precomputedEffective?: Map<string, Map<string, unknown>>;
 }): FlagConflictsResult {
   const hardErrors = detectParentCycle(scheme.regions);
   if (hardErrors.length > 0) {
@@ -247,7 +250,7 @@ export function runWorldGuardFlagChecks({
 
   const conflictRegionIds = new Set<string>();
   const allFlagNames = computeAllFlagNames(scheme);
-  const effectiveByRegion = computeEffectiveFlagsByRegion(scheme);
+  const effectiveByRegion = precomputedEffective ?? computeEffectiveFlagsByRegion(scheme);
   const parentMap = buildParentMap(scheme);
   const regionsById = new Map(scheme.regions.map((r) => [r.id, r]));
 

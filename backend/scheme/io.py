@@ -12,7 +12,7 @@ from backend.geometry.intersections import SpatialEdge
 from backend.layout.hierarchical import compute_layout
 from backend.metrics.compute import compute_metrics
 from backend.models.region import Region
-from backend.tree.builder import Forest, build_forest
+from backend.tree.builder import build_forest
 
 SCHEMA_VERSION = 1
 
@@ -75,10 +75,15 @@ def save_scheme(scheme: dict[str, Any], path: Path | str) -> None:
     Path(path).write_text(scheme_to_json(scheme), encoding="utf-8")
 
 
-def load_scheme(path: Path | str) -> dict[str, Any]:
-    data = json.loads(Path(path).read_text(encoding="utf-8"))
+def ensure_supported_schema_version(data: dict[str, Any]) -> None:
+    """Raise ValueError when schemaVersion is missing or unsupported."""
     if data.get("schemaVersion") != SCHEMA_VERSION:
         raise ValueError(f"Unsupported schema version: {data.get('schemaVersion')}")
+
+
+def load_scheme(path: Path | str) -> dict[str, Any]:
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    ensure_supported_schema_version(data)
     return data
 
 

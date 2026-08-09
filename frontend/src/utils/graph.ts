@@ -347,6 +347,18 @@ export function revealPathToNode(
   return changed ? next : hidden;
 }
 
+export function findForestNode(scheme: Scheme, id: string): ForestNode | null {
+  function search(nodes: ForestNode[]): ForestNode | null {
+    for (const n of nodes) {
+      if (n.id === id) return n;
+      const found = search(n.children);
+      if (found) return found;
+    }
+    return null;
+  }
+  return search(scheme.forest.roots);
+}
+
 export function buildParentMap(regions: RegionData[]): Map<string, string | null> {
   return new Map(regions.map((r) => [r.id, r.parent]));
 }

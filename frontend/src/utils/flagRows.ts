@@ -7,6 +7,15 @@ export interface FlagRowLike {
 }
 
 /** Empty rows are ignored; incomplete / unknown names fail validation. */
+export function formatFlagValueShort(v: unknown): string {
+  if (typeof v === 'string') return v;
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return String(v);
+  }
+}
+
 export function validateFlagRows(
   rows: FlagRowLike[],
   flagsCatalog: FlagInfo[],

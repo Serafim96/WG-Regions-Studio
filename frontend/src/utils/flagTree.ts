@@ -2,6 +2,9 @@ import type { FlagInfo, ForestNode, RegionData, Scheme } from '../types';
 import { computeEffectiveFlagsByRegion } from './flagConflicts';
 import { buildParentMap } from './graph';
 import { compareNatural } from './naturalSort';
+import { formatFlagValueShort } from './flagRows';
+
+export type EffectiveFlagsMap = Map<string, Map<string, unknown>>;
 
 export interface FlagTreeNode {
   id: string;
@@ -64,12 +67,14 @@ export const MAX_VALUE_LABEL_LEN = 28;
 const SKIP_VALUE_TYPES = new Set(['set of strings', 'set of entity types']);
 
 function formatValue(value: unknown): string {
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
+  return formatFlagValueShort(value);
+}
+
+function resolveEffective(
+  scheme: Scheme,
+  precomputed?: EffectiveFlagsMap,
+): EffectiveFlagsMap {
+  return precomputed ?? computeEffectiveFlagsByRegion(scheme);
 }
 
 function shouldSkipValueLabels(flagType: string | undefined): boolean {
@@ -83,11 +88,12 @@ export function enrichHighlightWithFlagValues(
   scheme: Scheme,
   flagName: string,
   flagsCatalog: FlagInfo[],
+  precomputed?: EffectiveFlagsMap,
 ): FlagHighlight {
   const flagType = flagsCatalog.find((f) => f.name === flagName)?.type;
   if (shouldSkipValueLabels(flagType)) {
     const valueLabels = new Map<string, FlagValueLabel>();
-    const effectiveSkip = computeEffectiveFlagsByRegion(scheme);
+    const effectiveSkip = resolveEffective(scheme, precomputed);
     for (const id of highlight.containedNoInheritIds ?? []) {
       if (effectiveSkip.get(id)?.has(flagName)) continue;
       const isNonInheritingInner = scheme.spatialEdges.some(
@@ -106,7 +112,7 @@ export function enrichHighlightWithFlagValues(
     return { ...highlight, valueLabels };
   }
 
-  const effective = computeEffectiveFlagsByRegion(scheme);
+  const effective = resolveEffective(scheme, precomputed);
   const ids = new Set<string>([
     ...highlight.definingIds,
     ...highlight.brightIds,
@@ -246,6 +252,7 @@ export function buildFlagHighlight(
     showIntersects: false,
     showConflicts: false,
   },
+  precomputed?: EffectiveFlagsMap,
 ): FlagHighlight {
   const definingIds = new Set(
     scheme.regions
@@ -262,7 +269,7 @@ export function buildFlagHighlight(
   const effective = (
     options.showInheritance || options.showContains || options.showIntersects
   )
-    ? computeEffectiveFlagsByRegion(scheme)
+    ? resolveEffective(scheme, precomputed)
     : null;
 
   const carrierIds = new Set<string>(definingIds);
@@ -568,4 +575,16 @@ export function defaultCollapsedWithoutNamedFlag(
 
   for (const root of roots) subtreeDefines(root);
   return collapsed;
+}
+
+/** All nodes lit for a spatial conflict / overwrite (pair + inheritance parents). */
+export function conflictHighlightFitIds(
+  scheme: Scheme,
+  flagName: string,
+  aId: string,
+  bId: string,
+): string[] {
+  const base = buildFlagHighlight(scheme, flagName);
+  const hl = attachConflictInheritancePaths(base, scheme, aId, bId);
+  return Array.from(hl.brightIds);
 }

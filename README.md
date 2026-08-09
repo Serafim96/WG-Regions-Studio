@@ -1,4 +1,4 @@
-# WG Regions Studio
+# <img src="packaging/icon.png" alt="" width="56" height="56" align="absmiddle"> WG Regions Studio
 
 Visualize WorldGuard region hierarchies with spatial overlaps (**intersects**) and full containment (**contains**).
 
@@ -13,7 +13,7 @@ Load your own `regions.yml` or a saved scheme, explore the tree, manage flags, a
 - Flag scheme badge (fit camera / help / open flag management filtered to that flag)
 - Temporary regions, rename/delete, flag manager + catalog, **Export YAML**
 - Dark/light theme, Russian / English UI
-- Startup check against the latest GitHub release
+- Startup check against the latest GitHub release; **What's New** on first launch of a version
 ## Download / one-click start
 
 | Platform | What to click | Notes |

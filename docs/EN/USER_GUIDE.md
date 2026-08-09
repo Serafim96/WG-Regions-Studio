@@ -37,7 +37,9 @@ Windows zip: [Releases](https://github.com/Serafim96/WG-Regions-Studio/releases)
 
 On Windows the server opens in a **separate** classic console window with the app icon (not a Windows Terminal tab — even if you start the `.exe` directly); closing that window stops the server. While the console is running, the browser tab stays interactive. If you close the console or stop the server (**Ctrl+C**), the page is blocked by a grey overlay. After you start the launcher again, the overlay clears by itself — no need to reload the tab.
 
-On startup the app compares its version to the **latest GitHub release**. If a newer version exists, a toast and a **notifications bell** warning show the release number; click opens the release page to download. Dismiss / Clear hides the notice for that version until an even newer one appears. Offline, the check fails quietly.
+On startup the app compares its version to the **latest GitHub release**. If a newer version exists, a toast and a **notifications bell** warning show the release number and a short changelog summary from the release notes; click opens the release page to download. Dismiss / Clear hides the notice for that version until an even newer one appears. Offline, the check fails quietly.
+
+On the **first launch of a new version**, a small **What's New** dialog lists the highlights for that build (once per version).
 
 ---
 

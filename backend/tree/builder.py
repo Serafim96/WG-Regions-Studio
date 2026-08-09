@@ -65,13 +65,3 @@ def build_forest(regions: list[Region]) -> Forest:
     roots.sort(key=lambda n: natural_key(n.id))
 
     return Forest(roots=roots, by_id=memo)
-
-
-def get_ancestor_chain(node_id: str, regions_by_id: dict[str, Region]) -> list[str]:
-    """Return [node, parent, grandparent, ...] up to root."""
-    chain = [node_id]
-    current = regions_by_id.get(node_id)
-    while current and current.parent:
-        chain.append(current.parent)
-        current = regions_by_id.get(current.parent)
-    return chain

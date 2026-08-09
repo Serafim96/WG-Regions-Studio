@@ -114,6 +114,14 @@ def parse_flags_file(path: Path | str) -> list[FlagInfo]:
     return flags
 
 
+# Precompiled patterns for jar flag-name extraction.
+_JAR_PRINTABLE_RE = re.compile(rb"[\x20-\x7e]{3,80}")
+_JAR_FLAG_NAME_RE = re.compile(r"[a-z][a-z0-9\-]{1,40}")
+
+# Cache key: (resolved flags path, resolved jar path or None) -> builtin FlagInfo list.
+_BUILTIN_FLAGS_CACHE: dict[tuple[str, str | None], list[FlagInfo]] = {}
+
+
 def extract_flag_names_from_jar(jar_path: Path | str) -> set[str]:
     """Best-effort extraction of flag name strings from WorldGuard Flags.class."""
     path = Path(jar_path)
@@ -141,11 +149,11 @@ def extract_flag_names_from_jar(jar_path: Path | str) -> set[str]:
         "metafactory",
     }
     names: set[str] = set()
-    for match in re.findall(rb"[\x20-\x7e]{3,80}", data):
+    for match in _JAR_PRINTABLE_RE.findall(data):
         text = match.decode("ascii")
         if text in noise:
             continue
-        if re.fullmatch(r"[a-z][a-z0-9\-]{1,40}", text):
+        if _JAR_FLAG_NAME_RE.fullmatch(text):
             names.add(text)
     return names
 
@@ -154,8 +162,19 @@ def load_builtin_flags(
     path: Path | str,
     jar_path: Path | str | None = None,
 ) -> list[FlagInfo]:
-    """Load immutable standard flags from docs dump (+ optional jar extras)."""
-    flags = parse_flags_file(path)
+    """Load immutable standard flags from docs dump (+ optional jar extras).
+
+    Results are cached per resolved (flags path, jar path) for the process lifetime.
+    Custom flags are never part of this cache.
+    """
+    flags_path = Path(path).resolve()
+    jar_resolved = str(Path(jar_path).resolve()) if jar_path else None
+    cache_key = (str(flags_path), jar_resolved)
+    cached = _BUILTIN_FLAGS_CACHE.get(cache_key)
+    if cached is not None:
+        return list(cached)
+
+    flags = parse_flags_file(flags_path)
     by_name = {f.name: f for f in flags}
 
     jar_names = extract_flag_names_from_jar(jar_path) if jar_path else set()
@@ -176,7 +195,8 @@ def load_builtin_flags(
             flags.append(info)
             by_name[name] = info
 
-    return flags
+    _BUILTIN_FLAGS_CACHE[cache_key] = list(flags)
+    return list(flags)
 
 
 def load_custom_flags(path: Path | str) -> list[FlagInfo]:
@@ -343,10 +363,3 @@ def delete_all_custom_flags(path: Path | str) -> list[str]:
     save_custom_flags(path, [])
     return [f.name for f in existing]
 
-
-# Backwards-compatible alias used by older imports/tests.
-def load_flags_catalog_sorted(
-    path: Path | str,
-    jar_path: Path | str | None = None,
-) -> list[FlagInfo]:
-    return sorted(load_builtin_flags(path, jar_path=jar_path), key=lambda f: f.name)

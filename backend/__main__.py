@@ -7,12 +7,18 @@ import os
 
 def main() -> None:
     os.environ.setdefault("MRV_OPEN_BROWSER", "1")
-    from backend.win_console_icon import apply_windows_console_icon, ensure_classic_console
+    from backend.win_console_icon import (
+        apply_windows_console_icon,
+        ensure_classic_console,
+        ensure_console_stdio,
+    )
 
-    # Double-click under Win11 default terminal (WT) → relaunch in classic conhost.
+    # Console parents: relaunch under classic conhost (interim console hidden).
+    # Windowed frozen EXE: no relaunch — AllocConsole in ensure_console_stdio.
     if ensure_classic_console():
         raise SystemExit(0)
 
+    ensure_console_stdio()
     apply_windows_console_icon()
 
     import uvicorn

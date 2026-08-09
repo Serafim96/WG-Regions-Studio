@@ -6,6 +6,7 @@ from dataclasses import replace
 from typing import Literal
 
 from backend.models.region import Region
+from backend.util.parent_links import resolve_parent_skipping
 
 ChildrenMode = Literal["detach", "cascade", "orphan"]
 
@@ -70,17 +71,15 @@ def clear_manual_regions(regions: list[Region]) -> list[Region]:
     if not manual_ids:
         return list(regions)
 
-    def resolve_parent(parent_id: str | None) -> str | None:
-        current = parent_id
-        while current and current in manual_ids:
-            current = by_id[current].parent if current in by_id else None
-        return current
-
     result: list[Region] = []
     for region in regions:
         if region.id in manual_ids:
             continue
-        new_parent = resolve_parent(region.parent)
+        new_parent = resolve_parent_skipping(
+            region.parent,
+            lambda pid: pid in manual_ids,
+            by_id,
+        )
         if new_parent != region.parent:
             result.append(replace(region, parent=new_parent))
         else:

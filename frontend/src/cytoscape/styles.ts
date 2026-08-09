@@ -12,6 +12,16 @@ export function regionNodeShape(
 }
 
 export function buildStylesheet(theme: Theme = 'light') {
+  const cached = _stylesheetCache.get(theme);
+  if (cached) return cached;
+  const sheet = _buildStylesheetUncached(theme);
+  _stylesheetCache.set(theme, sheet);
+  return sheet;
+}
+
+const _stylesheetCache = new Map<Theme, ReturnType<typeof _buildStylesheetUncached>>();
+
+function _buildStylesheetUncached(theme: Theme) {
   const isDark = theme === 'dark';
   const textColor = isDark ? '#e8eaed' : '#222';
   const borderColor = isDark ? '#aaa' : '#333';

@@ -285,6 +285,27 @@ export interface UpdateCheckResult {
   outdated: boolean;
   html_url: string;
   name: string | null;
+  /** Short plain-text bullets from the latest GitHub release body. */
+  highlights?: string[];
+}
+
+export interface AppVersionInfo {
+  version: string;
+  highlights: {
+    ru?: string[];
+    en?: string[];
+  };
+}
+
+/** Running app version and bilingual What's New bullets. */
+export async function fetchAppVersion(signal?: AbortSignal): Promise<AppVersionInfo | null> {
+  try {
+    const res = await fetch(`${API}/version`, { method: 'GET', cache: 'no-store', signal });
+    if (!res.ok) return null;
+    return res.json() as Promise<AppVersionInfo>;
+  } catch {
+    return null;
+  }
 }
 
 /** Compare running version to the latest GitHub release (via backend). */

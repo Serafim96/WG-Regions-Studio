@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [2.0.10] — 2026-08-09
+
+### Added
+
+- **What's New** dialog on the first launch of a new version (once per build).
+- Update toast / bell notice includes a short summary from the GitHub release notes.
+- README title shows the app icon (`packaging/icon.png`).
+
+### Fixed
+
+- Packaged Windows EXE: no interim console flash on start (Windows subsystem + in-process console allocation).
+
 ## [2.0.9] — 2026-08-09
 
 ### Changed

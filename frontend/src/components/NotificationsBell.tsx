@@ -18,6 +18,8 @@ export interface AppNotification {
   /** i18n key for body. */
   bodyKey: TranslationKey;
   params?: Record<string, string | number>;
+  /** Extra plain-text line (e.g. release highlights), not i18n. */
+  detail?: string;
   flagName?: string;
   /** Spatial: region A; overwrite: parent; orphan/height: region id. */
   aId?: string;
@@ -172,6 +174,9 @@ export function NotificationsBell({
                   >
                     <strong>{t(n.titleKey, n.params)}</strong>
                     <span>{t(n.bodyKey, n.params)}</span>
+                    {n.detail ? (
+                      <span className="notifications-item-detail">{n.detail}</span>
+                    ) : null}
                   </div>
                   {n.level === 'warning' && (
                     <button

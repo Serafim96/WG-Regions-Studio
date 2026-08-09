@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo, RegionData, SpatialEdge } from '../types';
 import type { SpatialRelationsGrouped } from '../utils/graph';
 import { compareNatural } from '../utils/naturalSort';
-import { validateFlagRows } from '../utils/flagRows';
 import { isTemporaryRegion } from '../utils/regions';
 import { regionHasNonStandardHeight } from '../utils/worldHeight';
 import {
@@ -13,26 +11,14 @@ import {
   intersectionVolume,
   regionVolume,
 } from '../utils/volume';
-import { findFlagInfo, FlagNameWithHelp } from './FlagHelpButton';
-import { FlagNameCombobox } from './FlagNameCombobox';
-import { FlagValueInput } from './FlagValueInput';
-import { IconLock, IconUnlock } from './GraphControlIcons';
 import { ModalOverlay } from './ModalOverlay';
 import { ConfirmDialog } from './ConfirmDialog';
-import { SuggestDropdown } from './SuggestDropdown';
-import {
-  geometryFromRegion,
-  RegionGeometryEditor,
-  type GeometryPayload,
-  type RegionGeometryState,
-  validateGeometryState,
-} from './RegionGeometryEditor';
-
-interface FlagRow {
-  key: string;
-  name: string;
-  value: string;
-}
+import { RegionGeometryEditor, type GeometryPayload } from './RegionGeometryEditor';
+import { useRegionDraftState } from '../hooks/useRegionDraftState';
+import { RegionPanelHeader } from './region/RegionPanelHeader';
+import { RegionParentEditor } from './region/RegionParentEditor';
+import { RegionFlagsEditor } from './region/RegionFlagsEditor';
+import { RegionMembersEditor } from './region/RegionMembersEditor';
 
 interface RegionPanelProps {
   region: RegionData;
@@ -242,164 +228,6 @@ function IntersectsPartnerTable({
   );
 }
 
-function CopyIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-      <rect x="5" y="5" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="2" y="2" width="9" height="9" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
-}
-
-function formatFlagValue(value: unknown): string {
-  if (typeof value === 'string') return value;
-  return JSON.stringify(value);
-}
-
-function parseFlagValue(raw: string): unknown {
-  const trimmed = raw.trim();
-  if (trimmed === '') return '';
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    return raw;
-  }
-}
-
-function flagsToRows(flags: Record<string, unknown>): FlagRow[] {
-  return Object.entries(flags).map(([name, value], index) => ({
-    key: `${name}-${index}`,
-    name,
-    value: formatFlagValue(value),
-  }));
-}
-
-function rowsToFlags(rows: FlagRow[]): Record<string, unknown> {
-  const flags: Record<string, unknown> = {};
-  for (const row of rows) {
-    const name = row.name.trim();
-    if (!name) continue;
-    flags[name] = parseFlagValue(row.value);
-  }
-  return flags;
-}
-
-function stringListFromParty(party: Record<string, unknown> | undefined, key: string): string[] {
-  const raw = party?.[key];
-  if (!Array.isArray(raw)) return [];
-  return raw.map((v) => String(v));
-}
-
-function partyFromRegion(party: Record<string, unknown> | undefined): {
-  players: string[];
-  uniqueIds: string[];
-} {
-  return {
-    players: stringListFromParty(party, 'players'),
-    uniqueIds: stringListFromParty(party, 'unique-ids'),
-  };
-}
-
-function partyToRecord(
-  players: string[],
-  uniqueIds: string[],
-  base?: Record<string, unknown>,
-): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...(base ?? {}) };
-  out.players = players.map((s) => s.trim()).filter(Boolean);
-  out['unique-ids'] = uniqueIds.map((s) => s.trim()).filter(Boolean);
-  return out;
-}
-
-function StringListEditor({
-  label,
-  values,
-  onChange,
-  disabled,
-  readOnly,
-  addLabel,
-}: {
-  label: string;
-  values: string[];
-  onChange: (next: string[]) => void;
-  disabled?: boolean;
-  readOnly?: boolean;
-  addLabel: string;
-}) {
-  if (readOnly) {
-    const shown = values.map((v) => v.trim()).filter(Boolean);
-    return (
-      <div className="region-members-subtable">
-        <p className="region-members-sublabel">{label}</p>
-        {shown.length === 0 ? (
-          <p className="partners-empty">—</p>
-        ) : (
-          <div className="region-link-table">
-            <table>
-              <tbody>
-                {shown.map((value, index) => (
-                  <tr key={`${value}-${index}`}>
-                    <td>{value}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="region-members-subtable">
-      <p className="region-members-sublabel">{label}</p>
-      <div className="region-link-table">
-        <table>
-          <tbody>
-            {values.map((value, index) => (
-              <tr key={index}>
-                <td>
-                  <input
-                    className="search-input"
-                    type="text"
-                    value={value}
-                    disabled={disabled}
-                    onChange={(e) => {
-                      const next = [...values];
-                      next[index] = e.target.value;
-                      onChange(next);
-                    }}
-                  />
-                </td>
-                <td className="region-members-actions">
-                  <button
-                    type="button"
-                    className="flags-row-remove"
-                    disabled={disabled}
-                    onClick={() => onChange(values.filter((_, i) => i !== index))}
-                    title="×"
-                  >
-                    ×
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="modal-actions">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange([...values, ''])}
-        >
-          {addLabel}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export function RegionPanel({
   region,
   childIds,
@@ -425,32 +253,67 @@ export function RegionPanel({
   onShowFlagOnScheme,
 }: RegionPanelProps) {
   const { t } = useI18n();
-  const [fieldsLocked, setFieldsLocked] = useState(true);
-  const [editingParent, setEditingParent] = useState(false);
-  const [parentQuery, setParentQuery] = useState(region.parent ?? '');
-  const [parentError, setParentError] = useState<string | null>(null);
+  const flagsByName = useMemo(
+    () => new Map(flagsCatalog.map((f) => [f.name, f])),
+    [flagsCatalog],
+  );
 
   const isTemp = isTemporaryRegion(region);
   const canEditGeometry = Boolean(onUpdateGeometry) && (isTemp || region.type !== 'global');
 
-  const [geometry, setGeometry] = useState<RegionGeometryState>(() => geometryFromRegion(region));
-  const [geometryError, setGeometryError] = useState<string | null>(null);
-  const [geometryDirty, setGeometryDirty] = useState(false);
+  const draft = useRegionDraftState({
+    region,
+    childIds,
+    regionIds,
+    flagsCatalog,
+    onUpdateParent,
+    onUpdateFlags,
+    onUpdateGeometry,
+    onUpdatePriority,
+    onUpdateMembers,
+  });
 
-  const [flagRows, setFlagRows] = useState<FlagRow[]>(() => flagsToRows(region.flags ?? {}));
-  const [flagsDirty, setFlagsDirty] = useState(false);
-  const [flagsError, setFlagsError] = useState<string | null>(null);
+  const {
+    fieldsLocked,
+    setFieldsLocked,
+    editingParent,
+    setEditingParent,
+    parentQuery,
+    setParentQuery,
+    parentError,
+    setParentError,
+    geometry,
+    geometryError,
+    flagRows,
+    flagsError,
+    priorityDraft,
+    setPriorityDraft,
+    priorityError,
+    setPriorityError,
+    ownersPlayers,
+    setOwnersPlayers,
+    ownersUniqueIds,
+    setOwnersUniqueIds,
+    membersPlayers,
+    setMembersPlayers,
+    membersUniqueIds,
+    setMembersUniqueIds,
+    membersError,
+    saveBusy,
+    parentCandidates,
+    resolvedParent,
+    isDirty,
+    fieldsEditable,
+    onGeometryChange,
+    updateFlagRow,
+    removeFlagRow,
+    addFlagRow,
+    clearAllFlagRows,
+    markMembersDirty,
+    discardChanges,
+    saveAll,
+  } = draft;
 
-  const [priorityDraft, setPriorityDraft] = useState(String(region.priority));
-  const [priorityError, setPriorityError] = useState<string | null>(null);
-
-  const [ownersPlayers, setOwnersPlayers] = useState(() => partyFromRegion(region.owners).players);
-  const [ownersUniqueIds, setOwnersUniqueIds] = useState(() => partyFromRegion(region.owners).uniqueIds);
-  const [membersPlayers, setMembersPlayers] = useState(() => partyFromRegion(region.members).players);
-  const [membersUniqueIds, setMembersUniqueIds] = useState(() => partyFromRegion(region.members).uniqueIds);
-  const [membersError, setMembersError] = useState<string | null>(null);
-  const [membersDirty, setMembersDirty] = useState(false);
-  const [saveBusy, setSaveBusy] = useState(false);
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showClearFlagsConfirm, setShowClearFlagsConfirm] = useState(false);
@@ -460,61 +323,6 @@ export function RegionPanel({
   const copyBtnRef = useRef<HTMLButtonElement>(null);
   const [pendingLeave, setPendingLeave] = useState<null | (() => void)>(null);
 
-  const resetDraftsFromRegion = (source: RegionData) => {
-    setGeometry(geometryFromRegion(source));
-    setGeometryDirty(false);
-    setGeometryError(null);
-    setFlagRows(flagsToRows(source.flags ?? {}));
-    setFlagsDirty(false);
-    setFlagsError(null);
-    setParentQuery(source.parent ?? '');
-    setParentError(null);
-    setEditingParent(false);
-    setPriorityDraft(String(source.priority));
-    setPriorityError(null);
-    const owners = partyFromRegion(source.owners);
-    const members = partyFromRegion(source.members);
-    setOwnersPlayers(owners.players);
-    setOwnersUniqueIds(owners.uniqueIds);
-    setMembersPlayers(members.players);
-    setMembersUniqueIds(members.uniqueIds);
-    setMembersDirty(false);
-    setMembersError(null);
-  };
-
-  useEffect(() => {
-    resetDraftsFromRegion(region);
-    setFieldsLocked(true);
-  }, [region]);
-
-  const parentCandidates = useMemo(() => {
-    const q = parentQuery.trim().toLowerCase();
-    const excluded = new Set([region.id, ...childIds]);
-    return regionIds
-      .filter((id) => !excluded.has(id))
-      .filter((id) => !q || id.toLowerCase().includes(q))
-      .sort(compareNatural)
-      .slice(0, 40);
-  }, [parentQuery, regionIds, region.id, childIds]);
-
-  const resolvedParent = useMemo(() => {
-    const q = parentQuery.trim();
-    if (!q) return null;
-    return regionIds.find((id) => id.toLowerCase() === q.toLowerCase() && id !== region.id) ?? undefined;
-  }, [parentQuery, regionIds, region.id]);
-
-  const parentDirty = useMemo(() => {
-    if (!onUpdateParent) return false;
-    const draft = parentQuery.trim() || null;
-    const current = region.parent ?? null;
-    if (draft === null && current === null) return false;
-    if (draft === null || current === null) return true;
-    return draft.toLowerCase() !== current.toLowerCase();
-  }, [onUpdateParent, parentQuery, region.parent]);
-
-  const priorityDirty =
-    Boolean(onUpdatePriority) && priorityDraft.trim() !== String(region.priority);
-
   const sortedChildIds = useMemo(() => [...childIds].sort(compareNatural), [childIds]);
 
   const sortedSpatial = useMemo(() => ({
@@ -522,15 +330,6 @@ export function RegionPanel({
     containedIn: [...spatialRelations.containedIn].sort(compareNatural),
     contains: [...spatialRelations.contains].sort(compareNatural),
   }), [spatialRelations]);
-
-  const isDirty =
-    geometryDirty
-    || flagsDirty
-    || parentDirty
-    || priorityDirty
-    || membersDirty;
-
-  const fieldsEditable = !fieldsLocked && !saveBusy;
 
   const requestLeave = (action: () => void) => {
     if (isDirty) {
@@ -589,48 +388,9 @@ export function RegionPanel({
     }
   }, []);
 
-  const onGeometryChange = (next: RegionGeometryState) => {
-    setGeometry(next);
-    setGeometryDirty(true);
-    setGeometryError(null);
-  };
-
-  const updateFlagRow = (key: string, patch: Partial<Pick<FlagRow, 'name' | 'value'>>) => {
-    setFlagRows((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)));
-    setFlagsDirty(true);
-  };
-
-  const removeFlagRow = (key: string) => {
-    setFlagRows((prev) => prev.filter((row) => row.key !== key));
-    setFlagsDirty(true);
-  };
-
-  const addFlagRow = () => {
-    setFlagRows((prev) => [
-      ...prev,
-      { key: `new-${Date.now()}-${prev.length}`, name: '', value: '' },
-    ]);
-    setFlagsDirty(true);
-  };
-
-  const clearAllFlagRows = () => {
-    if (flagRows.length === 0) return;
-    setFlagRows([]);
-    setFlagsDirty(true);
-    setFlagsError(null);
-  };
-
   const requestClearFlags = () => {
     if (!fieldsEditable || flagRows.length === 0) return;
     setShowClearFlagsConfirm(true);
-  };
-
-  const markMembersDirty = () => setMembersDirty(true);
-
-  const discardChanges = () => {
-    resetDraftsFromRegion(region);
-    setFieldsLocked(true);
-    setShowDiscardConfirm(false);
   };
 
   const requestDiscard = () => {
@@ -638,86 +398,6 @@ export function RegionPanel({
     setShowDiscardConfirm(true);
   };
 
-  const saveAll = async () => {
-    if (!isDirty || saveBusy) return;
-
-    setParentError(null);
-    setPriorityError(null);
-    setGeometryError(null);
-    setFlagsError(null);
-    setMembersError(null);
-
-    if (parentDirty) {
-      if (parentQuery.trim() !== '' && resolvedParent === undefined) {
-        setParentError(t('region.parentInvalid'));
-        return;
-      }
-    }
-
-    let priorityValue: number | null = null;
-    if (priorityDirty) {
-      const parsed = Number(priorityDraft.trim());
-      if (!Number.isFinite(parsed) || !Number.isInteger(parsed)) {
-        setPriorityError(t('geometry.invalidNumber'));
-        return;
-      }
-      priorityValue = parsed;
-    }
-
-    let geometryPayload: GeometryPayload | null = null;
-    if (geometryDirty && onUpdateGeometry) {
-      const validated = validateGeometryState(geometry);
-      if (!validated.ok) {
-        setGeometryError(t(validated.errorKey));
-        return;
-      }
-      geometryPayload = validated.payload;
-    }
-
-    if (flagsDirty && onUpdateFlags) {
-      const flagCheck = validateFlagRows(flagRows, flagsCatalog);
-      if (!flagCheck.ok) {
-        setFlagsError(t(flagCheck.errorKey));
-        return;
-      }
-    }
-
-    setSaveBusy(true);
-    try {
-      if (parentDirty && onUpdateParent) {
-        await onUpdateParent(region.id, parentQuery.trim() ? resolvedParent! : null);
-      }
-      if (priorityDirty && onUpdatePriority && priorityValue != null) {
-        await onUpdatePriority(region.id, priorityValue);
-      }
-      if (geometryPayload && onUpdateGeometry) {
-        await onUpdateGeometry(region.id, geometryPayload);
-        setGeometryDirty(false);
-      }
-      if (flagsDirty && onUpdateFlags) {
-        await onUpdateFlags(region.id, rowsToFlags(flagRows));
-        setFlagsDirty(false);
-      }
-      if (membersDirty && onUpdateMembers) {
-        await onUpdateMembers(
-          region.id,
-          partyToRecord(ownersPlayers, ownersUniqueIds, region.owners),
-          partyToRecord(membersPlayers, membersUniqueIds, region.members),
-        );
-        setMembersDirty(false);
-      }
-      setFieldsLocked(true);
-    } catch (err) {
-      const message = String(err);
-      if (parentDirty) setParentError(message);
-      else if (priorityDirty) setPriorityError(message);
-      else if (geometryDirty) setGeometryError(message);
-      else if (flagsDirty) setFlagsError(message);
-      else setMembersError(message);
-    } finally {
-      setSaveBusy(false);
-    }
-  };
 
   const totalSpatial =
     sortedSpatial.intersects.length
@@ -736,165 +416,57 @@ export function RegionPanel({
     <>
     <ModalOverlay onClose={requestClose}>
       <div className="modal region-panel-modal" onClick={(e) => e.stopPropagation()}>
-        <header className="region-panel-header">
-          <div className="region-panel-title">
-            <div className="region-history-nav">
-              <button
-                type="button"
-                className="icon-btn"
-                disabled={!canGoBack}
-                title={t('region.historyBack')}
-                aria-label={t('region.historyBack')}
-                onClick={requestHistoryBack}
-              >
-                ←
-              </button>
-              <button
-                type="button"
-                className="icon-btn"
-                disabled={!canGoForward}
-                title={t('region.historyForward')}
-                aria-label={t('region.historyForward')}
-                onClick={requestHistoryForward}
-              >
-                →
-              </button>
-            </div>
-            <h2>{region.id}</h2>
-            {onRequestRename && (
-              <button type="button" onClick={() => onRequestRename(region.id)}>
-                {t('region.editName')}
-              </button>
-            )}
-            <span className="copy-name-wrap">
-              <button
-                ref={copyBtnRef}
-                type="button"
-                className="icon-btn"
-                title={t('region.copyName')}
-                aria-label={t('region.copyName')}
-                onClick={copyName}
-              >
-                <CopyIcon />
-              </button>
-            </span>
-            {showCopiedFlash && copiedFlashPos && createPortal(
-              <span
-                className="copy-name-flash"
-                role="status"
-                style={{ left: copiedFlashPos.left, top: copiedFlashPos.top }}
-              >
-                {t('region.copiedFlash')}
-              </span>,
-              document.body,
-            )}
-            <button
-              type="button"
-              className={`icon-btn region-fields-lock${fieldsLocked ? ' is-locked' : ' is-unlocked'}`}
-              title={t(fieldsLocked ? 'region.unlockFields' : 'region.lockFields')}
-              aria-label={t(fieldsLocked ? 'region.unlockFields' : 'region.lockFields')}
-              disabled={saveBusy}
-              onClick={() => setFieldsLocked((v) => {
-                if (!v) setEditingParent(false);
-                return !v;
-              })}
-            >
-              {fieldsLocked ? <IconLock /> : <IconUnlock />}
-            </button>
-          </div>
-          <div className="region-panel-header-actions">
-            <button
-              type="button"
-              className="region-action-btn"
-              disabled={!isDirty || saveBusy}
-              onClick={requestDiscard}
-            >
-              {t('region.cancelChanges')}
-            </button>
-            <button
-              type="button"
-              className="region-action-btn success"
-              disabled={!isDirty || saveBusy}
-              onClick={() => void saveAll()}
-            >
-              {saveBusy ? t('region.savingAll') : t('region.saveAll')}
-            </button>
-            <button type="button" onClick={requestClose}>×</button>
-          </div>
-        </header>
+        <RegionPanelHeader
+          regionId={region.id}
+          canGoBack={canGoBack}
+          canGoForward={canGoForward}
+          fieldsLocked={fieldsLocked}
+          saveBusy={saveBusy}
+          isDirty={isDirty}
+          copiedFlashPos={copiedFlashPos}
+          showCopiedFlash={showCopiedFlash}
+          copyBtnRef={copyBtnRef}
+          onHistoryBack={requestHistoryBack}
+          onHistoryForward={requestHistoryForward}
+          onRequestRename={onRequestRename}
+          onCopyName={copyName}
+          onToggleLock={() => setFieldsLocked((v) => {
+            if (!v) setEditingParent(false);
+            return !v;
+          })}
+          onDiscard={requestDiscard}
+          onSave={() => { void saveAll(); }}
+          onClose={requestClose}
+        />
 
         <div className="modal-body">
-          <div className="region-parent-block">
-            {fieldsLocked || !onUpdateParent || !editingParent ? (
-              <p>
-                <strong>{t('region.parent')}:</strong>{' '}
-                {lockedParentLabel == null ? (
-                  '—'
-                ) : lockedParentNavId ? (
-                  <button
-                    type="button"
-                    className="region-link"
-                    onClick={() => navigateToRegion(lockedParentNavId)}
-                  >
-                    {lockedParentLabel}
-                  </button>
-                ) : (
-                  <span>{lockedParentLabel}</span>
-                )}
-                {!fieldsLocked && onUpdateParent && (
-                  <button
-                    type="button"
-                    className="region-action-btn"
-                    disabled={!fieldsEditable}
-                    onClick={() => {
-                      setParentQuery(region.parent ?? '');
-                      setParentError(null);
-                      setEditingParent(true);
-                    }}
-                  >
-                    {t('region.editParent')}
-                  </button>
-                )}
-              </p>
-            ) : (
-              <div className="region-parent-edit">
-                <p><strong>{t('region.parent')}:</strong></p>
-                <input
-                  className="search-input"
-                  type="text"
-                  placeholder={t('region.parentPlaceholder')}
-                  value={parentQuery}
-                  onChange={(e) => {
-                    setParentQuery(e.target.value);
-                    setParentError(null);
-                  }}
-                  disabled={!fieldsEditable}
-                />
-                {parentQuery.trim() && resolvedParent === undefined && (
-                  <p className="search-empty">{t('region.parentInvalid')}</p>
-                )}
-                <SuggestDropdown
-                  items={parentCandidates}
-                  query={parentQuery}
-                  open={fieldsEditable && parentCandidates.length > 0}
-                  onPick={setParentQuery}
-                />
-                <div className="modal-actions">
-                  <button
-                    type="button"
-                    disabled={!fieldsEditable || !parentQuery.trim()}
-                    onClick={() => {
-                      setParentQuery('');
-                      setParentError(null);
-                    }}
-                  >
-                    {t('region.clearParent')}
-                  </button>
-                </div>
-              </div>
-            )}
-            {parentError && <p className="flags-manager-error">{parentError}</p>}
-          </div>
+          <RegionParentEditor
+            fieldsLocked={fieldsLocked}
+            fieldsEditable={fieldsEditable}
+            editingParent={editingParent}
+            parentQuery={parentQuery}
+            parentError={parentError}
+            parentCandidates={parentCandidates}
+            resolvedParent={resolvedParent}
+            lockedParentLabel={lockedParentLabel}
+            lockedParentNavId={lockedParentNavId}
+            canEditParent={Boolean(onUpdateParent)}
+            currentParent={region.parent ?? null}
+            onBeginEdit={() => {
+              setParentQuery(region.parent ?? '');
+              setParentError(null);
+              setEditingParent(true);
+            }}
+            onNavigate={navigateToRegion}
+            onParentQueryChange={(value) => {
+              setParentQuery(value);
+              setParentError(null);
+            }}
+            onClearParent={() => {
+              setParentQuery('');
+              setParentError(null);
+            }}
+          />
 
           <div className="region-priority-block">
             <p>
@@ -1014,174 +586,49 @@ export function RegionPanel({
             </div>
           </div>
 
-          <div className="region-members-block">
-            <p className="region-meta-label">{t('region.owners')}</p>
-            {onUpdateMembers ? (
-              <>
-                <StringListEditor
-                  label={t('region.players')}
-                  values={ownersPlayers}
-                  disabled={!fieldsEditable}
-                  readOnly={fieldsLocked}
-                  addLabel={`+ ${t('region.players')}`}
-                  onChange={(next) => {
-                    setOwnersPlayers(next);
-                    markMembersDirty();
-                  }}
-                />
-                <StringListEditor
-                  label={t('region.uniqueIds')}
-                  values={ownersUniqueIds}
-                  disabled={!fieldsEditable}
-                  readOnly={fieldsLocked}
-                  addLabel={`+ ${t('region.uniqueIds')}`}
-                  onChange={(next) => {
-                    setOwnersUniqueIds(next);
-                    markMembersDirty();
-                  }}
-                />
-              </>
-            ) : (
-              <pre className="region-members-readonly">{JSON.stringify(region.owners ?? {}, null, 2)}</pre>
-            )}
+          <RegionMembersEditor
+            region={region}
+            fieldsLocked={fieldsLocked}
+            fieldsEditable={fieldsEditable}
+            canEdit={Boolean(onUpdateMembers)}
+            ownersPlayers={ownersPlayers}
+            ownersUniqueIds={ownersUniqueIds}
+            membersPlayers={membersPlayers}
+            membersUniqueIds={membersUniqueIds}
+            membersError={membersError}
+            onOwnersPlayersChange={(next) => {
+              setOwnersPlayers(next);
+              markMembersDirty();
+            }}
+            onOwnersUniqueIdsChange={(next) => {
+              setOwnersUniqueIds(next);
+              markMembersDirty();
+            }}
+            onMembersPlayersChange={(next) => {
+              setMembersPlayers(next);
+              markMembersDirty();
+            }}
+            onMembersUniqueIdsChange={(next) => {
+              setMembersUniqueIds(next);
+              markMembersDirty();
+            }}
+          />
 
-            <p className="region-meta-label">{t('region.members')}</p>
-            {onUpdateMembers ? (
-              <>
-                <StringListEditor
-                  label={t('region.players')}
-                  values={membersPlayers}
-                  disabled={!fieldsEditable}
-                  readOnly={fieldsLocked}
-                  addLabel={`+ ${t('region.players')}`}
-                  onChange={(next) => {
-                    setMembersPlayers(next);
-                    markMembersDirty();
-                  }}
-                />
-                <StringListEditor
-                  label={t('region.uniqueIds')}
-                  values={membersUniqueIds}
-                  disabled={!fieldsEditable}
-                  readOnly={fieldsLocked}
-                  addLabel={`+ ${t('region.uniqueIds')}`}
-                  onChange={(next) => {
-                    setMembersUniqueIds(next);
-                    markMembersDirty();
-                  }}
-                />
-                {membersError && <p className="flags-manager-error">{membersError}</p>}
-              </>
-            ) : (
-              <pre className="region-members-readonly">{JSON.stringify(region.members ?? {}, null, 2)}</pre>
-            )}
-          </div>
-
-          <div className="flags-table-wrap">
-            <p><strong>{t('region.flags')}</strong></p>
-            {onUpdateFlags && !fieldsLocked ? (
-              <>
-                <table className="flags-table flags-edit-table">
-                  <thead>
-                    <tr>
-                      <th>{t('region.flagName')}</th>
-                      <th>{t('region.flagValue')}</th>
-                      <th />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {flagRows.map((row) => {
-                      const info = findFlagInfo(flagsCatalog, row.name);
-                      return (
-                        <tr key={row.key}>
-                          <td>
-                            <FlagNameCombobox
-                              value={row.name}
-                              flagsCatalog={flagsCatalog}
-                              onChange={(name) => updateFlagRow(row.key, { name })}
-                              placeholder={t('flagsManager.namePlaceholder')}
-                              onShowOnScheme={onShowFlagOnScheme}
-                              unsavedChanges={isDirty}
-                            />
-                          </td>
-                          <td>
-                            <FlagValueInput
-                              value={row.value}
-                              flagType={info?.type}
-                              onChange={(value) => updateFlagRow(row.key, { value })}
-                              placeholder={t('flagsManager.valuePlaceholder')}
-                            />
-                          </td>
-                          <td>
-                            <button
-                              type="button"
-                              className="flags-row-remove"
-                              disabled={!fieldsEditable}
-                              onClick={() => removeFlagRow(row.key)}
-                              title={t('flagsManager.remove')}
-                            >
-                              ×
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {flagRows.length === 0 && <p>{t('region.noFlags')}</p>}
-                {flagsError && <p className="flags-manager-error">{flagsError}</p>}
-                <div className="modal-actions">
-                  <button type="button" disabled={!fieldsEditable} onClick={addFlagRow}>
-                    {t('flagsManager.add')}
-                  </button>
-                  <button
-                    type="button"
-                    className="warning"
-                    disabled={!fieldsEditable || flagRows.length === 0}
-                    onClick={requestClearFlags}
-                  >
-                    {t('region.clearFlags')}
-                  </button>
-                </div>
-              </>
-            ) : flagRows.length === 0 ? (
-              <p>{t('region.noFlags')}</p>
-            ) : (
-              <table className="flags-table">
-                <thead>
-                  <tr>
-                    <th>{t('region.flagName')}</th>
-                    <th>{t('region.flagValue')}</th>
-                    <th>{t('region.flagType')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {flagRows.map((row) => {
-                    const info = flagsCatalog.find((f) => f.name === row.name);
-                    return (
-                      <tr key={row.key}>
-                        <td>
-                          {row.name.trim() ? (
-                            <FlagNameWithHelp
-                              name={row.name}
-                              flagsCatalog={flagsCatalog}
-                              unsavedChanges={isDirty}
-                              onShowOnScheme={onShowFlagOnScheme}
-                            />
-                          ) : (
-                            row.name
-                          )}
-                        </td>
-                        <td>{row.value}</td>
-                        <td>{info?.type ?? '—'}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-            {fieldsLocked && flagsError && <p className="flags-manager-error">{flagsError}</p>}
-          </div>
+          <RegionFlagsEditor
+            fieldsLocked={fieldsLocked}
+            fieldsEditable={fieldsEditable}
+            flagRows={flagRows}
+            flagsError={flagsError}
+            flagsCatalog={flagsCatalog}
+            flagsByName={flagsByName}
+            isDirty={isDirty}
+            canEdit={Boolean(onUpdateFlags)}
+            onUpdateFlagRow={updateFlagRow}
+            onRemoveFlagRow={removeFlagRow}
+            onAddFlagRow={addFlagRow}
+            onRequestClearFlags={requestClearFlags}
+            onShowFlagOnScheme={onShowFlagOnScheme}
+          />
 
           {onDeleteManual && (
             <div className="region-delete-footer modal-actions">
@@ -1214,7 +661,10 @@ export function RegionPanel({
         title={t('dialog.discardTitle')}
         message={t('dialog.discardConfirm')}
         onCancel={() => setShowDiscardConfirm(false)}
-        onConfirm={discardChanges}
+        onConfirm={() => {
+          discardChanges();
+          setShowDiscardConfirm(false);
+        }}
       />
     )}
     {showClearFlagsConfirm && (
