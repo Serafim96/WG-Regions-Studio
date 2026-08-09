@@ -37,6 +37,8 @@ interface AddRegionDialogProps {
     geometry: GeometryPayload;
   }) => void;
   onClose: () => void;
+  /** Open flag highlight; always treated as unsaved until the region is created. */
+  onShowFlagOnScheme?: (flagName: string) => void;
 }
 
 const INITIAL_GEOMETRY = emptyGeometryState('cuboid');
@@ -63,6 +65,7 @@ export function AddRegionDialog({
   initialParent,
   onAdd,
   onClose,
+  onShowFlagOnScheme,
 }: AddRegionDialogProps) {
   const { t } = useI18n();
   const [id, setId] = useState('');
@@ -241,6 +244,8 @@ export function AddRegionDialog({
                           flagsCatalog={flagsCatalog}
                           onChange={(name) => updateFlagRow(row.key, { name })}
                           placeholder={t('flagsManager.namePlaceholder')}
+                          onShowOnScheme={onShowFlagOnScheme}
+                          unsavedChanges
                         />
                       </td>
                       <td>

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [Unreleased]
+
+### Changed
+
+- Flag-scheme dimming uses washed/muted opaque node colors instead of low opacity (edges no longer show through).
+- Reverted experimental flag-scheme pan/zoom tricks that hurt visual quality (viewport hide, cheaper curves/labels).
+
+### Added
+
+- Next to flag help (**?**) in region flags / flag management — icon button to open that flag on the scheme; unsaved edits show a short “save first” flash.
+
 ## [2.0.4] — 2026-08-08
 
 ### Changed

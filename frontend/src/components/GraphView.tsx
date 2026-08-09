@@ -20,6 +20,7 @@ import {
 import {
   DEFAULT_LAYOUT_SPACING,
   FLAG_HIGHLIGHT_LAYOUT_SPACING,
+  computeExpandAllHidden,
   layoutVisibleForest,
   type NodeDimensions,
 } from '../utils/layout';
@@ -364,6 +365,96 @@ function applyHighlightOverlay(
 /** Shared zoom ceiling for focus/fit so 1-node and N-node centering look consistent. */
 const CAMERA_FOCUS_MAX_ZOOM = 1.35;
 const CAMERA_FOCUS_MIN_ZOOM = 0.25;
+/** Padding used by expand-all / initial fit — also defines the zoom-out floor. */
+const FIT_PADDING = 40;
+/** Keep this much of the graph inside the viewport when panning (not flush to the edge). */
+const PAN_EDGE_MARGIN = 360;
+/** Keep the familiar wheel feel (do not globally lower — intermittent “speed mode” is separate). */
+const WHEEL_SENSITIVITY = 3.5;
+const CY_MAX_ZOOM = 12;
+/** Per click on scheme +/- controls (was 1.2). */
+const BUTTON_ZOOM_FACTOR = 1.4;
+
+function zoomToFitSize(
+  viewW: number,
+  viewH: number,
+  contentW: number,
+  contentH: number,
+  padding: number,
+): number {
+  const aw = Math.max(viewW - 2 * padding, 1);
+  const ah = Math.max(viewH - 2 * padding, 1);
+  return Math.min(aw / Math.max(contentW, 1), ah / Math.max(contentH, 1));
+}
+
+function modelBBoxFromPositions(
+  positions: Map<string, { x: number; y: number }>,
+  nodeDims: Map<string, NodeDimensions>,
+): { w: number; h: number } | null {
+  if (positions.size === 0) return null;
+  let x1 = Infinity;
+  let y1 = Infinity;
+  let x2 = -Infinity;
+  let y2 = -Infinity;
+  for (const [id, pos] of positions) {
+    const d = nodeDims.get(id) ?? { width: 80, height: 56 };
+    x1 = Math.min(x1, pos.x - d.width / 2);
+    y1 = Math.min(y1, pos.y - d.height / 2);
+    x2 = Math.max(x2, pos.x + d.width / 2);
+    y2 = Math.max(y2, pos.y + d.height / 2);
+  }
+  return { w: Math.max(x2 - x1, 1), h: Math.max(y2 - y1, 1) };
+}
+
+/** Keep the graph from being panned completely off-screen. */
+function constrainPan(cy: Core, margin = PAN_EDGE_MARGIN): void {
+  const nodes = cy.nodes();
+  if (nodes.empty()) return;
+  const bb = nodes.boundingBox({ includeLabels: false });
+  const zoom = cy.zoom();
+  const pan = cy.pan();
+  const cw = cy.width();
+  const ch = cy.height();
+  let panX = pan.x;
+  let panY = pan.y;
+
+  const rx1 = bb.x1 * zoom + panX;
+  const ry1 = bb.y1 * zoom + panY;
+  const rx2 = bb.x2 * zoom + panX;
+  const ry2 = bb.y2 * zoom + panY;
+  const graphW = bb.w * zoom;
+  const graphH = bb.h * zoom;
+
+  if (graphW <= cw - 2 * margin) {
+    if (rx1 < margin) panX += margin - rx1;
+    if (rx2 > cw - margin) panX -= rx2 - (cw - margin);
+  } else {
+    if (rx1 > margin) panX -= rx1 - margin;
+    if (rx2 < cw - margin) panX += (cw - margin) - rx2;
+  }
+
+  if (graphH <= ch - 2 * margin) {
+    if (ry1 < margin) panY += margin - ry1;
+    if (ry2 > ch - margin) panY -= ry2 - (ch - margin);
+  } else {
+    if (ry1 > margin) panY -= ry1 - margin;
+    if (ry2 < ch - margin) panY += (ch - margin) - ry2;
+  }
+
+  if (panX !== pan.x || panY !== pan.y) {
+    cy.pan({ x: panX, y: panY });
+  }
+}
+
+function applyZoomFloor(cy: Core, expandFitZoom: number): void {
+  const minZ = Math.min(Math.max(expandFitZoom, 0.01), CY_MAX_ZOOM);
+  cy.minZoom(minZ);
+  cy.maxZoom(CY_MAX_ZOOM);
+  const z = cy.zoom();
+  if (z < minZ) cy.zoom(minZ);
+  else if (z > CY_MAX_ZOOM) cy.zoom(CY_MAX_ZOOM);
+  constrainPan(cy);
+}
 
 function centerNodeOnCy(cy: Core, regionId: string): boolean {
   const node = cy.getElementById(regionId);
@@ -375,7 +466,10 @@ function centerNodeOnCy(cy: Core, regionId: string): boolean {
       center: { eles: node },
       zoom: cy.zoom(),
     },
-    { duration: 280 },
+    {
+      duration: 280,
+      complete: () => constrainPan(cy),
+    },
   );
   return true;
 }
@@ -400,7 +494,10 @@ function focusNodeOnCy(cy: Core, regionId: string): boolean {
       center: { eles: node },
       zoom: Math.max(CAMERA_FOCUS_MIN_ZOOM, zoom),
     },
-    { duration: 280 },
+    {
+      duration: 280,
+      complete: () => constrainPan(cy),
+    },
   );
   return true;
 }
@@ -435,7 +532,10 @@ function fitNodesOnCy(cy: Core, ids: string[]): boolean {
       center: { eles },
       zoom,
     },
-    { duration: 280 },
+    {
+      duration: 280,
+      complete: () => constrainPan(cy),
+    },
   );
   return true;
 }
@@ -500,6 +600,9 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
   focusRequestRef.current = focusRequest;
   const fitRequestRef = useRef(fitRequest);
   fitRequestRef.current = fitRequest;
+  // Expand-all content size in model coords — zoom-out floor tracks viewport size.
+  const expandContentSizeRef = useRef<{ w: number; h: number } | null>(null);
+  const constrainingPanRef = useRef(false);
   // Apply each focus/center/fit seq only once across rebuilds (avoids stale search focus).
   const lastAppliedFocusSeqRef = useRef(0);
   const lastAppliedCenterSeqRef = useRef(0);
@@ -535,16 +638,35 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     },
     zoomIn() {
       const cy = cyRef.current;
-      if (cy) cy.zoom({ level: cy.zoom() * 1.2, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
+      if (!cy) return;
+      const next = Math.min(cy.zoom() * BUTTON_ZOOM_FACTOR, cy.maxZoom());
+      cy.zoom({
+        level: next,
+        renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 },
+      });
+      constrainPan(cy);
     },
     zoomOut() {
       const cy = cyRef.current;
-      if (cy) cy.zoom({ level: cy.zoom() / 1.2, renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 } });
+      if (!cy) return;
+      const next = Math.max(cy.zoom() / BUTTON_ZOOM_FACTOR, cy.minZoom());
+      cy.zoom({
+        level: next,
+        renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 },
+      });
+      constrainPan(cy);
     },
     resize() {
       const cy = cyRef.current;
       if (!cy) return;
       cy.resize();
+      const content = expandContentSizeRef.current;
+      if (content && cy.width() > 0 && cy.height() > 0) {
+        const fitZ = zoomToFitSize(cy.width(), cy.height(), content.w, content.h, FIT_PADDING);
+        applyZoomFloor(cy, fitZ);
+      } else {
+        constrainPan(cy);
+      }
     },
   }));
 
@@ -552,7 +674,16 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     const el = containerRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
-      cyRef.current?.resize();
+      const cy = cyRef.current;
+      if (!cy) return;
+      cy.resize();
+      const content = expandContentSizeRef.current;
+      if (content && cy.width() > 0 && cy.height() > 0) {
+        const fitZ = zoomToFitSize(cy.width(), cy.height(), content.w, content.h, FIT_PADDING);
+        applyZoomFloor(cy, fitZ);
+      } else {
+        constrainPan(cy);
+      }
     });
     observer.observe(el);
     return () => observer.disconnect();
@@ -628,6 +759,16 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     );
     const visibleIds = new Set(visiblePositions.keys());
     const visibleSpatial = remapSpatialEdges(scheme.spatialEdges, hiddenNodes, parentMap);
+
+    // Zoom-out floor = camera zoom after «expand all» (full forest fit).
+    const expandPositions = layoutVisibleForest(
+      scheme,
+      computeExpandAllHidden(),
+      nodeDims,
+      layoutSpacing,
+    );
+    const expandBb = modelBBoxFromPositions(expandPositions, nodeDims);
+    expandContentSizeRef.current = expandBb;
 
     const elements: cytoscape.ElementDefinition[] = [];
 
@@ -732,8 +873,29 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
       style: buildStylesheet(theme) as cytoscape.StylesheetStyle[],
       layout: { name: 'preset' },
       minZoom: 0.02,
-      maxZoom: 12,
-      wheelSensitivity: 3.5,
+      maxZoom: CY_MAX_ZOOM,
+      wheelSensitivity: WHEEL_SENSITIVITY,
+    });
+
+    // If a fit/focus tween is still running, stop it before wheel zoom so deltas
+    // do not stack on top of the animation (rare “speed mode”). Normal sensitivity unchanged.
+    const containerEl = containerRef.current;
+    const onWheelGuard = () => {
+      cy.stop(true);
+      requestAnimationFrame(() => {
+        if (cyRef.current === cy) constrainPan(cy);
+      });
+    };
+    containerEl.addEventListener('wheel', onWheelGuard, { capture: true, passive: true });
+
+    cy.on('dragpan', () => {
+      if (constrainingPanRef.current) return;
+      constrainingPanRef.current = true;
+      try {
+        constrainPan(cy);
+      } finally {
+        constrainingPanRef.current = false;
+      }
     });
 
     cy.on('tap', (evt) => {
@@ -790,11 +952,24 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     }
 
     if (fitOnNextLayout.current) {
-      cy.fit(undefined, 40);
+      cy.fit(undefined, FIT_PADDING);
       fitOnNextLayout.current = false;
     } else if (viewStateRef.current) {
       cy.zoom(viewStateRef.current.zoom);
       cy.pan(viewStateRef.current.pan);
+    }
+
+    if (expandBb && cy.width() > 0 && cy.height() > 0) {
+      const expandFitZoom = zoomToFitSize(
+        cy.width(),
+        cy.height(),
+        expandBb.w,
+        expandBb.h,
+        FIT_PADDING,
+      );
+      applyZoomFloor(cy, expandFitZoom);
+    } else {
+      constrainPan(cy);
     }
 
     applyRegionNodeStyles(cy);
@@ -847,16 +1022,17 @@ export const GraphView = forwardRef<GraphViewHandle, GraphViewProps>(function Gr
     }
 
     return () => {
+      containerEl.removeEventListener('wheel', onWheelGuard, { capture: true });
       if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-      const cy = cyRef.current;
-      if (cy) {
+      const living = cyRef.current;
+      if (living) {
         // Capture the live camera before destroy — otherwise a flag-only scheme
         // update restores a stale pan/zoom from the previous rebuild.
         viewStateRef.current = {
-          zoom: cy.zoom(),
-          pan: { ...cy.pan() },
+          zoom: living.zoom(),
+          pan: { ...living.pan() },
         };
-        cy.destroy();
+        living.destroy();
         cyRef.current = null;
       }
     };

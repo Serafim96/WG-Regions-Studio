@@ -215,7 +215,8 @@ export default function App() {
   const [collapseThreshold, setCollapseThreshold] = useState(initialSettings.collapseThreshold);
   const [baseSize] = useState(60);
   const [collapseTarget, setCollapseTarget] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(initialSettings.sidebarCollapsed);
+  // Always expand the sidebar on app start (ignore last session collapse).
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(initialSettings.sidebarWidth);
   const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const [graphLocked, setGraphLocked] = useState(true);
@@ -2569,6 +2570,10 @@ export default function App() {
           onRequestRename={(id) => setRenameTargetId(id)}
           onUpdatePriority={handleUpdatePriority}
           onUpdateMembers={handleUpdateMembers}
+          onShowFlagOnScheme={(flagName) => {
+            closeRegionDetails();
+            applyHighlightFlag(flagName);
+          }}
         />
       )}
       {deleteTarget && (
@@ -2624,6 +2629,10 @@ export default function App() {
           onClearAllFlags={handleClearAllFlags}
           onOpenCatalog={() => setShowFlagsCatalog(true)}
           initialRegionId={flagsManagerFocusId}
+          onShowFlagOnScheme={(flagName) => {
+            closeFlagsManager();
+            applyHighlightFlag(flagName);
+          }}
         />
       )}
       {showFlagsCatalog && (
@@ -2646,6 +2655,10 @@ export default function App() {
           initialParent={addDialogInitialParent}
           onAdd={handleAddManual}
           onClose={closeAddDialog}
+          onShowFlagOnScheme={(flagName) => {
+            closeAddDialog();
+            applyHighlightFlag(flagName);
+          }}
         />
       )}
       {renameTargetId && (

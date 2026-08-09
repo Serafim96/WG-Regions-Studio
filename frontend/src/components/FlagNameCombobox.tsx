@@ -2,7 +2,7 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo } from '../types';
-import { FlagHelpButton, findFlagInfo } from './FlagHelpButton';
+import { FlagHelpButton, FlagShowOnSchemeButton, findFlagInfo } from './FlagHelpButton';
 
 interface FlagNameComboboxProps {
   value: string;
@@ -10,6 +10,10 @@ interface FlagNameComboboxProps {
   onChange: (value: string) => void;
   placeholder?: string;
   id?: string;
+  /** Opens flag highlight on the scheme (same as bottom-left flag control). */
+  onShowOnScheme?: (flagName: string) => void;
+  /** When true, the scheme button asks to save first instead of opening. */
+  unsavedChanges?: boolean;
 }
 
 interface DropdownBox {
@@ -26,6 +30,8 @@ export function FlagNameCombobox({
   onChange,
   placeholder,
   id,
+  onShowOnScheme,
+  unsavedChanges = false,
 }: FlagNameComboboxProps) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -195,7 +201,18 @@ export function FlagNameCombobox({
             }
           }}
         />
-        {known ? <FlagHelpButton name={value} flagsCatalog={flagsCatalog} /> : null}
+        {known ? (
+          <>
+            <FlagHelpButton name={value} flagsCatalog={flagsCatalog} />
+            {onShowOnScheme ? (
+              <FlagShowOnSchemeButton
+                name={value}
+                unsavedChanges={unsavedChanges}
+                onShowOnScheme={onShowOnScheme}
+              />
+            ) : null}
+          </>
+        ) : null}
       </div>
       {dropdown}
       {emptyHint}

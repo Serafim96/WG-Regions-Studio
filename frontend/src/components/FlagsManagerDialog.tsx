@@ -47,6 +47,8 @@ interface FlagsManagerDialogProps {
   onOpenCatalog: () => void;
   /** Open focused on this region (pinned with parents, ready to edit). */
   initialRegionId?: string | null;
+  /** Open flag highlight scheme for a saved flag name. */
+  onShowFlagOnScheme?: (flagName: string) => void;
 }
 
 function regionHasFlags(region: RegionData | undefined): boolean {
@@ -232,6 +234,7 @@ export function FlagsManagerDialog({
   onClearAllFlags,
   onOpenCatalog,
   initialRegionId = null,
+  onShowFlagOnScheme,
 }: FlagsManagerDialogProps) {
   const { t } = useI18n();
   const regionsById = useMemo(
@@ -780,6 +783,8 @@ export function FlagsManagerDialog({
                                     flagsCatalog={flagsCatalog}
                                     onChange={(name) => updateRow(row.key, { name })}
                                     placeholder={t('flagsManager.namePlaceholder')}
+                                    onShowOnScheme={onShowFlagOnScheme}
+                                    unsavedChanges={dirty}
                                   />
                                 </td>
                                 <td>
@@ -852,6 +857,7 @@ export function FlagsManagerDialog({
                     flagsCatalog={flagsCatalog}
                     onChange={setBulkFlag}
                     placeholder={t('flagsManager.namePlaceholder')}
+                    onShowOnScheme={onShowFlagOnScheme}
                   />
                 </label>
                 <label>

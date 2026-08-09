@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo } from '../types';
+import { IconFlag } from './GraphControlIcons';
 
 export function findFlagInfo(
   flagsCatalog: FlagInfo[],
@@ -133,18 +134,103 @@ export function FlagHelpButton({
   );
 }
 
+interface FlagShowOnSchemeButtonProps {
+  name: string;
+  /** When true, click shows a short “save first” flash instead of opening the scheme. */
+  unsavedChanges?: boolean;
+  onShowOnScheme: (flagName: string) => void;
+}
+
+/** Same flag icon as the scheme bottom-left control — opens flag highlight for this name. */
+export function FlagShowOnSchemeButton({
+  name,
+  unsavedChanges = false,
+  onShowOnScheme,
+}: FlagShowOnSchemeButtonProps) {
+  const { t } = useI18n();
+  const rootRef = useRef<HTMLSpanElement>(null);
+  const [flashPos, setFlashPos] = useState<{ left: number; top: number } | null>(null);
+  const flashTimerRef = useRef<number | null>(null);
+  const trimmed = name.trim();
+
+  useEffect(() => () => {
+    if (flashTimerRef.current != null) {
+      window.clearTimeout(flashTimerRef.current);
+    }
+  }, []);
+
+  if (!trimmed) return null;
+
+  const showSaveFlash = () => {
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setFlashPos({ left: rect.left + rect.width / 2, top: rect.top - 4 });
+    if (flashTimerRef.current != null) {
+      window.clearTimeout(flashTimerRef.current);
+    }
+    flashTimerRef.current = window.setTimeout(() => {
+      setFlashPos(null);
+      flashTimerRef.current = null;
+    }, 2000);
+  };
+
+  return (
+    <span className="flag-help flag-scheme-btn-wrap" ref={rootRef}>
+      <button
+        type="button"
+        className="flag-help-btn flag-scheme-btn"
+        title={t('flagHelp.showOnScheme')}
+        aria-label={t('flagHelp.showOnScheme')}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (unsavedChanges) {
+            showSaveFlash();
+            return;
+          }
+          onShowOnScheme(trimmed);
+        }}
+      >
+        <IconFlag size={14} />
+      </button>
+      {flashPos
+        ? createPortal(
+            <span
+              className="copy-name-flash"
+              role="status"
+              style={{ left: flashPos.left, top: flashPos.top }}
+            >
+              {t('flagHelp.saveBeforeScheme')}
+            </span>,
+            document.body,
+          )
+        : null}
+    </span>
+  );
+}
+
 /** Flag name with an inline quick-help control. */
 export function FlagNameWithHelp({
   name,
   flagsCatalog,
+  unsavedChanges,
+  onShowOnScheme,
 }: {
   name: string;
   flagsCatalog: FlagInfo[];
+  unsavedChanges?: boolean;
+  onShowOnScheme?: (flagName: string) => void;
 }) {
   return (
     <span className="flag-name-with-help">
       <code className="flag-name-code">{name}</code>
       <FlagHelpButton name={name} flagsCatalog={flagsCatalog} />
+      {onShowOnScheme ? (
+        <FlagShowOnSchemeButton
+          name={name}
+          unsavedChanges={unsavedChanges}
+          onShowOnScheme={onShowOnScheme}
+        />
+      ) : null}
     </span>
   );
 }

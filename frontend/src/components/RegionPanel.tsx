@@ -13,7 +13,7 @@ import {
   intersectionVolume,
   regionVolume,
 } from '../utils/volume';
-import { findFlagInfo } from './FlagHelpButton';
+import { findFlagInfo, FlagNameWithHelp } from './FlagHelpButton';
 import { FlagNameCombobox } from './FlagNameCombobox';
 import { FlagValueInput } from './FlagValueInput';
 import { IconLock, IconUnlock } from './GraphControlIcons';
@@ -63,6 +63,8 @@ interface RegionPanelProps {
     owners: Record<string, unknown>,
     members: Record<string, unknown>,
   ) => Promise<void>;
+  /** Open flag highlight scheme for a saved flag name. */
+  onShowFlagOnScheme?: (flagName: string) => void;
 }
 
 type IntersectSortKey = 'id' | 'blocks' | 'percent';
@@ -420,6 +422,7 @@ export function RegionPanel({
   onRequestRename,
   onUpdatePriority,
   onUpdateMembers,
+  onShowFlagOnScheme,
 }: RegionPanelProps) {
   const { t } = useI18n();
   const [fieldsLocked, setFieldsLocked] = useState(true);
@@ -626,6 +629,7 @@ export function RegionPanel({
 
   const discardChanges = () => {
     resetDraftsFromRegion(region);
+    setFieldsLocked(true);
     setShowDiscardConfirm(false);
   };
 
@@ -1096,6 +1100,8 @@ export function RegionPanel({
                               flagsCatalog={flagsCatalog}
                               onChange={(name) => updateFlagRow(row.key, { name })}
                               placeholder={t('flagsManager.namePlaceholder')}
+                              onShowOnScheme={onShowFlagOnScheme}
+                              unsavedChanges={isDirty}
                             />
                           </td>
                           <td>
@@ -1154,7 +1160,18 @@ export function RegionPanel({
                     const info = flagsCatalog.find((f) => f.name === row.name);
                     return (
                       <tr key={row.key}>
-                        <td>{row.name}</td>
+                        <td>
+                          {row.name.trim() ? (
+                            <FlagNameWithHelp
+                              name={row.name}
+                              flagsCatalog={flagsCatalog}
+                              unsavedChanges={isDirty}
+                              onShowOnScheme={onShowFlagOnScheme}
+                            />
+                          ) : (
+                            row.name
+                          )}
+                        </td>
                         <td>{row.value}</td>
                         <td>{info?.type ?? '—'}</td>
                       </tr>

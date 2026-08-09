@@ -696,6 +696,17 @@ button.warning:hover:not(:disabled) {
   color: var(--color-accent, #2980b9);
 }
 
+.flag-scheme-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.flag-scheme-btn svg {
+  display: block;
+}
+
 .flag-help-popover {
   position: absolute;
   z-index: 500;
@@ -1060,7 +1071,7 @@ button.warning:hover:not(:disabled) {
   margin: 12px 0;
 }
 
-.modal-body button:not(.region-link):not(.flags-tree-toggle):not(.flags-tree-item):not(.flags-tree-icon-btn):not(.flags-row-remove):not(.geometry-point-remove):not(.flag-help-btn):not(.inline-toggle-btn):not(.region-action-btn):not(.suggest-dropdown-item):not(.danger):not(.warning):not(.success),
+.modal-body button:not(.region-link):not(.flags-tree-toggle):not(.flags-tree-item):not(.flags-tree-icon-btn):not(.flags-row-remove):not(.geometry-point-remove):not(.flag-help-btn):not(.flag-scheme-btn):not(.inline-toggle-btn):not(.region-action-btn):not(.suggest-dropdown-item):not(.danger):not(.warning):not(.success),
 .modal-actions button:not(.danger):not(.warning):not(.success),
 .flags-tree-toolbar button:not(.flags-tree-icon-btn),
 .flags-bulk-targets-header button,
@@ -1077,7 +1088,7 @@ button.warning:hover:not(:disabled) {
   font-size: 0.9rem;
 }
 
-.modal-body button:not(.region-link):not(.flags-tree-toggle):not(.flags-tree-item):not(.flags-tree-icon-btn):not(.flags-row-remove):not(.geometry-point-remove):not(.flag-help-btn):not(.inline-toggle-btn):not(.region-action-btn):not(.suggest-dropdown-item):not(.danger):not(.warning):not(.success):hover:not(:disabled),
+.modal-body button:not(.region-link):not(.flags-tree-toggle):not(.flags-tree-item):not(.flags-tree-icon-btn):not(.flags-row-remove):not(.geometry-point-remove):not(.flag-help-btn):not(.flag-scheme-btn):not(.inline-toggle-btn):not(.region-action-btn):not(.suggest-dropdown-item):not(.danger):not(.warning):not(.success):hover:not(:disabled),
 .modal-actions button:not(.danger):not(.warning):not(.success):hover:not(:disabled),
 .flags-tree-toolbar button:not(.flags-tree-icon-btn):hover:not(:disabled),
 .collapse-panel > button:hover:not(:disabled) {
@@ -3408,9 +3419,9 @@ button.success:hover:not(:disabled) {
 }
 
 .legend-node--flag-dim {
-  background: #aaa;
-  opacity: 0.25;
-  border: 2px solid #777;
+  background: #e4e4e8;
+  opacity: 1;
+  border: 1px solid #c5c5cc;
 }
 
 .legend-node--flag-conflict-pair {
