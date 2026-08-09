@@ -231,7 +231,7 @@ Region names in the tops are links: they open the region card, center the camera
 - WorldGuard flags catalog — separate **Flags catalog** button in the sidebar.
 - In the flags manager, flag names use typeahead suggestions while typing (unknown/custom names are still allowed).
 - In flag tables (region card, flags manager, conflicts) the **«?»** button opens a short description tip for known flags only.
-- **Language** — **RU** / **EN** switcher at the top of the sidebar; choice is saved in the browser. Notifications and toasts translate on language switch; toasts stay on screen longer.
+- **Language** — **RU** / **EN** switcher at the top of the sidebar (next to the app icon and title); choice is saved in the browser. Notifications and toasts translate on language switch; toasts stay on screen longer.
 
 View state (collapsed nodes, selected region) is stored in **localStorage** separately from `.mrv.json` scheme files.
 

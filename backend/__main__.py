@@ -7,6 +7,10 @@ import os
 
 def main() -> None:
     os.environ.setdefault("MRV_OPEN_BROWSER", "1")
+    from backend.win_console_icon import apply_windows_console_icon
+
+    apply_windows_console_icon()
+
     import uvicorn
 
     from backend.main import app

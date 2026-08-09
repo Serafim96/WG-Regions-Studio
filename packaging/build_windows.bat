@@ -19,10 +19,10 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Generating icon...
+echo Syncing icon.ico / frontend asset from packaging\icon.png...
 python packaging\generate_icon.py
 if errorlevel 1 (
-    echo ERROR: icon generation failed.
+    echo ERROR: icon sync failed.
     exit /b 1
 )
 

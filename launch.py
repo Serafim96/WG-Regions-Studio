@@ -133,7 +133,9 @@ def ensure_frontend(*, force_build: bool = False) -> None:
     if force_build or _frontend_needs_build():
         print("Building frontend...", flush=True)
         _run([npm, "run", "build"], cwd=FRONTEND)
-    elif not STATIC_INDEX.is_file():
+    else:
+        print("Frontend build is up to date.", flush=True)
+    if not STATIC_INDEX.is_file():
         raise SystemExit("ERROR: frontend build missing.")
 
 

@@ -8,15 +8,11 @@ echo.
 set "SETUP_ONLY=0"
 echo.%*|findstr /I /C:"--setup-only" >nul && set "SETUP_ONLY=1"
 
-REM Packaged release: prefer the frozen exe (unless setup-only).
+REM Packaged release only: exe sitting next to this launcher (zip layout).
+REM Do NOT prefer dist\… — that skips launch.py rebuilds during development.
 if "%SETUP_ONLY%"=="0" if exist "%~dp0WG-Regions-Studio.exe" (
     echo Starting packaged WG-Regions-Studio.exe ...
     start "WG Regions Studio" /D "%~dp0" "%~dp0WG-Regions-Studio.exe"
-    exit /b 0
-)
-if "%SETUP_ONLY%"=="0" if exist "%~dp0dist\WG-Regions-Studio\WG-Regions-Studio.exe" (
-    echo Starting packaged WG-Regions-Studio.exe ...
-    start "WG Regions Studio" /D "%~dp0dist\WG-Regions-Studio" "%~dp0dist\WG-Regions-Studio\WG-Regions-Studio.exe"
     exit /b 0
 )
 

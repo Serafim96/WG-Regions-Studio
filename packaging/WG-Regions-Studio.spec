@@ -35,6 +35,8 @@ if STATIC.exists():
     datas.append((str(STATIC), "backend/static"))
 if FLAGS.exists():
     datas.append((str(FLAGS), "."))
+if ICON.exists():
+    datas.append((str(ICON), "."))
 
 for pkg in ("uvicorn", "fastapi", "starlette", "anyio", "shapely"):
     pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)

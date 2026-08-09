@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import appIcon from './assets/app-icon.png';
 import {
   addManualRegion,
   buildScheme,
@@ -1999,7 +2000,10 @@ export default function App() {
             document.body.classList.add('sidebar-resizing');
           }}
         />
-        <h1>{t('app.title')}</h1>
+        <div className="app-brand">
+          <img className="app-brand-icon" src={appIcon} alt="" width={28} height={28} />
+          <h1>{t('app.title')}</h1>
+        </div>
 
         <div className="preferences-row">
           <div className="lang-switch">
