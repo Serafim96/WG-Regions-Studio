@@ -78,7 +78,11 @@ def ensure_console_stdio() -> None:
     _rebind_stdio_to_console()
 
 
-def ensure_classic_console() -> bool:
+def ensure_classic_console(
+    *,
+    relaunch_argv: list[str] | None = None,
+    cwd: str | Path | None = None,
+) -> bool:
     """Relaunch once under conhost.exe and return True (caller should exit).
 
     Wrapping in conhost disables Windows Terminal delegation regardless of the
@@ -91,6 +95,9 @@ def ensure_classic_console() -> bool:
 
     Dev / console-subsystem parents still relaunch under conhost; the interim
     console is hidden and detached before spawn to avoid a visible flash.
+
+    ``relaunch_argv`` / ``cwd`` override the default frozen / ``-m backend`` command
+    (used by ``launch.py`` so dependency install runs in the branded console).
     """
     if sys.platform != "win32":
         return False
@@ -102,7 +109,7 @@ def ensure_classic_console() -> bool:
     has_console = bool(ctypes.windll.kernel32.GetConsoleWindow())
 
     # Windowed frozen EXE: no console, no WT handoff — AllocConsole in-process.
-    if getattr(sys, "frozen", False) and not has_console:
+    if getattr(sys, "frozen", False) and not has_console and relaunch_argv is None:
         os.environ[_CLASSIC_ENV] = "1"
         return False
 
@@ -111,23 +118,39 @@ def ensure_classic_console() -> bool:
     env.pop("WT_SESSION", None)
     env.pop("WT_PROFILE_ID", None)
 
-    if getattr(sys, "frozen", False):
+    if relaunch_argv is not None:
+        cmd = ["conhost.exe", *relaunch_argv]
+        workdir = str(cwd) if cwd is not None else str(Path.cwd())
+    elif getattr(sys, "frozen", False):
         cmd = ["conhost.exe", sys.executable, *sys.argv[1:]]
-        cwd = str(Path(sys.executable).resolve().parent)
+        workdir = str(cwd) if cwd is not None else str(Path(sys.executable).resolve().parent)
     else:
         cmd = ["conhost.exe", sys.executable, "-m", "backend", *sys.argv[1:]]
-        cwd = str(Path(__file__).resolve().parents[1])
+        workdir = str(cwd) if cwd is not None else str(Path(__file__).resolve().parents[1])
 
     # Hide interim console before the child window appears (dev / console parent).
     _hide_and_detach_console()
 
     try:
-        subprocess.Popen(cmd, cwd=cwd, env=env, close_fds=False)
+        subprocess.Popen(cmd, cwd=workdir, env=env, close_fds=False)
     except OSError:
         # Relaunch failed — try to restore a console for logging in this process.
         ensure_console_stdio()
         return False
     return True
+
+
+def prepare_windows_console(
+    *,
+    relaunch_argv: list[str] | None = None,
+    cwd: str | Path | None = None,
+) -> bool:
+    """Ensure classic console + stdio + app icon. Return True if caller should exit."""
+    if ensure_classic_console(relaunch_argv=relaunch_argv, cwd=cwd):
+        return True
+    ensure_console_stdio()
+    apply_windows_console_icon()
+    return False
 
 
 def apply_windows_console_icon() -> None:

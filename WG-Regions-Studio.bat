@@ -22,15 +22,18 @@ if errorlevel 1 goto fail
 call :ensure_node
 if errorlevel 1 goto fail
 
-echo Checking project dependencies and starting...
+REM Start branded conhost immediately; launch.py does install + server there.
+REM This bat window only checks Python/Node (and winget if needed), then exits.
+set "MRV_CLASSIC_CONSOLE=1"
 if "%SETUP_ONLY%"=="1" (
-    python "%~dp0launch.py" %*
+    echo Checking project dependencies...
+    start "WG Regions Studio" /wait /D "%~dp0" conhost.exe python "%~dp0launch.py" %*
     set "ERR=%ERRORLEVEL%"
     if not "%ERR%"=="0" goto fail
     exit /b 0
 )
-REM App self-relaunches under conhost for a classic console window/icon.
-start "WG Regions Studio" /D "%~dp0" python "%~dp0launch.py" %*
+echo Starting WG Regions Studio (deps install in app console if needed)...
+start "WG Regions Studio" /D "%~dp0" conhost.exe python "%~dp0launch.py" %*
 exit /b 0
 
 :ensure_python

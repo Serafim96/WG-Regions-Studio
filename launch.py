@@ -145,6 +145,9 @@ def start_app() -> None:
         raise SystemExit("ERROR: venv python missing.")
     env = os.environ.copy()
     env.setdefault("MRV_OPEN_BROWSER", "1")
+    # Keep the branded conhost session for the server (no second relaunch).
+    if os.name == "nt":
+        env["MRV_CLASSIC_CONSOLE"] = "1"
     print("Starting WG Regions Studio, browser will open automatically...", flush=True)
     cmd = [str(py), "-m", "backend"]
     if os.name == "nt":
@@ -164,7 +167,22 @@ def bootstrap(*, setup_only: bool, force_build: bool) -> None:
     start_app()
 
 
+def _prepare_branded_console(argv: list[str]) -> None:
+    """On Windows, move into classic conhost with the app icon before any install work."""
+    if sys.platform != "win32":
+        return
+    # Importable with system Python (stdlib-only module; app root on sys.path).
+    from backend.win_console_icon import prepare_windows_console
+
+    relaunch = [sys.executable, str(Path(__file__).resolve()), *argv]
+    if prepare_windows_console(relaunch_argv=relaunch, cwd=ROOT):
+        raise SystemExit(0)
+
+
 def main(argv: list[str] | None = None) -> None:
+    raw = list(sys.argv[1:] if argv is None else argv)
+    _prepare_branded_console(raw)
+
     parser = argparse.ArgumentParser(description="Ensure deps and launch WG Regions Studio")
     parser.add_argument(
         "--setup-only",
@@ -176,7 +194,7 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="Always rebuild the frontend",
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw)
     try:
         bootstrap(setup_only=args.setup_only, force_build=args.force_build)
     except subprocess.CalledProcessError as exc:

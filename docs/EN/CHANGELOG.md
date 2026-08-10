@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [2.0.11] — 2026-08-10
+
+### Changed
+
+- Windows source launcher: opens the branded classic `conhost` window **before** dependency install, so pip/npm output appears under the app icon.
+- After setup, the server keeps running in that same console (no second relaunch).
+
 ## [2.0.10] — 2026-08-09
 
 ### Added

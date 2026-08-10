@@ -9,7 +9,7 @@ import httpx
 
 # Bump when cutting a GitHub release (tag vX.Y.Z).
 # Full checklist: docs/dev/RELEASE.md
-APP_VERSION = "2.0.10"
+APP_VERSION = "2.0.11"
 GITHUB_REPO = "Serafim96/WG-Regions-Studio"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
@@ -19,14 +19,14 @@ RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
 # in the GitHub Release body (old clients read that body for the update toast).
 CURRENT_HIGHLIGHTS: dict[str, list[str]] = {
     "ru": [
-        "Окно «Что нового» при первом запуске версии",
-        "В уведомлении об обновлении — краткий список изменений из релиза",
-        "Исправлена вспышка консоли при старте Windows EXE",
+        "Установка зависимостей сразу в окне консоли с иконкой приложения",
+        "Лаунчер Windows открывает classic conhost до pip/npm install",
+        "Сервер остаётся в том же брендированном окне без второго relaunch",
     ],
     "en": [
-        "What's New dialog on first launch of a version",
-        "Update notification includes a short summary from the GitHub release",
-        "Fixed console flash when starting the Windows EXE",
+        "Dependency install runs in the branded console window with the app icon",
+        "Windows launcher opens classic conhost before pip/npm install",
+        "Server stays in the same branded window (no second relaunch)",
     ],
 }
 

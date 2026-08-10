@@ -7,19 +7,14 @@ import os
 
 def main() -> None:
     os.environ.setdefault("MRV_OPEN_BROWSER", "1")
-    from backend.win_console_icon import (
-        apply_windows_console_icon,
-        ensure_classic_console,
-        ensure_console_stdio,
-    )
+    from backend.win_console_icon import prepare_windows_console
 
     # Console parents: relaunch under classic conhost (interim console hidden).
     # Windowed frozen EXE: no relaunch — AllocConsole in ensure_console_stdio.
-    if ensure_classic_console():
+    # When started from launch.py already under conhost (MRV_CLASSIC_CONSOLE=1),
+    # stay in that window so install + server share the branded console.
+    if prepare_windows_console():
         raise SystemExit(0)
-
-    ensure_console_stdio()
-    apply_windows_console_icon()
 
     import uvicorn
 
