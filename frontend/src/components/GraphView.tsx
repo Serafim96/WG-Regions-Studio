@@ -37,7 +37,7 @@ import {
   focusNodeOnCy,
   fitNodesOnCy,
   modelBBoxFromPositions,
-  WHEEL_SENSITIVITY,
+  nextWheelZoom,
   zoomToFitSize,
 } from './graph/camera';
 import { applyHighlightOverlay, nodeBoxForLabel } from './graph/highlightOverlay';
@@ -394,19 +394,32 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
       layout: { name: 'preset' },
       minZoom: 0.02,
       maxZoom: CY_MAX_ZOOM,
-      wheelSensitivity: WHEEL_SENSITIVITY,
+      // Native Cytoscape wheel zoom auto-detects “coarse vs fine” from the first
+      // few deltas per instance — intermittent “speed mode” after scheme reload.
+      userZoomingEnabled: false,
     });
 
-    // If a fit/focus tween is still running, stop it before wheel zoom so deltas
-    // do not stack on top of the animation (rare вЂњspeed modeвЂќ). Normal sensitivity unchanged.
+    // Deterministic wheel zoom: direction-only step, cursor-centered, no device heuristic.
+    // Also stops any in-flight fit/focus tween so deltas do not stack on animation.
     const containerEl = containerRef.current;
-    const onWheelGuard = () => {
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (cyRef.current !== cy) return;
       cy.stop(true);
-      requestAnimationFrame(() => {
-        if (cyRef.current === cy) constrainPan(cy);
-      });
+      const rect = containerEl.getBoundingClientRect();
+      const nextZoom = nextWheelZoom(cy.zoom(), e.deltaY, cy.minZoom(), cy.maxZoom());
+      if (nextZoom !== cy.zoom()) {
+        cy.zoom({
+          level: nextZoom,
+          renderedPosition: {
+            x: e.clientX - rect.left,
+            y: e.clientY - rect.top,
+          },
+        });
+      }
+      constrainPan(cy);
     };
-    containerEl.addEventListener('wheel', onWheelGuard, { capture: true, passive: true });
+    containerEl.addEventListener('wheel', onWheel, { capture: true, passive: false });
 
     cy.on('dragpan', () => {
       if (constrainingPanRef.current) return;
@@ -542,7 +555,7 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
     }
 
     return () => {
-      containerEl.removeEventListener('wheel', onWheelGuard, { capture: true });
+      containerEl.removeEventListener('wheel', onWheel, { capture: true });
       if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
       const living = cyRef.current;
       if (living) {

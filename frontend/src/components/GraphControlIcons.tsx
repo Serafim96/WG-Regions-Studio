@@ -303,7 +303,7 @@ export function IconRefresh({ size = GRAPH_ICON_SIZE, className }: SvgIconProps 
   return (
     <svg {...strokeSvg(size)} className={className}>
       <path d="M14.5 9A5.5 5.5 0 1 1 12.5 4.2" />
-      <path d="M15.5 5.5h-3v3" />
+      <path d="M9.5 5.5h3V2.5" />
     </svg>
   );
 }

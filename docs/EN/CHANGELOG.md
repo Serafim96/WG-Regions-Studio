@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [2.0.13] — 2026-08-10
+
+### Fixed
+
+- Scheme **mouse-wheel zoom** no longer intermittently jumps to extreme speed after loading a scheme (replaced Cytoscape’s device auto-detect with a fixed per-notch step).
+- Notification panel **refresh** icon arrow tip orientation corrected.
+
 ## [2.0.12] — 2026-08-10
 
 ### Added

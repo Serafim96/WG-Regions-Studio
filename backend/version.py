@@ -9,7 +9,7 @@ import httpx
 
 # Bump when cutting a GitHub release (tag vX.Y.Z).
 # Full checklist: docs/dev/RELEASE.md
-APP_VERSION = "2.0.12"
+APP_VERSION = "2.0.13"
 GITHUB_REPO = "Serafim96/WG-Regions-Studio"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
@@ -18,14 +18,12 @@ RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
 # The first-launch dialog reads the full release history from docs/*/CHANGELOG*.md.
 CURRENT_HIGHLIGHTS: dict[str, list[str]] = {
     "ru": [
-        "«Список изменений» при первом запуске локальной сборки — без интернета",
-        "Кнопка журнала рядом с темой; полноэкран — F или кнопка внизу сайдбара",
-        "Ошибки экспорта в колокольчике; вспышка у кнопки YAML при блокировке",
+        "Стабильный zoom колёсиком мыши — без случайных «прыжков» после загрузки схемы",
+        "Иконка обновления уведомлений: кончик стрелки развёрнут",
     ],
     "en": [
-        "Changelog on first launch of a local build — works offline",
-        "Changelog button next to theme; fullscreen via F or the sidebar footer button",
-        "Export-blocking errors in the bell; flash on the YAML button when blocked",
+        "Stable mouse-wheel zoom — no intermittent jumps after loading a scheme",
+        "Notification refresh icon: arrow tip orientation fixed",
     ],
 }
 

@@ -8,11 +8,30 @@ export const CAMERA_FOCUS_MIN_ZOOM = 0.25;
 export const FIT_PADDING = 40;
 /** Keep this much of the graph inside the viewport when panning (not flush to the edge). */
 export const PAN_EDGE_MARGIN = 432;
-/** Keep the familiar wheel feel (do not globally lower — intermittent “speed mode” is separate). */
-export const WHEEL_SENSITIVITY = 3.5;
 export const CY_MAX_ZOOM = 12;
 /** Per click on scheme +/- controls (was 1.2). */
 export const BUTTON_ZOOM_FACTOR = 1.4;
+/**
+ * Fixed multiplicative zoom step per wheel event (direction only).
+ * Ignores device-dependent |deltaY| so mouse/trackpad/OS smooth-scroll
+ * cannot trigger Cytoscape-style “accurate device” speed jumps.
+ */
+export const WHEEL_ZOOM_STEP = 1.1;
+
+/** Next zoom level from a wheel delta; magnitude of deltaY is ignored. */
+export function nextWheelZoom(
+  currentZoom: number,
+  deltaY: number,
+  minZoom: number,
+  maxZoom: number,
+): number {
+  const direction = Math.sign(deltaY);
+  if (direction === 0 || !Number.isFinite(currentZoom)) return currentZoom;
+  // deltaY > 0 → scroll down → zoom out
+  const factor = direction > 0 ? 1 / WHEEL_ZOOM_STEP : WHEEL_ZOOM_STEP;
+  const next = currentZoom * factor;
+  return Math.min(maxZoom, Math.max(minZoom, next));
+}
 
 export function zoomToFitSize(
   viewW: number,
