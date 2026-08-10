@@ -11,9 +11,14 @@ import type { Scheme } from '../types';
 import type { FlagConflictsResult } from '../utils/flagConflicts';
 import { findOrphanRegionIds } from '../utils/graph';
 import { isSchemeFileName, isUserCancelled, isYamlFileName, openSchemeOrYamlWithDialog, saveTextWithDialog } from '../utils/fileDialog';
-import { validateSchemeForYamlExport, type SchemeIssue } from '../utils/schemeValidation';
+import { validateSchemeForYamlExport } from '../utils/schemeValidation';
 import { clearViewState } from '../utils/viewState';
 import { useI18n } from '../i18n/I18nContext';
+
+export type ExportGate = {
+  refreshExportErrors: () => void;
+  showExportBlockedFlash: (errorCount: number) => void;
+};
 
 /**
  * Load / apply / clear scheme, open/save/export YAML, reset manuals, clear session.
@@ -26,6 +31,7 @@ export function useSchemeSession(deps: {
   onClearAppExtras: () => void;
   schemeKeyRef: React.MutableRefObject<string>;
   isFreshSchemeRef: React.MutableRefObject<boolean>;
+  exportGateRef: React.MutableRefObject<ExportGate>;
 }) {
   const { t, locale } = useI18n();
   const {
@@ -34,6 +40,7 @@ export function useSchemeSession(deps: {
     onClearAppExtras,
     schemeKeyRef,
     isFreshSchemeRef,
+    exportGateRef,
   } = deps;
 
   const onFreshSchemeRef = useRef(deps.onFreshScheme);
@@ -52,7 +59,7 @@ export function useSchemeSession(deps: {
   const [validationDialog, setValidationDialog] = useState<{
     title: string;
     intro?: string;
-    issues: SchemeIssue[];
+    issues: import('../utils/schemeValidation').SchemeIssue[];
     okMessage?: string;
   } | null>(null);
 
@@ -235,9 +242,11 @@ export function useSchemeSession(deps: {
     }
   }, [scheme, t]);
 
-  const doExportRegionsYaml = useCallback(async (includeManual: boolean) => {
+  const blockExportIfErrors = useCallback((includeManual: boolean): boolean => {
     const conflicts = flagConflictsRef.current;
-    if (!scheme || !conflicts) return;
+    if (!scheme || !conflicts) return true;
+
+    exportGateRef.current.refreshExportErrors();
 
     const result = validateSchemeForYamlExport(
       scheme,
@@ -245,14 +254,18 @@ export function useSchemeSession(deps: {
       { includeManual },
       formatValidation(),
     );
-    if (!result.ok) {
-      setValidationDialog({
-        title: t('status.exportIssuesTitle'),
-        intro: t('status.exportIssuesIntro'),
-        issues: result.issues,
-      });
-      return;
+    if (result.errors.length > 0) {
+      exportGateRef.current.showExportBlockedFlash(result.errors.length);
+      return true;
     }
+    return false;
+  }, [scheme, formatValidation, exportGateRef]);
+
+  const doExportRegionsYaml = useCallback(async (includeManual: boolean) => {
+    const conflicts = flagConflictsRef.current;
+    if (!scheme || !conflicts) return;
+
+    if (blockExportIfErrors(includeManual)) return;
 
     try {
       const yamlText = await exportRegionsYaml(includeManual);
@@ -278,27 +291,14 @@ export function useSchemeSession(deps: {
     } catch (err) {
       setStatus(t('status.error', { msg: String(err) }));
     }
-  }, [scheme, formatValidation, t]);
+  }, [scheme, t, blockExportIfErrors]);
 
   const handleExportRegionsYaml = useCallback(() => {
     const conflicts = flagConflictsRef.current;
     if (!scheme || !conflicts) return;
-    const base = validateSchemeForYamlExport(
-      scheme,
-      conflicts,
-      { includeManual: false },
-      formatValidation(),
-    );
-    if (!base.ok) {
-      setValidationDialog({
-        title: t('status.exportIssuesTitle'),
-        intro: t('status.exportIssuesIntro'),
-        issues: base.issues,
-      });
-      return;
-    }
+    if (blockExportIfErrors(false)) return;
     setShowExportManualConfirm(true);
-  }, [scheme, formatValidation, t]);
+  }, [scheme, blockExportIfErrors]);
 
   return {
     scheme,

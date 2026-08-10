@@ -4,7 +4,16 @@ import type { TranslationKey } from '../i18n/translations';
 import { IconBell, IconRefresh } from './GraphControlIcons';
 
 export type NotificationLevel = 'error' | 'warning';
-export type NotificationKind = 'spatial' | 'overwrite' | 'orphan' | 'height' | 'info' | 'update';
+export type NotificationKind =
+  | 'spatial'
+  | 'overwrite'
+  | 'orphan'
+  | 'height'
+  | 'info'
+  | 'update'
+  | 'invalidId'
+  | 'cycle'
+  | 'incompleteManual';
 
 export interface AppNotification {
   id: string;
@@ -42,7 +51,7 @@ interface Props {
   onToggle: () => void;
   onClose: () => void;
   onRefresh: () => void;
-  onMarkAllRead: () => void;
+  onMarkAllRead: (level: NotificationLevel) => void;
   onClear: () => void;
   onDismiss: (id: string) => void;
   onOpenItem: (n: AppNotification) => void;
@@ -66,24 +75,29 @@ export function NotificationsBell({
   const warnings = notifications.filter((n) => n.level === 'warning');
   const unreadErrors = errors.filter((n) => !n.read).length;
   const unreadWarnings = warnings.filter((n) => !n.read).length;
-  const unreadTotal = unreadErrors + unreadWarnings;
+  const unreadOnTab = tab === 'error' ? unreadErrors : unreadWarnings;
   const activeList = tab === 'error' ? errors : warnings;
+  const hasErrors = errors.length > 0;
 
-  const badgeClass = unreadErrors > 0
-    ? 'notifications-badge notifications-badge--error'
+  const btnClass = hasErrors
+    ? 'graph-ctrl-btn graph-ctrl-btn--error-active'
+    : 'graph-ctrl-btn';
+  const badgeClass = hasErrors
+    ? 'notifications-badge notifications-badge--on-error-btn'
     : 'notifications-badge notifications-badge--warning';
-  const badgeCount = unreadErrors > 0 ? unreadErrors : unreadWarnings;
+  const showBadge = hasErrors || unreadWarnings > 0;
+  const badgeCount = hasErrors ? errors.length : unreadWarnings;
 
   return (
     <div className="notifications-root">
       <button
         type="button"
-        className="graph-ctrl-btn"
+        className={btnClass}
         title={t('notifications.title')}
         onClick={onToggle}
       >
         <IconBell />
-        {unreadTotal > 0 && (
+        {showBadge && (
           <span className={badgeClass}>{badgeCount > 9 ? '9+' : badgeCount}</span>
         )}
       </button>
@@ -130,8 +144,8 @@ export function NotificationsBell({
             <button
               type="button"
               className="notifications-action-btn"
-              onClick={onMarkAllRead}
-              disabled={unreadTotal === 0}
+              onClick={() => onMarkAllRead(tab)}
+              disabled={unreadOnTab === 0}
             >
               {t('notifications.markRead')}
             </button>

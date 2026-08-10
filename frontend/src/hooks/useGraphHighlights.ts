@@ -481,7 +481,7 @@ export function useGraphHighlights(
     setProblemFilter(null);
     setShowProblemsMenu(false);
 
-    if ((n.kind === 'orphan' || n.kind === 'height') && n.aId) {
+    if ((n.kind === 'orphan' || n.kind === 'height' || n.kind === 'invalidId' || n.kind === 'incompleteManual') && n.aId) {
       setHighlightFlag(null);
       setConflictSchemeView(null);
       setOverwriteSchemeView(null);

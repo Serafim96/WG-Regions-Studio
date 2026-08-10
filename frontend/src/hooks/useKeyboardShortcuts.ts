@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { isEditableTarget } from '../utils/isEditableTarget';
 
 export type KeyboardShortcutLocks = {
   serverDown: boolean;
@@ -16,20 +17,35 @@ export type KeyboardShortcutLocks = {
 };
 
 /**
- * Ctrl/Cmd+F opens search from the main scheme view.
- * Snapshot of lock flags is kept in a ref so the listener stays stable.
+ * Global shortcuts:
+ * - Ctrl/Cmd+F — open search on the scheme (when allowed)
+ * - F — toggle fullscreen (skipped while typing in a field)
  */
 export function useKeyboardShortcuts(
   locks: KeyboardShortcutLocks,
   onOpenSearch: () => void,
+  onToggleFullscreen?: () => void,
 ) {
   const locksRef = useRef(locks);
   locksRef.current = locks;
   const onOpenSearchRef = useRef(onOpenSearch);
   onOpenSearchRef.current = onOpenSearch;
+  const onToggleFullscreenRef = useRef(onToggleFullscreen);
+  onToggleFullscreenRef.current = onToggleFullscreen;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return;
+
+      if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.repeat || locksRef.current.serverDown) return;
+        const toggle = onToggleFullscreenRef.current;
+        if (!toggle) return;
+        e.preventDefault();
+        toggle();
+        return;
+      }
+
       if (!(e.ctrlKey || e.metaKey) || e.code !== 'KeyF') return;
       const L = locksRef.current;
       const blocked = Boolean(

@@ -3,13 +3,18 @@ import { checkForUpdates } from '../api';
 import type { AppNotification } from '../components/NotificationsBell';
 import type { Scheme } from '../types';
 import type { FlagConflictsResult, SpatialConflict } from '../utils/flagConflicts';
-import { formatFlagValueShort } from '../utils/flagRows';
+import {
+  buildExportErrorNotifications,
+  isExportErrorNotification,
+} from '../utils/exportErrorNotifications';
 import { isUpdateTagDismissed } from '../utils/updateDismiss';
 import {
   clearPersistedNotifications,
   keepUpdateNotifications,
+  preserveNotificationReadState,
   rememberDismissedUpdate,
 } from './notificationHelpers';
+import { formatFlagValueShort } from '../utils/flagRows';
 
 type OverwriteView = { flagName: string; parentId: string; childId: string } | null;
 
@@ -38,6 +43,8 @@ export function useConflictNotifications(
   /** Next notification sync replaces the list but skips toast popups. */
   const quietNotificationReseedRef = useRef(false);
   const [notificationRefreshSeq, setNotificationRefreshSeq] = useState(0);
+  const [exportBlockedFlashTick, setExportBlockedFlashTick] = useState(0);
+  const [exportBlockedFlashCount, setExportBlockedFlashCount] = useState(0);
   const viewSettersRef = useRef(viewSetters);
   viewSettersRef.current = viewSetters;
 
@@ -100,6 +107,7 @@ export function useConflictNotifications(
       : [];
     const now = Date.now();
     const fresh: AppNotification[] = [];
+    const exportErrors = buildExportErrorNotifications(scheme, flagConflicts, { includeManual: true }, now);
 
     const spatialKey = (c: SpatialConflict) =>
       `sp|${c.flagName}|${c.aId}|${c.bId}|${c.relation}`;
@@ -109,6 +117,7 @@ export function useConflictNotifications(
     const heightKey = (id: string) => `ht|${id}`;
 
     const activeKeys = new Set<string>();
+    for (const n of exportErrors) activeKeys.add(n.conflictKey);
     for (const c of spatial) activeKeys.add(spatialKey(c));
     for (const o of overwrites) activeKeys.add(overwriteKey(o));
     for (const id of orphanIds) activeKeys.add(orphanKey(id));
@@ -278,12 +287,15 @@ export function useConflictNotifications(
 
     setNotifications((prev) => {
       const keep = keepUpdateNotifications(prev);
-      if (isReseed) return [...keep, ...fresh].slice(0, 100);
-      const pruned = prev.filter(
+      const withoutExport = prev.filter((n) => !isExportErrorNotification(n));
+      const exportErrorsMerged = preserveNotificationReadState(prev, exportErrors);
+      const freshMerged = preserveNotificationReadState(prev, fresh);
+      if (isReseed) return [...keep, ...exportErrorsMerged, ...freshMerged].slice(0, 100);
+      const pruned = withoutExport.filter(
         (n) => n.kind === 'update' || !n.conflictKey || activeKeys.has(n.conflictKey),
       );
-      if (fresh.length === 0) return pruned;
-      return [...fresh, ...pruned].slice(0, 100);
+      if (freshMerged.length === 0 && exportErrorsMerged.length === 0) return pruned;
+      return [...exportErrorsMerged, ...freshMerged, ...pruned].slice(0, 100);
     });
 
     viewSettersRef.current.setConflictSchemeView((current) => {
@@ -338,6 +350,16 @@ export function useConflictNotifications(
     setNotificationRefreshSeq((n) => n + 1);
   }, [scheme]);
 
+  const handleRefreshExportErrors = useCallback(() => {
+    if (!scheme) return;
+    setNotificationRefreshSeq((n) => n + 1);
+  }, [scheme]);
+
+  const triggerExportBlockedFlash = useCallback((errorCount: number) => {
+    setExportBlockedFlashCount(errorCount);
+    setExportBlockedFlashTick((n) => n + 1);
+  }, []);
+
   const resetNotificationSchemeState = useCallback(() => {
     conflictNotifySeededForRef.current = null;
     notifiedConflictKeysRef.current = new Set();
@@ -361,8 +383,8 @@ export function useConflictNotifications(
     setNotificationToasts((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
-  const markAllRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+  const markAllRead = useCallback((level: 'error' | 'warning') => {
+    setNotifications((prev) => prev.map((n) => (n.level === level ? { ...n, read: true } : n)));
   }, []);
 
   const clearWarningNotifications = useCallback(() => {
@@ -394,5 +416,9 @@ export function useConflictNotifications(
     markNotificationRead,
     markAllRead,
     clearWarningNotifications,
+    exportBlockedFlashTick,
+    exportBlockedFlashCount,
+    handleRefreshExportErrors,
+    triggerExportBlockedFlash,
   };
 }

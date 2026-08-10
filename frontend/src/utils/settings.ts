@@ -16,7 +16,7 @@ export interface AppSettings {
 const STORAGE_KEY = 'mrv.settings';
 
 /** Default and minimum sidebar width (px). */
-export const SIDEBAR_MIN_WIDTH = 280;
+export const SIDEBAR_MIN_WIDTH = 320;
 export const SIDEBAR_MAX_WIDTH = 560;
 
 export const DEFAULT_SETTINGS: AppSettings = {

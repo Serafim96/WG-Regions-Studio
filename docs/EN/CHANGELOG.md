@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [2.0.12] — 2026-08-10
+
+### Added
+
+- **Changelog** dialog shows the full release history (newest first, with dates); opens on first launch of a new local build (offline: local version + frontend bundle id in browser storage, not via GitHub) and anytime via the book button next to the theme toggle.
+- Fullscreen: **F** shortcut (ignored while typing in a field) and a pinned button at the bottom of the sidebar.
+- Export-blocking issues (invalid region ids, parent cycles, incomplete temporary regions) appear as **error** notifications in the bell; a short flash on the Export YAML button when export is blocked.
+
+### Changed
+
+- Sidebar minimum / default width is 320px; language, changelog, and theme controls share one preferences row.
+- Packaged builds bundle `docs/*/CHANGELOG*.md` for the in-app history; `/api/version` returns bilingual changelog data.
+- Windows build script skips reinstalling PyInstaller/Pillow when already present (`/force-deps` to force).
+
 ## [2.0.11] — 2026-08-10
 
 ### Changed

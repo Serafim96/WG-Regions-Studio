@@ -37,7 +37,7 @@ export type GraphChromeActions = {
   toggleNotifications: () => void;
   closeNotifications: () => void;
   refreshNotifications: () => void;
-  markAllNotificationsRead: () => void;
+  markAllNotificationsRead: (level: 'error' | 'warning') => void;
   clearWarningNotifications: () => void;
   dismissNotification: (id: string) => void;
   openNotification: (n: AppNotification) => void;
@@ -406,7 +406,7 @@ export function GraphChromeControls({
           type="button"
           className={`graph-ctrl-btn${isFullscreen ? ' graph-ctrl-btn--active' : ''}`}
           onClick={() => { void a.toggleFullscreen(); }}
-          title={t(isFullscreen ? 'graph.fullscreenExit' : 'graph.fullscreen')}
+          title={t(isFullscreen ? 'graph.fullscreenExitF' : 'graph.fullscreenF')}
           aria-pressed={isFullscreen}
         >
           {isFullscreen ? <IconFullscreenExit /> : <IconFullscreen />}

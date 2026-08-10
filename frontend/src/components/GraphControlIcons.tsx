@@ -183,6 +183,37 @@ export function IconFullscreen({ size = GRAPH_ICON_SIZE, className }: SvgIconPro
   );
 }
 
+/** Release notes — brown book with gold corners and a question mark on the cover. */
+export function IconChangelog({ size = GRAPH_ICON_SIZE, className }: SvgIconProps = {}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 18 18"
+      fill="none"
+      className={className}
+      aria-hidden
+      focusable={false}
+    >
+      <rect x="12.6" y="3.2" width="1.6" height="11.8" rx="0.35" fill="#E8D5B5" />
+      <rect x="2.8" y="2.8" width="1.5" height="12.6" rx="0.35" fill="#4A2F18" />
+      <rect x="4.1" y="2.8" width="8.8" height="12.6" rx="0.55" fill="#7A4E2A" />
+      <path d="M4.1 2.8h1.75v0.7H4.75v1.1H4.1V2.8Z" fill="#D4AF37" />
+      <path d="M12.9 2.8v1.75h-0.7v-1.1h-1.05V2.8h1.75Z" fill="#D4AF37" />
+      <path d="M4.1 15.4v-1.75h0.7v1.1h1.05v0.65H4.1Z" fill="#D4AF37" />
+      <path d="M12.9 15.4h-1.75v-0.7h1.05v-1.1h0.7v1.8Z" fill="#D4AF37" />
+      <path
+        d="M8.6 6.1c0-1.05 1.65-1.05 1.65 0 0 0.75-1.05 1.05-1.2 1.85v0.55"
+        stroke="#FFF8E7"
+        strokeWidth="1.15"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="8.95" cy="11.35" r="0.78" fill="#FFF8E7" />
+    </svg>
+  );
+}
+
 /** Exit fullscreen (corners contract inward). */
 export function IconFullscreenExit({ size = GRAPH_ICON_SIZE, className }: SvgIconProps = {}) {
   return (

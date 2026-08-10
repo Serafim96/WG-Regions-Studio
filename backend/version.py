@@ -9,24 +9,23 @@ import httpx
 
 # Bump when cutting a GitHub release (tag vX.Y.Z).
 # Full checklist: docs/dev/RELEASE.md
-APP_VERSION = "2.0.11"
+APP_VERSION = "2.0.12"
 GITHUB_REPO = "Serafim96/WG-Regions-Studio"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
 
-# Short bilingual bullets for the "What's New" dialog (current build only).
-# On every release: rewrite these for the new version, and put matching `-` bullets
-# in the GitHub Release body (old clients read that body for the update toast).
+# Short bilingual bullets for the update toast / bell (current build only).
+# The first-launch dialog reads the full release history from docs/*/CHANGELOG*.md.
 CURRENT_HIGHLIGHTS: dict[str, list[str]] = {
     "ru": [
-        "Установка зависимостей сразу в окне консоли с иконкой приложения",
-        "Лаунчер Windows открывает classic conhost до pip/npm install",
-        "Сервер остаётся в том же брендированном окне без второго relaunch",
+        "«Список изменений» при первом запуске локальной сборки — без интернета",
+        "Кнопка журнала рядом с темой; полноэкран — F или кнопка внизу сайдбара",
+        "Ошибки экспорта в колокольчике; вспышка у кнопки YAML при блокировке",
     ],
     "en": [
-        "Dependency install runs in the branded console window with the app icon",
-        "Windows launcher opens classic conhost before pip/npm install",
-        "Server stays in the same branded window (no second relaunch)",
+        "Changelog on first launch of a local build — works offline",
+        "Changelog button next to theme; fullscreen via F or the sidebar footer button",
+        "Export-blocking errors in the bell; flash on the YAML button when blocked",
     ],
 }
 

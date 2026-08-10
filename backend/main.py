@@ -33,6 +33,7 @@ from backend.regions_export_yaml import export_regions_yaml
 from backend.scheme.io import load_scheme, save_scheme, source_hash
 from backend.services.region_service import RegionService
 from backend.services.session_service import session_store
+from backend.changelog import load_bilingual_changelog
 from backend.version import APP_VERSION, CURRENT_HIGHLIGHTS, check_for_update
 
 
@@ -190,8 +191,20 @@ def health() -> dict[str, str]:
 
 @app.get("/api/version")
 def get_version() -> dict[str, Any]:
-    """Running version plus bilingual What's New bullets for this build."""
-    return {"version": APP_VERSION, "highlights": CURRENT_HIGHLIGHTS}
+    """Running version, update highlights, and bilingual release history for the dialog."""
+    payload: dict[str, Any] = {
+        "version": APP_VERSION,
+        "highlights": CURRENT_HIGHLIGHTS,
+        "changelog": load_bilingual_changelog(),
+    }
+    index = STATIC_DIR / "index.html"
+    if index.is_file():
+        import re
+
+        m = re.search(r"/assets/(index-[^\"']+\.js)", index.read_text(encoding="utf-8"))
+        if m:
+            payload["frontend_bundle"] = m.group(1)
+    return payload
 
 
 @app.get("/api/updates/check")
@@ -427,12 +440,15 @@ def export_regions_yml(
 
 
 # Serve frontend static files when built
+_NO_CACHE_HEADERS = {"Cache-Control": "no-cache, must-revalidate"}
+
+
 if STATIC_DIR.exists():
     @app.get("/favicon.ico", include_in_schema=False)
     def favicon() -> FileResponse:
         icon_path = STATIC_DIR / "favicon.ico"
         if icon_path.exists():
-            return FileResponse(icon_path)
+            return FileResponse(icon_path, headers=_NO_CACHE_HEADERS)
         raise HTTPException(status_code=404)
 
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
@@ -443,5 +459,5 @@ if STATIC_DIR.exists():
         if full_path.startswith("api/"):
             raise HTTPException(status_code=404)
         if index.exists():
-            return FileResponse(index)
+            return FileResponse(index, headers=_NO_CACHE_HEADERS)
         raise HTTPException(status_code=404, detail="Frontend not built")

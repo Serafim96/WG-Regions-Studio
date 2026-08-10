@@ -28,3 +28,18 @@ export function rememberDismissedUpdate(n: AppNotification) {
   const latest = n.params?.latest;
   if (latest != null) dismissUpdateTag(String(latest));
 }
+
+/** Keep read/unread when rebuilding notifications for the same conflictKey. */
+export function preserveNotificationReadState(
+  prev: AppNotification[],
+  next: AppNotification[],
+): AppNotification[] {
+  const readByKey = new Map<string, boolean>();
+  for (const n of prev) {
+    if (n.conflictKey) readByKey.set(n.conflictKey, n.read);
+  }
+  return next.map((n) => ({
+    ...n,
+    read: readByKey.get(n.conflictKey) ?? n.read,
+  }));
+}

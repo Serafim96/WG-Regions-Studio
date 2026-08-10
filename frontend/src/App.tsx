@@ -29,7 +29,7 @@ import { useServerHealth } from './hooks/useServerHealth';
 import { useSidebarLayout } from './hooks/useSidebarLayout';
 import { useGraphCamera } from './hooks/useGraphCamera';
 import { useCollapseState } from './hooks/useCollapseState';
-import { useSchemeSession } from './hooks/useSchemeSession';
+import { useSchemeSession, type ExportGate } from './hooks/useSchemeSession';
 import { useConflictNotifications } from './hooks/useConflictNotifications';
 import { useGraphHighlights } from './hooks/useGraphHighlights';
 import { useRegionMutations } from './hooks/useRegionMutations';
@@ -49,6 +49,10 @@ export default function App() {
   const onFreshSchemeRef = useRef((_next: Scheme, _threshold: number) => {});
   const onClearAppExtrasRef = useRef(() => {});
   const getCollapseThresholdRef = useRef<() => number>(() => 0);
+  const exportGateRef = useRef<ExportGate>({
+    refreshExportErrors: () => {},
+    showExportBlockedFlash: () => {},
+  });
 
   const camera = useGraphCamera();
   const session = useSchemeSession({
@@ -58,6 +62,7 @@ export default function App() {
     onClearAppExtras: () => onClearAppExtrasRef.current(),
     schemeKeyRef,
     isFreshSchemeRef,
+    exportGateRef,
   });
   camera.setSchemeRef(session.scheme);
 
@@ -215,6 +220,11 @@ export default function App() {
     highlightViewSetters,
   );
 
+  exportGateRef.current = {
+    refreshExportErrors: notifications.handleRefreshExportErrors,
+    showExportBlockedFlash: notifications.triggerExportBlockedFlash,
+  };
+
   const whatsNew = useWhatsNewDialog();
 
   const focusRegion = useCallback((regionId: string) => {
@@ -303,6 +313,43 @@ export default function App() {
     fetchFlags().then(setFlagsCatalog);
   }, []);
 
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      const browserFs =
+        window.innerHeight >= screen.height - 2
+        && window.innerWidth >= screen.width - 2;
+      if (browserFs) {
+        session.setStatus(t('graph.fullscreenF11Hint'));
+        return;
+      }
+      await document.documentElement.requestFullscreen();
+    } catch (err) {
+      session.setStatus(t('status.error', { msg: String(err) }));
+    }
+  }, [session, t]);
+
+  useEffect(() => {
+    const sync = () => {
+      const apiFs = Boolean(document.fullscreenElement);
+      const browserFs =
+        !apiFs
+        && window.innerHeight >= screen.height - 2
+        && window.innerWidth >= screen.width - 2;
+      setIsFullscreen(apiFs || browserFs);
+    };
+    document.addEventListener('fullscreenchange', sync);
+    window.addEventListener('resize', sync);
+    sync();
+    return () => {
+      document.removeEventListener('fullscreenchange', sync);
+      window.removeEventListener('resize', sync);
+    };
+  }, []);
+
   useKeyboardShortcuts(
     {
       serverDown,
@@ -319,6 +366,7 @@ export default function App() {
       hasScheme: Boolean(session.scheme),
     },
     () => setShowSearch(true),
+    toggleFullscreen,
   );
 
   const closeRegionDetails = useCallback(() => {
@@ -391,43 +439,6 @@ export default function App() {
     camera.clearSelection();
     collapse.setCollapseTarget(null);
   }, [camera, collapse]);
-
-  const toggleFullscreen = useCallback(async () => {
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-        return;
-      }
-      const browserFs =
-        window.innerHeight >= screen.height - 2
-        && window.innerWidth >= screen.width - 2;
-      if (browserFs) {
-        session.setStatus(t('graph.fullscreenF11Hint'));
-        return;
-      }
-      await document.documentElement.requestFullscreen();
-    } catch (err) {
-      session.setStatus(t('status.error', { msg: String(err) }));
-    }
-  }, [session, t]);
-
-  useEffect(() => {
-    const sync = () => {
-      const apiFs = Boolean(document.fullscreenElement);
-      const browserFs =
-        !apiFs
-        && window.innerHeight >= screen.height - 2
-        && window.innerWidth >= screen.width - 2;
-      setIsFullscreen(apiFs || browserFs);
-    };
-    document.addEventListener('fullscreenchange', sync);
-    window.addEventListener('resize', sync);
-    sync();
-    return () => {
-      document.removeEventListener('fullscreenchange', sync);
-      window.removeEventListener('resize', sync);
-    };
-  }, []);
 
   const handleRelayout = useCallback(() => {
     if (!session.scheme) return;
@@ -556,6 +567,8 @@ export default function App() {
           collapseThreshold={collapse.collapseThreshold}
           setCollapseThreshold={collapse.setCollapseThreshold}
           flagsCatalogEmpty={flagsCatalog.length === 0}
+          exportBlockedFlashTick={notifications.exportBlockedFlashTick}
+          exportBlockedFlashCount={notifications.exportBlockedFlashCount}
           onOpenFile={session.handleOpenFileClick}
           onSaveScheme={() => { void session.handleSaveScheme(); }}
           onExportYaml={() => session.handleExportRegionsYaml()}
@@ -563,6 +576,7 @@ export default function App() {
           onOpenFlagsCatalog={() => setShowFlagsCatalog(true)}
           onOpenFlagConflicts={() => setShowFlagConflictsDialog(true)}
           onOpenMetrics={() => setShowMetrics(true)}
+          onOpenChangelog={whatsNew.openChangelog}
           onResetScheme={() => session.setShowResetConfirm(true)}
           onClearScheme={() => session.setShowClearConfirm(true)}
         />

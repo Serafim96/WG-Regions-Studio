@@ -23,7 +23,9 @@ Load your own `regions.yml` or a saved scheme, explore the tree, manage flags, a
 | **macOS** | `WG-Regions-Studio.app` or `WG-Regions-Studio.command` | Same bootstrap; may install Python/Node via Homebrew if available |
 | **Linux** | `./WG-Regions-Studio.sh` | Same bootstrap (`chmod +x` once if needed) |
 
-Windows zip: [Releases](https://github.com/Serafim96/WG-Regions-Studio/releases) → **`WG-Regions-Studio-*-windows.zip`**. Rebuild: `packaging\build_windows.bat`.
+Windows zip: [Releases](https://github.com/Serafim96/WG-Regions-Studio/releases) → **`WG-Regions-Studio-*-windows.zip`**.
+
+**Rebuild Windows exe (required for packaged testing):** `packaging\build_windows.bat` → run `dist\WG-Regions-Studio\WG-Regions-Studio.exe` (keep `_internal` beside it). `npm run build` alone does **not** refresh the exe. Dev notes (workspace): `docs/dev/BUILD_WINDOWS.md`.
 
 A frozen macOS `.app` binary (no Python/Node) needs a Mac build machine / CI — not produced on Windows. Until then the `.app` / `.command` wrappers bootstrap from source.
 

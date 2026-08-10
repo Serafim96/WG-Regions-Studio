@@ -289,15 +289,33 @@ export interface UpdateCheckResult {
   highlights?: string[];
 }
 
+export interface ChangelogSection {
+  title: string;
+  items: string[];
+}
+
+export interface ChangelogRelease {
+  version: string;
+  date?: string | null;
+  subtitle?: string | null;
+  sections: ChangelogSection[];
+}
+
 export interface AppVersionInfo {
   version: string;
+  /** Hashed Vite bundle filename from index.html — identifies this frontend build locally. */
+  frontend_bundle?: string | null;
   highlights: {
     ru?: string[];
     en?: string[];
   };
+  changelog?: {
+    ru?: ChangelogRelease[];
+    en?: ChangelogRelease[];
+  };
 }
 
-/** Running app version and bilingual What's New bullets. */
+/** Running app version, highlights, and bilingual release history. */
 export async function fetchAppVersion(signal?: AbortSignal): Promise<AppVersionInfo | null> {
   try {
     const res = await fetch(`${API}/version`, { method: 'GET', cache: 'no-store', signal });

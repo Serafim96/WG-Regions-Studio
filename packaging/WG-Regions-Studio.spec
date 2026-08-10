@@ -13,6 +13,8 @@ WORKSPACE = APP_ROOT.parent
 ICON = SPECDIR / "icon.ico"
 STATIC = APP_ROOT / "backend" / "static"
 FLAGS = WORKSPACE / "all_flags.txt"
+CHANGELOG_EN = APP_ROOT / "docs" / "EN" / "CHANGELOG.md"
+CHANGELOG_RU = APP_ROOT / "docs" / "RU" / "ЖУРНАЛ_ИЗМЕНЕНИЙ.md"
 
 datas: list[tuple[str, str]] = []
 binaries: list[tuple[str, str]] = []
@@ -37,6 +39,10 @@ if FLAGS.exists():
     datas.append((str(FLAGS), "."))
 if ICON.exists():
     datas.append((str(ICON), "."))
+if CHANGELOG_EN.exists():
+    datas.append((str(CHANGELOG_EN), "docs/EN"))
+if CHANGELOG_RU.exists():
+    datas.append((str(CHANGELOG_RU), "docs/RU"))
 
 for pkg in ("uvicorn", "fastapi", "starlette", "anyio", "shapely"):
     pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)
@@ -46,6 +52,7 @@ for pkg in ("uvicorn", "fastapi", "starlette", "anyio", "shapely"):
     hiddenimports += [h for h in pkg_hidden if ".tests" not in h and not h.endswith(".tests")]
 
 hiddenimports += collect_submodules("backend")
+hiddenimports.append("backend.changelog")
 
 a = Analysis(
     [str(APP_ROOT / "backend" / "__main__.py")],

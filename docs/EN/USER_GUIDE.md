@@ -39,7 +39,7 @@ On Windows the server opens in a **separate** classic console window with the ap
 
 On startup the app compares its version to the **latest GitHub release**. If a newer version exists, a toast and a **notifications bell** warning show the release number and a short changelog summary from the release notes; click opens the release page to download. Dismiss / Clear hides the notice for that version until an even newer one appears. Offline, the check fails quietly.
 
-On the **first launch of a new version**, a small **What's New** dialog lists the highlights for that build (once per version).
+On the **first launch of a new local build** (this app version / frontend package), a **Changelog** dialog opens (newest releases on top, with dates). This uses only the local server and browser storage — it does **not** need the internet and is separate from the GitHub update notice. Open it anytime via the book button next to the theme toggle. **Fullscreen:** button at the bottom of the sidebar or press **F** (ignored while focus is in a text field).
 
 ---
 
