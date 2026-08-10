@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [2.0.14] — 2026-08-10
+
+### Added
+
+- On the empty scheme right after launch: **+** and **right-click** → add a temporary region (no file needed); after the first add, sidebar actions work like a normal loaded scheme.
+
+### Changed
+
+- **Reset scheme** when only temporary regions remain (or deleting the last region) returns to the post-launch empty state.
+
+### Fixed
+
+- With a single node on the scheme, initial fit / zoom-floor no longer break the shared zoom-in ceiling (1.35).
+
 ## [2.0.13] — 2026-08-10
 
 ### Fixed

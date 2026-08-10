@@ -1,3 +1,4 @@
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { EdgeDisplayFilters, GraphViewHandle } from './GraphView';
 import { FlagHelpButton } from './FlagHelpButton';
 import {
@@ -419,11 +420,48 @@ export function GraphChromeControls({
 export function EmptySchemeChrome({
   sidebarCollapsed,
   onToggleSidebar,
+  busyMessage,
+  onAddManual,
 }: {
   sidebarCollapsed: boolean;
   onToggleSidebar: () => void;
+  busyMessage: string | null;
+  onAddManual: () => void;
 }) {
   const { t } = useI18n();
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [contextMenu]);
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return;
+    const el = contextMenuRef.current;
+    const pad = 8;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let x = contextMenu.x;
+    let y = contextMenu.y;
+    if (y + rect.height > vh - pad) {
+      y = Math.max(pad, contextMenu.y - rect.height);
+    }
+    if (y + rect.height > vh - pad) {
+      y = Math.max(pad, vh - pad - rect.height);
+    }
+    if (x + rect.width > vw - pad) {
+      x = Math.max(pad, vw - pad - rect.width);
+    }
+    if (x < pad) x = pad;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+  }, [contextMenu]);
+
   return (
     <>
       <div className="graph-map-controls graph-map-controls--top-left">
@@ -435,8 +473,44 @@ export function EmptySchemeChrome({
         >
           {sidebarCollapsed ? '»' : '«'}
         </button>
+        <button
+          type="button"
+          className="graph-ctrl-btn"
+          onClick={onAddManual}
+          title={t('app.addManual')}
+          disabled={Boolean(busyMessage)}
+        >
+          <IconAdd />
+        </button>
       </div>
-      <div className="placeholder">{t('app.placeholder')}</div>
+      <div
+        className="placeholder placeholder--empty-scheme"
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setContextMenu({ x: e.clientX, y: e.clientY });
+        }}
+      >
+        {t('app.placeholder')}
+      </div>
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="node-context-menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              onAddManual();
+              setContextMenu(null);
+            }}
+          >
+            {t('graph.addManualRegion')}
+          </button>
+        </div>
+      )}
     </>
   );
 }

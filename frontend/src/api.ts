@@ -156,7 +156,11 @@ export async function deleteManualRegion(
     body: JSON.stringify({ id, children_mode: childrenMode }),
   });
   if (!res.ok) throw new Error(await res.text());
-  return res.json();
+  return res.json() as Promise<{
+    deleted: string;
+    children_mode: string;
+    remaining: number;
+  }>;
 }
 
 /** Remove all temporary regions from the server session. */

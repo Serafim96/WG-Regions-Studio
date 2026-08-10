@@ -45,6 +45,24 @@ export function zoomToFitSize(
   return Math.min(aw / Math.max(contentW, 1), ah / Math.max(contentH, 1));
 }
 
+/**
+ * Zoom-out floor from expand-all fit size.
+ * Cap at CAMERA_FOCUS_MAX_ZOOM so a tiny scheme (1 node) does not lock
+ * minZoom near CY_MAX_ZOOM and break the shared focus/fit zoom ceiling.
+ */
+export function zoomFloorFromExpandFit(expandFitZoom: number): number {
+  return Math.min(Math.max(expandFitZoom, 0.01), CAMERA_FOCUS_MAX_ZOOM);
+}
+
+/** Fit entire graph; never start closer than CAMERA_FOCUS_MAX_ZOOM. */
+export function fitSchemeOnCy(cy: Core, padding = FIT_PADDING): void {
+  cy.fit(undefined, padding);
+  if (cy.zoom() > CAMERA_FOCUS_MAX_ZOOM) {
+    cy.zoom(CAMERA_FOCUS_MAX_ZOOM);
+    cy.center();
+  }
+}
+
 export function modelBBoxFromPositions(
   positions: Map<string, { x: number; y: number }>,
   nodeDims: Map<string, NodeDimensions>,
@@ -105,7 +123,7 @@ export function constrainPan(cy: Core, margin = PAN_EDGE_MARGIN): void {
 }
 
 export function applyZoomFloor(cy: Core, expandFitZoom: number): void {
-  const minZ = Math.min(Math.max(expandFitZoom, 0.01), CY_MAX_ZOOM);
+  const minZ = zoomFloorFromExpandFit(expandFitZoom);
   cy.minZoom(minZ);
   cy.maxZoom(CY_MAX_ZOOM);
   const z = cy.zoom();

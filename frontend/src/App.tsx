@@ -275,6 +275,7 @@ export default function App() {
     closeAddDialog,
     highlightFlag: highlights.highlightFlag,
     applyHighlightFlag: highlights.applyHighlightFlag,
+    onSchemeEmptied: session.returnToLaunchAfterEmpty,
   });
 
   clearCameraBundleRef.current = () => {
@@ -676,6 +677,8 @@ export default function App() {
           <EmptySchemeChrome
             sidebarCollapsed={sidebarCollapsed}
             onToggleSidebar={toggleSidebarCollapsed}
+            busyMessage={session.busyMessage}
+            onAddManual={onAddManual}
           />
         )}
       </main>

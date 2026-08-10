@@ -34,6 +34,7 @@ import {
   constrainPan,
   CY_MAX_ZOOM,
   FIT_PADDING,
+  fitSchemeOnCy,
   focusNodeOnCy,
   fitNodesOnCy,
   modelBBoxFromPositions,
@@ -485,7 +486,7 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
     }
 
     if (fitOnNextLayout.current) {
-      cy.fit(undefined, FIT_PADDING);
+      fitSchemeOnCy(cy, FIT_PADDING);
       fitOnNextLayout.current = false;
     } else if (viewStateRef.current) {
       cy.zoom(viewStateRef.current.zoom);

@@ -167,10 +167,16 @@ class RegionService:
 
         self._store["regions"] = updated
 
-        if self._store.get("scheme"):
+        if not updated:
+            self._store["scheme"] = None
+        elif self._store.get("scheme"):
             self.rebuild_scheme()
 
-        return {"deleted": region_id, "children_mode": children_mode}
+        return {
+            "deleted": region_id,
+            "children_mode": children_mode,
+            "remaining": len(updated),
+        }
 
     def clear_all_manual_regions(self) -> dict[str, Any]:
         regions = self._regions()

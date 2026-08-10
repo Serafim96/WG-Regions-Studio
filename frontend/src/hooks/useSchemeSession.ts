@@ -109,15 +109,8 @@ export function useSchemeSession(deps: {
     incompleteManual: (id: string) => t('validate.incompleteManual', { id }),
   }), [t]);
 
-  const handleClearApp = useCallback(async () => {
-    try {
-      await runBusy(t('status.resetting'), async () => {
-        await clearSession();
-      });
-    } catch (err) {
-      setStatus(t('status.error', { msg: String(err) }));
-      return;
-    }
+  /** UI back to post-launch empty canvas (after server session is already empty). */
+  const applyLaunchEmptyState = useCallback((statusMessage: string) => {
     clearViewState(schemeKeyRef.current);
     schemeKeyRef.current = 'default';
     isFreshSchemeRef.current = false;
@@ -129,8 +122,32 @@ export function useSchemeSession(deps: {
     if (document.fullscreenElement) {
       void document.exitFullscreen();
     }
-    setStatus(t('status.appCleared'));
-  }, [runBusy, t, onClearAppExtras, schemeKeyRef, isFreshSchemeRef]);
+    setStatus(statusMessage);
+  }, [onClearAppExtras, schemeKeyRef, isFreshSchemeRef]);
+
+  const handleClearApp = useCallback(async () => {
+    try {
+      await runBusy(t('status.resetting'), async () => {
+        await clearSession();
+      });
+    } catch (err) {
+      setStatus(t('status.error', { msg: String(err) }));
+      return;
+    }
+    applyLaunchEmptyState(t('status.appCleared'));
+  }, [runBusy, t, applyLaunchEmptyState]);
+
+  /** Last region removed (or manuals-only reset emptied the session). */
+  const returnToLaunchAfterEmpty = useCallback(async () => {
+    try {
+      await runBusy(t('status.resetting'), async () => {
+        await clearSession();
+      });
+    } catch (err) {
+      setStatus(t('status.error', { msg: String(err) }));
+    }
+    applyLaunchEmptyState(t('status.loadYaml'));
+  }, [runBusy, t, applyLaunchEmptyState]);
 
   const showOpenFileError = useCallback((message: string) => {
     setStatus(t('status.error', { msg: message }));
@@ -217,18 +234,27 @@ export function useSchemeSession(deps: {
   const handleConfirmResetScheme = useCallback(async () => {
     setShowResetConfirm(false);
     try {
+      let emptied = false;
       await runBusy(t('status.resetting'), async () => {
         setStatus(t('status.clearingManuals'));
-        await clearManualRegions();
+        const cleared = await clearManualRegions();
         clearCameraRequests();
+        if (cleared.remaining === 0) {
+          await clearSession();
+          emptied = true;
+          return;
+        }
         const result = await buildScheme();
         applyScheme(result.scheme, true, getCollapseThresholdRef.current());
         setStatus(t('status.schemeReady'));
       });
+      if (emptied) {
+        applyLaunchEmptyState(t('status.loadYaml'));
+      }
     } catch (err) {
       setStatus(t('status.error', { msg: String(err) }));
     }
-  }, [runBusy, t, clearCameraRequests, applyScheme]);
+  }, [runBusy, t, clearCameraRequests, applyScheme, applyLaunchEmptyState]);
 
   const handleSaveScheme = useCallback(async () => {
     if (!scheme) return;
@@ -322,6 +348,8 @@ export function useSchemeSession(deps: {
     validationDialog,
     setValidationDialog,
     handleClearApp,
+    applyLaunchEmptyState,
+    returnToLaunchAfterEmpty,
     handleOpenFileClick,
     handleConfirmOpenFile,
     handleConfirmResetScheme,

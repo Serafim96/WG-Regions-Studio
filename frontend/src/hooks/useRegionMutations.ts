@@ -51,6 +51,8 @@ export function useRegionMutations(deps: {
   closeAddDialog: () => void;
   highlightFlag: string | null;
   applyHighlightFlag: (name: string | null) => void;
+  /** When the last region is removed — return UI to post-launch empty state. */
+  onSchemeEmptied: () => void | Promise<void>;
 }) {
   const { t } = useI18n();
   const {
@@ -72,6 +74,7 @@ export function useRegionMutations(deps: {
     closeAddDialog,
     highlightFlag,
     applyHighlightFlag,
+    onSchemeEmptied,
   } = deps;
 
   const handleAddManual = useCallback(async (data: {
@@ -141,7 +144,12 @@ export function useRegionMutations(deps: {
     if (!deleteTarget || !scheme) return;
     const { regionId } = deleteTarget;
     try {
-      await deleteManualRegion(regionId, mode);
+      const deleted = await deleteManualRegion(regionId, mode);
+      if (deleted.remaining === 0) {
+        setDeleteTarget(null);
+        await onSchemeEmptied();
+        return;
+      }
       const result = await buildScheme();
 
       const node = findForestNode(scheme, regionId);
@@ -184,6 +192,7 @@ export function useRegionMutations(deps: {
     setDeleteTarget,
     setStatus,
     t,
+    onSchemeEmptied,
   ]);
 
   const handleUpdateFlags = useCallback(async (

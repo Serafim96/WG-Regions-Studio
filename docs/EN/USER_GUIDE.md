@@ -206,7 +206,7 @@ After collapsing, the layout stays compact; the camera fits the remaining visibl
 
 ## Temporary region
 
-1. Click **+** at the top-left of the graph, or **right-click** empty scheme space → **Add temporary region** (requires a built scheme). From a node context menu → **+ Add descendant**, the parent is prefilled but still editable before save.
+1. Click **+** at the top-left of the graph, or **right-click** empty scheme space → **Add temporary region**. You can do this right after launch, before opening a file — after the first add, the scheme and sidebar actions work as usual. From a node context menu → **+ Add descendant**, the parent is prefilled but still editable before save.
 2. Enter id (Latin only), parent, priority; flags use the same UI as the region card.
 3. Type: **global** (no coordinates) or **cuboid** / **poly2d**. Coordinates are validated on save (cuboid — all 6 numbers; poly2d — ≥3 points and min-y/max-y).
 4. In the card you can change type and coordinates; after save, a temporary region with coordinates participates in intersections like a normal region.
@@ -255,7 +255,7 @@ View state (collapsed nodes, selected region) is stored in **localStorage** sepa
 
 ## Interface and flags catalog controls
 
-- **Open file** immediately loads YAML (and builds the scheme) or `.mrv.json`. If a scheme is already shown, you confirm discard first. **Reset scheme** (with confirmation) removes temporary regions and rebuilds from the loaded YAML. A blocking spinner covers the UI during builds.
+- **Open file** immediately loads YAML (and builds the scheme) or `.mrv.json`. If a scheme is already shown, you confirm discard first. **Reset scheme** (with confirmation) removes temporary regions and rebuilds from the loaded YAML; if the scheme had only temporary regions, the app returns to the post-launch empty state. A blocking spinner covers the UI during builds.
 - Bottom of the sidebar — **Clear scheme**: resets the session to the empty post-startup state (no YAML / no on-screen scheme; language, theme, and sidebar settings are kept).
 - **Legend** shows scheme symbols only. The separate **Flags catalog** button opens Standard and Custom flag tabs.
 - Add custom flags using supported WorldGuard types, import/export their JSON catalog, or delete them. Deleting also removes the flag from every region in the current scheme after a confirmation that lists affected region IDs.

@@ -486,6 +486,12 @@ button.warning:hover:not(:disabled) {
   color: var(--color-text-placeholder);
 }
 
+.placeholder--empty-scheme {
+  width: 100%;
+  box-sizing: border-box;
+  user-select: none;
+}
+
 .depth-scale {
   border-top: 1px solid var(--color-border-light);
   padding-top: 8px;
