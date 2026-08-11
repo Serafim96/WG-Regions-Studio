@@ -9,7 +9,7 @@ import httpx
 
 # Bump when cutting a GitHub release (tag vX.Y.Z).
 # Full checklist: docs/dev/RELEASE.md
-APP_VERSION = "2.0.14"
+APP_VERSION = "2.0.15"
 GITHUB_REPO = "Serafim96/WG-Regions-Studio"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
@@ -18,14 +18,12 @@ RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
 # The first-launch dialog reads the full release history from docs/*/CHANGELOG*.md.
 CURRENT_HIGHLIGHTS: dict[str, list[str]] = {
     "ru": [
-        "Временный регион можно добавить сразу после запуска — без открытия файла (+ или ПКМ на схеме)",
-        "Сброс / удаление последнего временного региона возвращает к пустому старту",
-        "Исправлен чрезмерный zoom при одном узле на схеме",
+        "Эталонный набор регионов в тестах обезличен (имена, координаты, UUID владельцев)",
+        "Справочник spatial-пар перенесён в fixtures рядом с YAML",
     ],
     "en": [
-        "Add a temporary region right after launch — no file needed (+ or right-click on the scheme)",
-        "Reset / deleting the last temporary region returns to the empty start state",
-        "Fixed over-zoom when only one node is on the scheme",
+        "Reference region fixture obfuscated (ids, coordinates, owner UUIDs)",
+        "Spatial-pair reference moved into fixtures next to the YAML",
     ],
 }
 

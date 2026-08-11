@@ -47,12 +47,11 @@ def test_full_dataset_build_performance(full_regions):
     assert elapsed < 5.0, f"Build took {elapsed:.2f}s, expected < 5s"
 
 
-def test_historical_center_main_poly2d_volume(full_regions):
+def test_large_poly2d_volume(full_regions):
     _, regions = full_regions
-    by_id = {r.id: r for r in regions}
-    region = by_id.get("historical_center_main")
-    assert region is not None
-    assert region.type == "poly2d"
+    poly2d = [r for r in regions if r.type == "poly2d" and r.points]
+    assert poly2d, "expected at least one poly2d region"
+    region = max(poly2d, key=lambda r: len(r.points or []))
     assert region.points is not None
     assert len(region.points) >= 50
 

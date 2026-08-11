@@ -236,7 +236,7 @@ function packMeasuredSubtreesSimple(
 
 /**
  * Hierarchical layout, natural sibling order.
- * Children form compact rows of ~5 (tall columns like metro_express_tunnel).
+ * Children form compact rows of ~5 (tall columns stay compact).
  * Wide branches that cannot fit in the left pocket park beside/under other boxes
  * at the lowest free skyline (not necessarily after the tallest neighbour).
  */

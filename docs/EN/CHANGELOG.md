@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [2.0.15] — 2026-08-11
+
+### Changed
+
+- Full-dataset test fixture (`wg_regions_reference.yml`) no longer ships real region names, world coordinates, or owner UUIDs — deterministic synthetic ids / shifted coords / uuid5 instead (topology and flag structure preserved).
+- Curated spatial edge pairs live under `backend/tests/fixtures/`; obsolete `data/reference_spatial_edges.json` removed.
+
 ## [2.0.14] — 2026-08-10
 
 ### Added

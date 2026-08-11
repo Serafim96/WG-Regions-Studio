@@ -1,4 +1,4 @@
-"""Validate spatial intersections against draw.io reference."""
+"""Validate spatial intersections against curated pairs from the YAML fixture."""
 
 import json
 from pathlib import Path
@@ -9,8 +9,8 @@ from backend.geometry.intersections import compute_spatial_edges, region_contain
 from backend.parser.wg_parser import parse_regions_yaml, validate_parent_links
 from backend.tests.conftest import WG_REGIONS_REFERENCE_YML
 
-APP_ROOT = Path(__file__).resolve().parents[2]
-REFERENCE_JSON = APP_ROOT / "data" / "reference_spatial_edges.json"
+FIXTURES = Path(__file__).parent / "fixtures"
+REFERENCE_JSON = FIXTURES / "reference_spatial_edges.json"
 
 
 @pytest.fixture(scope="module")
@@ -28,12 +28,12 @@ def regions_and_edges():
 @pytest.fixture(scope="module")
 def reference():
     if not REFERENCE_JSON.exists():
-        pytest.skip("reference_spatial_edges.json not found — run extract_drawio_reference.py")
+        pytest.skip("reference_spatial_edges.json fixture not found")
     return json.loads(REFERENCE_JSON.read_text(encoding="utf-8"))
 
 
 def test_reference_intersects(regions_and_edges, reference):
-    """Only confirmed intersect pairs (validated at extraction time) must match algorithm."""
+    """Curated intersect pairs from the YAML fixture must match the algorithm."""
     by_id, computed = regions_and_edges
     computed_intersects = {
         tuple(sorted((e.source, e.target)))
