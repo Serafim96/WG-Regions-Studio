@@ -144,7 +144,7 @@ Spatial edges of hidden nodes are remapped to the nearest visible ancestor.
 | **Thin dashed orange** | Partial overlap (`intersects`), no arrow |
 | **Thin purple arrow** | Full containment (`contains`): inner region → outer container |
 
-Open **Legend** (bottom-right on the scheme) for visual samples: tabs **Scheme** and **Flag scheme**.
+Open **Legend** (bottom-right on the scheme) for visual samples: tabs **Scheme**, **Flag scheme**, and **Shortcuts** (all hotkeys and mouse).
 
 Edges are not selectable or clickable.
 
@@ -241,7 +241,7 @@ Region names in the tops are links: they open the region card, center the camera
 
 ## Legend and language
 
-- **Legend** (button bottom-right on the scheme) — two tabs: regular scheme styles and flag-scheme styles.
+- **Legend** (button bottom-right on the scheme) — three tabs: regular scheme styles, flag-scheme styles, and **Shortcuts** (Ctrl+F search, Ctrl+Z / Ctrl+Y history, F fullscreen, Esc / Enter in search, mouse). Global shortcuts are ignored while typing in a field.
 - WorldGuard flags catalog — separate **Flags catalog** button in the sidebar.
 - In the flags manager, flag names use typeahead suggestions while typing (unknown/custom names are still allowed).
 - In flag tables (region card, flags manager, conflicts) the **«?»** button opens a short description tip for known flags only.
@@ -269,7 +269,7 @@ View state (collapsed nodes, selected region) is stored in **localStorage** sepa
 
 - **Open file** immediately loads YAML (and builds the scheme) or `.mrv.json`. If a scheme is already shown, you confirm discard first. **Reset scheme** (with confirmation) removes temporary regions and rebuilds from the loaded YAML; if the scheme had only temporary regions, the app returns to the post-launch empty state. A blocking spinner covers the UI during builds.
 - Bottom of the sidebar — **Clear scheme**: resets the session to the empty post-startup state (no YAML / no on-screen scheme; language, theme, and sidebar settings are kept).
-- **Legend** shows scheme symbols only. The separate **Flags catalog** button opens Standard and Custom flag tabs.
+- **Legend** shows scheme symbols and a shortcuts tab. The separate **Flags catalog** button opens Standard and Custom flag tabs.
 - Add custom flags using supported WorldGuard types, import/export their JSON catalog, or delete them. Deleting also removes the flag from every region in the current scheme after a confirmation that lists affected region IDs.
 - Collapse the sidebar with **«** top-left on the scheme (next to **+** for a temporary region) — the panel hides fully; the same control shows **»** to restore it. Drag the right edge to resize. On the scheme: **«/»** and **+** (temporary) top-left; collapse/expand all and search top-right; lock, **Align**, flag highlight (plus highlight options when active), edge display, and problem mode bottom-left (clear special highlight when active); **Legend**, zoom, and fullscreen bottom-right. In the sidebar under Export YAML — **History** and back/forward arrows.
 - **Hide children** hides only direct children; **Collapse recursively** hides the whole subtree. **Expand all** and **Expand with threshold** recenter the camera like reset scheme.

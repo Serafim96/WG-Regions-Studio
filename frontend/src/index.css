@@ -632,7 +632,7 @@ button.warning:hover:not(:disabled) {
 }
 
 .legend-modal {
-  max-width: 640px;
+  max-width: 680px;
 }
 
 .legend-modal--flags {
@@ -3854,6 +3854,95 @@ button.success:hover:not(:disabled) {
   font-size: 0.8rem;
   color: var(--color-text-hint);
   line-height: 1.4;
+}
+
+.legend-keys-section {
+  margin: 0 0 8px;
+  font-size: 0.92rem;
+  font-weight: 650;
+}
+
+.legend-keys-section:not(:first-child) {
+  margin-top: 16px;
+}
+
+.legend-keys-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.legend-keys-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.legend-keys-item p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.legend-keys-sample {
+  flex-shrink: 0;
+  width: 188px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding-top: 1px;
+}
+
+.legend-keys-alt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-keys-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.legend-keys-combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.legend-keys-plus,
+.legend-keys-or {
+  color: var(--color-text-hint);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.legend-keys-item kbd {
+  display: inline-block;
+  min-width: 1.35em;
+  padding: 1px 6px;
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--color-bg-panel);
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 650;
+  line-height: 1.45;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.legend-keys-gesture {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.35;
 }
 
 .preferences-row {

@@ -8,7 +8,7 @@ Load your own `regions.yml` or a saved scheme, explore the tree, manage flags, a
 
 - Open **YAML** or **`.mrv.json`** from one **Open file** button
 - Hierarchy graph with spatial edges, collapse/expand, search, metrics
-- **Legend** with separate **Scheme** / **Flag scheme** tabs (labeled samples)
+- **Legend** with **Scheme** / **Flag scheme** / **Shortcuts** tabs (samples + hotkeys)
 - **Visualize flag inheritance** on the scheme and **see conflicts** (overwrites + overlaps)
 - Flag scheme badge (fit camera / help / open flag management filtered to that flag)
 - Temporary regions, rename/delete, flag manager + catalog, **Export YAML**

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [2.0.17] — 2026-08-17
+
+### Added
+
+- Legend **Shortcuts** tab: all hotkeys (**Ctrl+F**, **Ctrl+Z**, **Ctrl+Y** / **Ctrl+Shift+Z**, **F**, **Esc**, **Enter**) and mouse controls.
+
 ## [2.0.16] — 2026-08-17
 
 ### Added

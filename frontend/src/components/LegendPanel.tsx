@@ -57,7 +57,42 @@ function LegendNode({
   );
 }
 
-type LegendTab = 'scheme' | 'flag';
+type LegendTab = 'scheme' | 'flag' | 'keys';
+
+function LegendKbdCombo({ keys }: { keys: string[] }) {
+  return (
+    <span className="legend-keys-combo">
+      {keys.map((key, i) => (
+        <span key={`${key}-${i}`} className="legend-keys-part">
+          {i > 0 && <span className="legend-keys-plus">+</span>}
+          <kbd>{key}</kbd>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function LegendShortcutRow({
+  combos,
+  meaning,
+}: {
+  combos: string[][];
+  meaning: string;
+}) {
+  return (
+    <li className="legend-keys-item">
+      <div className="legend-keys-sample">
+        {combos.map((keys, i) => (
+          <span key={keys.join('+')} className="legend-keys-alt">
+            {i > 0 && <span className="legend-keys-or">/</span>}
+            <LegendKbdCombo keys={keys} />
+          </span>
+        ))}
+      </div>
+      <p>{meaning}</p>
+    </li>
+  );
+}
 
 export function LegendPanel({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
@@ -135,6 +170,25 @@ export function LegendPanel({ onClose }: { onClose: () => void }) {
   const items = tab === 'scheme' ? schemeItems : flagItems;
   const extra = tab === 'scheme' ? t('legend.extra') : t('legend.flagExtra');
 
+  const keyboardRows: { combos: string[][]; meaning: string }[] = [
+    { combos: [['Ctrl', 'F']], meaning: t('legend.keys.search') },
+    { combos: [['Ctrl', 'Z']], meaning: t('legend.keys.undo') },
+    { combos: [['Ctrl', 'Y'], ['Ctrl', 'Shift', 'Z']], meaning: t('legend.keys.redo') },
+    { combos: [['F']], meaning: t('legend.keys.fullscreen') },
+    { combos: [['Esc']], meaning: t('legend.keys.closeSearch') },
+    { combos: [['Enter']], meaning: t('legend.keys.searchEnter') },
+  ];
+
+  const mouseRows: { gesture: string; meaning: string }[] = [
+    { gesture: t('legend.keys.click'), meaning: t('legend.keys.clickMeaning') },
+    { gesture: t('legend.keys.dblclick'), meaning: t('legend.keys.dblclickMeaning') },
+    { gesture: t('legend.keys.rmbNode'), meaning: t('legend.keys.rmbNodeMeaning') },
+    { gesture: t('legend.keys.rmbEmpty'), meaning: t('legend.keys.rmbEmptyMeaning') },
+    { gesture: t('legend.keys.clickEmpty'), meaning: t('legend.keys.clickEmptyMeaning') },
+    { gesture: t('legend.keys.wheel'), meaning: t('legend.keys.wheelMeaning') },
+    { gesture: t('legend.keys.drag'), meaning: t('legend.keys.dragMeaning') },
+  ];
+
   return (
     <ModalOverlay onClose={onClose}>
       <div className="modal legend-modal" onClick={(e) => e.stopPropagation()}>
@@ -162,16 +216,54 @@ export function LegendPanel({ onClose }: { onClose: () => void }) {
             >
               {t('legend.tabFlagScheme')}
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'keys'}
+              className={tab === 'keys' ? 'active' : undefined}
+              onClick={() => setTab('keys')}
+            >
+              {t('legend.tabKeys')}
+            </button>
           </div>
-          <ul className="legend-visual-list" role="tabpanel">
-            {items.map((item, i) => (
-              <li key={`${tab}-${i}`} className="legend-visual-item">
-                <div className="legend-visual-sample">{item.sample}</div>
-                <p>{item.meaning}</p>
-              </li>
-            ))}
-          </ul>
-          <p className="legend-extra">{extra}</p>
+          {tab === 'keys' ? (
+            <div role="tabpanel">
+              <h3 className="legend-keys-section">{t('legend.keys.keyboard')}</h3>
+              <ul className="legend-keys-list">
+                {keyboardRows.map((row) => (
+                  <LegendShortcutRow
+                    key={row.combos.map((c) => c.join('+')).join('/')}
+                    combos={row.combos}
+                    meaning={row.meaning}
+                  />
+                ))}
+              </ul>
+              <h3 className="legend-keys-section">{t('legend.keys.mouse')}</h3>
+              <ul className="legend-keys-list">
+                {mouseRows.map((row) => (
+                  <li key={row.gesture} className="legend-keys-item">
+                    <div className="legend-keys-sample">
+                      <span className="legend-keys-gesture">{row.gesture}</span>
+                    </div>
+                    <p>{row.meaning}</p>
+                  </li>
+                ))}
+              </ul>
+              <p className="legend-extra">{t('legend.keys.extra')}</p>
+            </div>
+          ) : (
+            <>
+              <ul className="legend-visual-list" role="tabpanel">
+                {items.map((item, i) => (
+                  <li key={`${tab}-${i}`} className="legend-visual-item">
+                    <div className="legend-visual-sample">{item.sample}</div>
+                    <p>{item.meaning}</p>
+                  </li>
+                ))}
+              </ul>
+              <p className="legend-extra">{extra}</p>
+            </>
+          )}
         </div>
       </div>
     </ModalOverlay>
