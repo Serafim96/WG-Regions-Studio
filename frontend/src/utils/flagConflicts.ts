@@ -37,6 +37,9 @@ export interface FlagConflictsResult {
     totalCount: number;
   };
   conflictRegionIds: Set<string>;
+  /** Spatial conflicts resolved by priority (warning category). */
+  resolvedConflictRegionIds: Set<string>;
+  resolvedConflictEdgeKeys: Set<string>;
   overwrites: FlagOverwrite[];
   spatialConflicts: SpatialConflict[];
 }
@@ -243,12 +246,16 @@ export function runWorldGuardFlagChecks({
         totalCount: 0,
       },
       conflictRegionIds: new Set(),
+      resolvedConflictRegionIds: new Set(),
+      resolvedConflictEdgeKeys: new Set(),
       overwrites: [],
       spatialConflicts: [],
     };
   }
 
   const conflictRegionIds = new Set<string>();
+  const resolvedConflictRegionIds = new Set<string>();
+  const resolvedConflictEdgeKeys = new Set<string>();
   const allFlagNames = computeAllFlagNames(scheme);
   const effectiveByRegion = precomputedEffective ?? computeEffectiveFlagsByRegion(scheme);
   const parentMap = buildParentMap(scheme);
@@ -336,6 +343,11 @@ export function runWorldGuardFlagChecks({
       if (ambiguous) {
         conflictRegionIds.add(edge.source);
         conflictRegionIds.add(edge.target);
+      } else {
+        resolvedConflictRegionIds.add(edge.source);
+        resolvedConflictRegionIds.add(edge.target);
+        resolvedConflictEdgeKeys.add(`${edge.relation}-${edge.source}-${edge.target}`);
+        resolvedConflictEdgeKeys.add(`${edge.relation}-${edge.target}-${edge.source}`);
       }
     }
   }
@@ -352,6 +364,8 @@ export function runWorldGuardFlagChecks({
       totalCount: spatialAmbiguousCount,
     },
     conflictRegionIds,
+    resolvedConflictRegionIds,
+    resolvedConflictEdgeKeys,
     overwrites,
     spatialConflicts,
   };

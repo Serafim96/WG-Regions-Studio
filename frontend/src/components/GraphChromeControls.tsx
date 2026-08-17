@@ -475,7 +475,7 @@ export function EmptySchemeChrome({
         </button>
         <button
           type="button"
-          className="graph-ctrl-btn"
+          className="graph-ctrl-btn graph-ctrl-btn--primary"
           onClick={onAddManual}
           title={t('app.addManual')}
           disabled={Boolean(busyMessage)}

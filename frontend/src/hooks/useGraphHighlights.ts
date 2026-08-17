@@ -98,6 +98,30 @@ export function useGraphHighlights(
     if (!highlightFlag) setShowFlagHighlightOptsMenu(false);
   }, [highlightFlag]);
 
+  // Keep focused conflict in sync when priority/values change (amb → resolved).
+  useEffect(() => {
+    if (!flagConflicts) return;
+    setConflictSchemeView((current) => {
+      if (!current) return current;
+      const match = flagConflicts.spatialConflicts.find(
+        (c) => c.flagName === current.flagName
+          && c.aId === current.aId
+          && c.bId === current.bId
+          && c.relation === current.relation,
+      );
+      if (!match) return null;
+      if (
+        match.ambiguous === current.ambiguous
+        && match.winnerId === current.winnerId
+        && match.aPriority === current.aPriority
+        && match.bPriority === current.bPriority
+      ) {
+        return current;
+      }
+      return match;
+    });
+  }, [flagConflicts]);
+
   const toggleBottomLeftMenu = useCallback((which: 'flagOpts' | 'edge' | 'problems') => {
     setShowFlagHighlightOptsMenu((open) => (which === 'flagOpts' ? !open : false));
     setShowEdgeModeMenu((open) => (which === 'edge' ? !open : false));
@@ -163,6 +187,11 @@ export function useGraphHighlights(
     });
     let withConflict = base;
     if (conflictSchemeView && conflictSchemeView.flagName === highlightFlag) {
+      const pairIds = new Set([conflictSchemeView.aId, conflictSchemeView.bId]);
+      const pairEdgeKeys = new Set([
+        `${conflictSchemeView.relation}-${conflictSchemeView.aId}-${conflictSchemeView.bId}`,
+        `${conflictSchemeView.relation}-${conflictSchemeView.bId}-${conflictSchemeView.aId}`,
+      ]);
       withConflict = {
         ...attachConflictInheritancePaths(
           base,
@@ -170,11 +199,9 @@ export function useGraphHighlights(
           conflictSchemeView.aId,
           conflictSchemeView.bId,
         ),
-        conflictIds: new Set([conflictSchemeView.aId, conflictSchemeView.bId]),
-        conflictEdgeKeys: new Set([
-          `${conflictSchemeView.relation}-${conflictSchemeView.aId}-${conflictSchemeView.bId}`,
-          `${conflictSchemeView.relation}-${conflictSchemeView.bId}-${conflictSchemeView.aId}`,
-        ]),
+        ...(conflictSchemeView.ambiguous
+          ? { conflictIds: pairIds, conflictEdgeKeys: pairEdgeKeys }
+          : { resolvedConflictIds: pairIds, resolvedConflictEdgeKeys: pairEdgeKeys }),
       };
     } else if (overwriteSchemeView && overwriteSchemeView.flagName === highlightFlag) {
       withConflict = {

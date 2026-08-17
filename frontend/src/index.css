@@ -139,6 +139,93 @@ body.sidebar-resizing {
   border-bottom: 1px solid var(--color-border-light);
 }
 
+.scheme-history-nav {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.scheme-history-arrows {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+}
+
+.scheme-history-nav .scheme-history-open {
+  flex: 1;
+  min-width: 0;
+}
+
+.scheme-history-nav .icon-btn {
+  width: 32px;
+  height: auto;
+  min-height: 32px;
+}
+
+.action-history-modal {
+  width: min(420px, 92vw);
+  max-height: min(70vh, 560px);
+  display: flex;
+  flex-direction: column;
+}
+
+.action-history-body {
+  overflow-y: auto;
+  padding-top: 0;
+}
+
+.action-history-empty {
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.action-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.action-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  background: var(--color-bg-button);
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+}
+
+.action-history-item:hover {
+  background: var(--color-bg-button-hover);
+}
+
+.action-history-item.is-current {
+  border-color: var(--color-accent, #1976d2);
+  background: color-mix(in srgb, var(--color-accent, #1976d2) 12%, var(--color-bg-button));
+}
+
+.action-history-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action-history-item-marker {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  text-transform: lowercase;
+}
+
 .toolbar .app-brand {
   display: flex;
   align-items: center;
@@ -2039,6 +2126,14 @@ button.success:hover:not(:disabled) {
   gap: 8px;
 }
 
+.flags-editor-actions {
+  align-items: center;
+}
+
+.flags-editor-actions .flags-clear-all-btn {
+  margin-left: auto;
+}
+
 .flags-toolbar-btn {
   padding: 8px 12px !important;
   border: 1px solid var(--color-border-input) !important;
@@ -2847,6 +2942,16 @@ button.success:hover:not(:disabled) {
 .graph-ctrl-btn--active {
   background: var(--color-bg-button-hover);
   color: var(--color-accent, #c60);
+}
+
+.graph-ctrl-btn--primary {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.graph-ctrl-btn--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary) 85%, #000);
+  color: #fff;
 }
 
 .graph-ctrl-btn--warn-active {
@@ -3712,8 +3817,8 @@ button.success:hover:not(:disabled) {
 
 .legend-node--flag-intersect-partial {
   background: hsl(24, 70%, 70%);
-  border: 3px dashed #c2410c;
-  color: #9a3412;
+  border: 3px dashed #f97316;
+  color: #c2410c;
 }
 
 .legend-edge {

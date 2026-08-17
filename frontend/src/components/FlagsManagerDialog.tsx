@@ -301,7 +301,8 @@ export function FlagsManagerDialog({
       message: t('flagsManager.unsavedConfirm'),
       onConfirm: () => {
         setConfirmState(null);
-        then();
+        // Next dialog after the current ConfirmDialog unmounts (remarks_49).
+        window.setTimeout(then, 0);
       },
     });
   };
@@ -746,14 +747,6 @@ export function FlagsManagerDialog({
                   <button type="button" className="flags-toolbar-btn" onClick={onOpenCatalog}>
                     {t('flagsManager.openCatalog')}
                   </button>
-                  <button
-                    type="button"
-                    className="flags-toolbar-btn danger"
-                    disabled={!hasAnyFlags || clearAllBusy}
-                    onClick={requestClearAllFlags}
-                  >
-                    {t('flagsManager.deleteAllFlags')}
-                  </button>
                 </div>
               </div>
               {!selectedId ? (
@@ -817,7 +810,7 @@ export function FlagsManagerDialog({
                     </table>
                   </div>
                   {error && <p className="flags-manager-error">{error}</p>}
-                  <div className="modal-actions">
+                  <div className="modal-actions flags-editor-actions">
                     <button type="button" onClick={addRow}>{t('flagsManager.add')}</button>
                     <button
                       type="button"
@@ -834,6 +827,14 @@ export function FlagsManagerDialog({
                       disabled={!dirty || saving}
                     >
                       {saving ? t('flagsManager.saving') : t('flagsManager.save')}
+                    </button>
+                    <button
+                      type="button"
+                      className="danger flags-clear-all-btn"
+                      disabled={!hasAnyFlags || clearAllBusy}
+                      onClick={requestClearAllFlags}
+                    >
+                      {t('flagsManager.deleteAllFlags')}
                     </button>
                   </div>
                 </>

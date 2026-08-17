@@ -125,9 +125,9 @@ export function LegendPanel({ onClose }: { onClose: () => void }) {
       meaning: t('legend.flagConflictPair'),
     },
     { sample: <LegendDirectedEdge color="#1abc9c" width={5} />, meaning: t('legend.flagPathEdge') },
-    { sample: <LegendDirectedEdge color="#e74c3c" width={3.5} />, meaning: t('legend.flagConflictEdge') },
+    { sample: <LegendDirectedEdge color="#ef4444" width={6} />, meaning: t('legend.flagConflictEdge') },
     { sample: <LegendDirectedEdge color="#a855f7" width={3} />, meaning: t('legend.flagContainEdge') },
-    { sample: <LegendPlainEdge color="#c2410c" width={3} />, meaning: t('legend.flagIntersectEdge') },
+    { sample: <LegendPlainEdge color="#f97316" width={3} />, meaning: t('legend.flagIntersectEdge') },
     { sample: <LegendPlainEdge color="#ead9c8" width={1.5} dashed />, meaning: t('legend.flagDimIntersectEdge') },
     { sample: <LegendPlainEdge color="#ddd0e6" width={1.5} />, meaning: t('legend.flagDimContainEdge') },
   ];

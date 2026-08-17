@@ -58,6 +58,9 @@ export interface FlagHighlight {
   conflictIds?: Set<string>;
   /** Spatial edges involved in the shown conflict (`relation-source-target`). */
   conflictEdgeKeys?: Set<string>;
+  /** Priority-resolved spatial-conflict participants. */
+  resolvedConflictIds?: Set<string>;
+  resolvedConflictEdgeKeys?: Set<string>;
   /** Flag values to show next to highlighted nodes (skipped for set-types). */
   valueLabels?: Map<string, FlagValueLabel>;
 }
@@ -376,20 +379,37 @@ export function attachFlagConflicts(
     relation: string;
     aId: string;
     bId: string;
+    ambiguous: boolean;
   }>,
   flagName: string,
 ): FlagHighlight {
   const conflictIds = new Set<string>(highlight.conflictIds);
   const conflictEdgeKeys = new Set<string>(highlight.conflictEdgeKeys);
+  const resolvedConflictIds = new Set<string>(highlight.resolvedConflictIds);
+  const resolvedConflictEdgeKeys = new Set<string>(highlight.resolvedConflictEdgeKeys);
   for (const c of conflicts) {
     if (c.flagName !== flagName) continue;
-    conflictIds.add(c.aId);
-    conflictIds.add(c.bId);
-    conflictEdgeKeys.add(`${c.relation}-${c.aId}-${c.bId}`);
-    conflictEdgeKeys.add(`${c.relation}-${c.bId}-${c.aId}`);
+    const edgeKey1 = `${c.relation}-${c.aId}-${c.bId}`;
+    const edgeKey2 = `${c.relation}-${c.bId}-${c.aId}`;
+    if (c.ambiguous) {
+      conflictIds.add(c.aId);
+      conflictIds.add(c.bId);
+      conflictEdgeKeys.add(edgeKey1);
+      conflictEdgeKeys.add(edgeKey2);
+    } else {
+      resolvedConflictIds.add(c.aId);
+      resolvedConflictIds.add(c.bId);
+      resolvedConflictEdgeKeys.add(edgeKey1);
+      resolvedConflictEdgeKeys.add(edgeKey2);
+    }
   }
-  if (conflictIds.size === 0) return highlight;
-  return { ...highlight, conflictIds, conflictEdgeKeys };
+  if (conflictIds.size === 0 && resolvedConflictIds.size === 0) return highlight;
+  return {
+    ...highlight,
+    conflictIds,
+    conflictEdgeKeys,
+    ...(resolvedConflictIds.size > 0 ? { resolvedConflictIds, resolvedConflictEdgeKeys } : {}),
+  };
 }
 
 function collectAncestors(

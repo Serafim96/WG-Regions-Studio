@@ -222,19 +222,6 @@ export function FlagConflictsDialog({
                                   {t('flagConflicts.valueLabel', { value: formatValue(c.bValue) })}
                                 </div>
                                 <div className="flag-conflicts-outcome">{outcome}</div>
-                                {c.commonAncestorId && (
-                                  <div className="flag-conflicts-outcome">
-                                    {t('flagConflicts.commonAncestor')}
-                                    {' '}
-                                    <button
-                                      type="button"
-                                      className="region-link"
-                                      onClick={() => onFocusRegion(c.commonAncestorId!)}
-                                    >
-                                      {c.commonAncestorId}
-                                    </button>
-                                  </div>
-                                )}
                                 {onShowSpatialOnScheme && (
                                   <div className="modal-actions">
                                     <button

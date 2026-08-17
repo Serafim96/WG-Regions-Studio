@@ -12,6 +12,7 @@ export const FLAG_NODE_CLASSES = [
   'flag-contained-no-inherit',
   'flag-intersect-partial',
   'flag-conflict-pair',
+  'flag-conflict-pair-resolved',
   'flag-value-define',
   'flag-value-inherit',
   'flag-value-no-inherit',
@@ -136,14 +137,17 @@ export function applyHighlightOverlay(
       });
 
       if (flagHighlight) {
-        if (flagHighlight.conflictIds?.has(regionId)) node.addClass('flag-conflict-pair');
+        const isAmbiguousConflict = flagHighlight.conflictIds?.has(regionId);
+        const isResolvedConflict = flagHighlight.resolvedConflictIds?.has(regionId);
+        if (isAmbiguousConflict) node.addClass('flag-conflict-pair');
+        else if (isResolvedConflict) node.addClass('flag-conflict-pair-resolved');
         if (flagHighlight.definingIds.has(regionId)) node.addClass('flag-define');
         else if (flagHighlight.brightIds.has(regionId)) node.addClass('flag-path');
         else if (flagHighlight.containedNoInheritIds?.has(regionId)) {
           node.addClass('flag-contained-no-inherit');
         } else if (flagHighlight.intersectPartialIds?.has(regionId)) {
           node.addClass('flag-intersect-partial');
-        } else if (!flagHighlight.conflictIds?.has(regionId)) {
+        } else if (!isAmbiguousConflict && !isResolvedConflict) {
           node.addClass('flag-dim');
         }
         if (valueInfo?.defining) node.addClass('flag-value-define');
@@ -183,6 +187,11 @@ export function applyHighlightOverlay(
             || flagHighlight.conflictEdgeKeys?.has(edgeKeyAlt)
           ) {
             edge.addClass('flag-conflict-edge');
+          } else if (
+            flagHighlight.resolvedConflictEdgeKeys?.has(edgeKey)
+            || flagHighlight.resolvedConflictEdgeKeys?.has(edgeKeyAlt)
+          ) {
+            edge.addClass('flag-conflict-resolved-edge');
           } else if (
             flagHighlight.containedNoInheritEdgeKeys?.has(edgeKey)
             || flagHighlight.containedNoInheritEdgeKeys?.has(edgeKeyAlt)

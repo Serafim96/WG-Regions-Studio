@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [2.0.16] — 2026-08-17
+
+### Added
+
+- **Action history** in the sidebar: a list of steps (regions, flags, geometry, priority, etc.), back/forward arrows next to the button, and **Ctrl+Z** / **Ctrl+Y** (or Ctrl+Shift+Z). Clicking a step restores that scheme snapshot. History is session-only (reset, clear, and quitting the app wipe it; it is not stored in `.mrv.json`). Custom flag-catalog edits are not recorded.
+- If you are viewing a past snapshot and then save a change, a confirmation warns that newer history steps will be discarded.
+- Priority-resolved spatial flag conflicts are drawn in a **yellow dashed** style, slightly thinner than unresolved (red) conflicts.
+
+### Changed
+
+- The wipe-all-flags button is now **Delete all flags on the scheme**, placed bottom-right away from Save. Unsaved edits are confirmed first, then the delete-all action itself.
+- After a priority change, an ambiguous conflict in the bell becomes a **warning** (text and level update) instead of staying an error.
+- A toast for a conflict that already popped up does not show again (including after priority edits); read/unread in the bell is kept.
+- The **Global region** checkbox stays available on already-global regions so they can be converted back to a normal shape.
+- Removed the nagging “Undo available” toast — history covers undo.
+
 ## [2.0.15] — 2026-08-11
 
 ### Changed

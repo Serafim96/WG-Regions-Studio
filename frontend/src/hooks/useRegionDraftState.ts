@@ -90,6 +90,8 @@ type DraftDeps = {
     owners: Record<string, unknown>,
     members: Record<string, unknown>,
   ) => Promise<void>;
+  /** Wrap saveAll as one history entry (region panel batch save). */
+  runSaveBatch?: (fn: () => Promise<void>) => Promise<void>;
 };
 
 /**
@@ -107,6 +109,7 @@ export function useRegionDraftState(deps: DraftDeps) {
     onUpdateGeometry,
     onUpdatePriority,
     onUpdateMembers,
+    runSaveBatch,
   } = deps;
 
   const [fieldsLocked, setFieldsLocked] = useState(true);
@@ -235,7 +238,7 @@ export function useRegionDraftState(deps: DraftDeps) {
     setFieldsLocked(true);
   };
 
-  const saveAll = async () => {
+  const executeSaveAll = async () => {
     if (!isDirty || saveBusy) return;
 
     setParentError(null);
@@ -314,6 +317,15 @@ export function useRegionDraftState(deps: DraftDeps) {
     } finally {
       setSaveBusy(false);
     }
+  };
+
+  const saveAll = async () => {
+    if (!isDirty) return;
+    if (runSaveBatch) {
+      await runSaveBatch(executeSaveAll);
+      return;
+    }
+    await executeSaveAll();
   };
 
   return {

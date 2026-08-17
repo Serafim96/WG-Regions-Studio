@@ -9,7 +9,7 @@ import httpx
 
 # Bump when cutting a GitHub release (tag vX.Y.Z).
 # Full checklist: docs/dev/RELEASE.md
-APP_VERSION = "2.0.15"
+APP_VERSION = "2.0.16"
 GITHUB_REPO = "Serafim96/WG-Regions-Studio"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
@@ -18,12 +18,16 @@ RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
 # The first-launch dialog reads the full release history from docs/*/CHANGELOG*.md.
 CURRENT_HIGHLIGHTS: dict[str, list[str]] = {
     "ru": [
-        "Эталонный набор регионов в тестах обезличен (имена, координаты, UUID владельцев)",
-        "Справочник spatial-пар перенесён в fixtures рядом с YAML",
+        "История действий: кнопка в сайдбаре, стрелки назад/вперёд и Ctrl+Z",
+        "Решённые конфликты флагов — жёлтый пунктир; toast одного конфликта больше не повторяется",
+        "Галка «Глобальный регион» доступна и у уже глобальных регионов",
+        "«Удалить все флаги на схеме» — внизу справа, с отдельным подтверждением",
     ],
     "en": [
-        "Reference region fixture obfuscated (ids, coordinates, owner UUIDs)",
-        "Spatial-pair reference moved into fixtures next to the YAML",
+        "Action history: sidebar button, back/forward arrows, and Ctrl+Z",
+        "Resolved flag conflicts use a yellow dashed style; toasts no longer repeat",
+        "The “Global region” checkbox stays available on global regions",
+        "“Delete all flags on the scheme” moved to the bottom-right, with its own confirmation",
     ],
 }
 

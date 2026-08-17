@@ -111,6 +111,18 @@ function _buildStylesheetUncached(theme: Theme) {
       },
     },
     {
+      selector: 'node.flag-conflict-resolved',
+      style: {
+        'border-width': 4.5,
+        'border-color': '#c9a227',
+        'border-style': 'dashed',
+        color: '#8a7220',
+        'text-outline-width': 1.8,
+        'text-outline-color': '#c9a227',
+        'text-outline-opacity': 0.75,
+      },
+    },
+    {
       // Dim without transparency — washed / desaturated fill so edges never show through.
       selector: 'node.flag-dim',
       style: {
@@ -186,10 +198,10 @@ function _buildStylesheetUncached(theme: Theme) {
       style: {
         opacity: 1,
         'border-width': 4,
-        'border-color': '#c2410c',
+        'border-color': '#f97316',
         'border-style': 'dashed',
         'background-opacity': 1,
-        color: '#9a3412',
+        color: '#c2410c',
         'text-opacity': 1,
         'font-weight': 600,
       },
@@ -205,7 +217,7 @@ function _buildStylesheetUncached(theme: Theme) {
     {
       selector: 'node.flag-value-intersect',
       style: {
-        color: '#c2410c',
+        color: '#ea580c',
         'font-weight': 700,
         'text-opacity': 1,
       },
@@ -236,6 +248,41 @@ function _buildStylesheetUncached(theme: Theme) {
         'text-outline-width': 2,
         'text-outline-color': '#b91c1c',
         'text-outline-opacity': 0.9,
+      },
+    },
+    {
+      // Resolved spatial conflict (priority winner) — muted yellow dashed.
+      selector: 'node.flag-conflict-pair-resolved',
+      style: {
+        opacity: 1,
+        'border-width': 4.5,
+        'border-color': '#c9a227',
+        'border-style': 'dashed',
+        'background-opacity': 1,
+        color: '#3d3410',
+        'text-opacity': 1,
+        'font-weight': 700,
+        'text-outline-width': 1.8,
+        'text-outline-color': '#c9a227',
+        'text-outline-opacity': 0.75,
+      },
+    },
+    {
+      selector: 'node.flag-conflict-pair-resolved.flag-value-define',
+      style: {
+        color: '#3d3410',
+        'font-weight': 700,
+        'text-outline-color': '#c9a227',
+      },
+    },
+    {
+      selector: 'node.flag-conflict-pair-resolved.flag-value-inherit',
+      style: {
+        color: '#3d3410',
+        'font-weight': 700,
+        'text-outline-width': 1.8,
+        'text-outline-color': '#c9a227',
+        'text-outline-opacity': 0.75,
       },
     },
     {
@@ -347,10 +394,20 @@ function _buildStylesheetUncached(theme: Theme) {
       selector: 'edge.flag-conflict-edge',
       style: {
         opacity: 1,
-        width: 4,
-        'line-color': '#e74c3c',
-        'target-arrow-color': '#e74c3c',
+        width: 7,
+        'line-color': '#ef4444',
+        'target-arrow-color': '#ef4444',
         'line-style': 'solid',
+      },
+    },
+    {
+      selector: 'edge.flag-conflict-resolved-edge',
+      style: {
+        opacity: 1,
+        width: 6.3,
+        'line-color': '#c9a227',
+        'target-arrow-color': '#c9a227',
+        'line-style': 'dashed',
       },
     },
     {
@@ -370,7 +427,7 @@ function _buildStylesheetUncached(theme: Theme) {
       style: {
         opacity: 1,
         width: 3,
-        'line-color': '#c2410c',
+        'line-color': '#f97316',
         'line-style': 'solid',
         'curve-style': 'haystack',
         'haystack-radius': 0,

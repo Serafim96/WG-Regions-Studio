@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchFlags } from './api';
+import { fetchFlags, importScheme, buildScheme } from './api';
 import { AppDialogs } from './components/AppDialogs';
 import { AppSidebar } from './components/AppSidebar';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -34,7 +34,11 @@ import { useConflictNotifications } from './hooks/useConflictNotifications';
 import { useGraphHighlights } from './hooks/useGraphHighlights';
 import { useRegionMutations } from './hooks/useRegionMutations';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useSchemeHistory } from './hooks/useSchemeHistory';
 import { useWhatsNewDialog } from './hooks/useWhatsNewDialog';
+import { ActionHistoryDialog } from './components/ActionHistoryDialog';
+import { ConfirmDialog } from './components/ConfirmDialog';
+import type { SchemeActionMeta } from './hooks/useRegionMutations';
 
 const BASE_NODE_SIZE = 60;
 
@@ -111,6 +115,10 @@ export default function App() {
   const [edgeDisplayFilters, setEdgeDisplayFilters] = useState<EdgeDisplayFilters>(
     DEFAULT_EDGE_DISPLAY_FILTERS,
   );
+  const [showActionHistory, setShowActionHistory] = useState(false);
+  const [showHistoryBranchConfirm, setShowHistoryBranchConfirm] = useState(false);
+  const historyBranchResolveRef = useRef<((value: boolean) => void) | null>(null);
+  const historyBatchRef = useRef(false);
 
   const closeFlagsManager = useCallback(() => {
     setShowFlagsManager(false);
@@ -177,6 +185,41 @@ export default function App() {
     [flagConflicts],
   );
 
+  const resolvedConflictRegionIds = useMemo(
+    () => (flagConflicts ? flagConflicts.resolvedConflictRegionIds : new Set<string>()),
+    [flagConflicts],
+  );
+
+  const resolvedConflictEdgeKeys = useMemo(
+    () => (flagConflicts ? flagConflicts.resolvedConflictEdgeKeys : new Set<string>()),
+    [flagConflicts],
+  );
+
+  const schemeHistory = useSchemeHistory();
+
+  const ensureCanMutate = useCallback((): Promise<boolean> => {
+    if (schemeHistory.isAtHead()) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      historyBranchResolveRef.current = resolve;
+      setShowHistoryBranchConfirm(true);
+    });
+  }, [schemeHistory]);
+
+  const confirmHistoryBranch = useCallback(() => {
+    schemeHistory.truncateFuture();
+    setShowHistoryBranchConfirm(false);
+    historyBranchResolveRef.current?.(true);
+    historyBranchResolveRef.current = null;
+  }, [schemeHistory]);
+
+  const cancelHistoryBranch = useCallback(() => {
+    setShowHistoryBranchConfirm(false);
+    historyBranchResolveRef.current?.(false);
+    historyBranchResolveRef.current = null;
+  }, []);
+
+  const isHistoryBatch = useCallback(() => historyBatchRef.current, []);
+
   const nonStandardHeightIds = useMemo(() => {
     if (!session.scheme) return new Set<string>();
     return new Set(findNonStandardHeightRegionIds(session.scheme.regions));
@@ -227,6 +270,27 @@ export default function App() {
 
   const whatsNew = useWhatsNewDialog();
 
+  const recordHistoryAction = useCallback((scheme: Scheme, meta: SchemeActionMeta) => {
+    schemeHistory.recordAction(scheme, meta);
+  }, [schemeHistory]);
+
+  const runSaveBatch = useCallback(async (regionId: string, fn: () => Promise<void>) => {
+    if (!await ensureCanMutate()) return;
+    historyBatchRef.current = true;
+    try {
+      await fn();
+      const result = await buildScheme();
+      session.applyScheme(result.scheme, false, collapse.collapseThreshold);
+      recordHistoryAction(result.scheme, {
+        kind: 'saveRegion',
+        labelKey: 'history.saveRegion',
+        labelParams: { id: regionId },
+      });
+    } finally {
+      historyBatchRef.current = false;
+    }
+  }, [ensureCanMutate, recordHistoryAction, session, collapse.collapseThreshold]);
+
   const focusRegion = useCallback((regionId: string) => {
     camera.focusRegion(regionId, collapse.setHiddenNodes);
     collapse.setCollapseTarget(regionId);
@@ -276,6 +340,9 @@ export default function App() {
     highlightFlag: highlights.highlightFlag,
     applyHighlightFlag: highlights.applyHighlightFlag,
     onSchemeEmptied: session.returnToLaunchAfterEmpty,
+    ensureCanMutate,
+    recordHistoryAction,
+    isHistoryBatch,
   });
 
   clearCameraBundleRef.current = () => {
@@ -285,12 +352,15 @@ export default function App() {
   };
 
   onFreshSchemeRef.current = (next, threshold) => {
+    schemeHistory.resetWithInitial(next);
     notifications.prepareFreshSchemeNotifications();
     highlights.resetHighlightState();
     collapse.applyDefaultHidden(next, threshold);
   };
 
   onClearAppExtrasRef.current = () => {
+    schemeHistory.clear();
+    setShowActionHistory(false);
     camera.resetCameraState();
     collapse.resetCollapseState();
     highlights.resetHighlightState();
@@ -351,6 +421,58 @@ export default function App() {
     };
   }, []);
 
+  const restoreHistorySnapshot = useCallback(async (snapshot: Scheme) => {
+    try {
+      await session.runBusy(t('status.building'), async () => {
+        const restored = await importScheme(snapshot);
+        session.applyScheme(restored, false, collapse.collapseThreshold);
+      });
+    } catch (err) {
+      session.setStatus(t('status.error', { msg: String(err) }));
+      throw err;
+    }
+  }, [session, collapse.collapseThreshold, t]);
+
+  const navigateHistory = useCallback(async (targetIndex: number) => {
+    if (!session.scheme || targetIndex === schemeHistory.currentIndex) return;
+    const previousIndex = schemeHistory.currentIndex;
+    const snapshot = schemeHistory.goToIndex(targetIndex);
+    if (!snapshot) return;
+    try {
+      await restoreHistorySnapshot(snapshot);
+      session.setStatus(t('status.historyRestored'));
+    } catch {
+      if (previousIndex >= 0) {
+        const rollback = schemeHistory.goToIndex(previousIndex);
+        if (rollback) {
+          try {
+            await restoreHistorySnapshot(rollback);
+          } catch {
+            // keep error from first failure
+          }
+        }
+      }
+    }
+  }, [session, schemeHistory, restoreHistorySnapshot, t]);
+
+  const handleHistoryBack = useCallback(() => {
+    if (!schemeHistory.canGoBack) return;
+    void navigateHistory(schemeHistory.currentIndex - 1);
+  }, [schemeHistory, navigateHistory]);
+
+  const handleHistoryForward = useCallback(() => {
+    if (!schemeHistory.canGoForward) return;
+    void navigateHistory(schemeHistory.currentIndex + 1);
+  }, [schemeHistory, navigateHistory]);
+
+  const handleUndo = useCallback(() => {
+    handleHistoryBack();
+  }, [handleHistoryBack]);
+
+  const handleRedo = useCallback(() => {
+    handleHistoryForward();
+  }, [handleHistoryForward]);
+
   useKeyboardShortcuts(
     {
       serverDown,
@@ -365,9 +487,14 @@ export default function App() {
       showNotifications: notifications.showNotifications,
       showSearch,
       hasScheme: Boolean(session.scheme),
+      canUndo: schemeHistory.canGoBack,
+      canRedo: schemeHistory.canGoForward,
+      showActionHistory,
     },
     () => setShowSearch(true),
     toggleFullscreen,
+    () => { void handleUndo(); },
+    () => { void handleRedo(); },
   );
 
   const closeRegionDetails = useCallback(() => {
@@ -407,13 +534,13 @@ export default function App() {
   const onNodeSelect = useCallback((id: string) => {
     camera.setSelectedId(id);
     collapse.setCollapseTarget(id);
-  }, [camera, collapse]);
+  }, [camera.setSelectedId, collapse.setCollapseTarget]);
 
   const onNodeOpen = useCallback((id: string) => {
     camera.setSelectedId(id);
     collapse.setCollapseTarget(id);
     setDetailsNav({ stack: [id], index: 0 });
-  }, [camera, collapse]);
+  }, [camera.setSelectedId, collapse.setCollapseTarget]);
 
   const onCopyName = useCallback((id: string) => {
     navigator.clipboard.writeText(id);
@@ -439,7 +566,7 @@ export default function App() {
   const clearSelection = useCallback(() => {
     camera.clearSelection();
     collapse.setCollapseTarget(null);
-  }, [camera, collapse]);
+  }, [camera.clearSelection, collapse.setCollapseTarget]);
 
   const handleRelayout = useCallback(() => {
     if (!session.scheme) return;
@@ -580,6 +707,11 @@ export default function App() {
           onOpenChangelog={whatsNew.openChangelog}
           onResetScheme={() => session.setShowResetConfirm(true)}
           onClearScheme={() => session.setShowClearConfirm(true)}
+          canHistoryBack={schemeHistory.canGoBack}
+          canHistoryForward={schemeHistory.canGoForward}
+          onHistoryBack={() => { void handleHistoryBack(); }}
+          onHistoryForward={() => { void handleHistoryForward(); }}
+          onOpenHistory={() => setShowActionHistory(true)}
         />
       )}
 
@@ -628,6 +760,8 @@ export default function App() {
               layoutRequest={camera.layoutRequest}
               locked={camera.graphLocked}
               conflictRegionIds={conflictRegionIds}
+              resolvedConflictRegionIds={resolvedConflictRegionIds}
+              resolvedConflictEdgeKeys={resolvedConflictEdgeKeys}
               flagHighlight={highlights.flagHighlight}
               attentionBrightIds={highlights.attentionBrightIds}
               attentionBrightEdgeKeys={highlights.attentionBrightEdgeKeys}
@@ -707,6 +841,7 @@ export default function App() {
           onRequestRename={(id) => setRenameTargetId(id)}
           onUpdatePriority={mutations.handleUpdatePriority}
           onUpdateMembers={mutations.handleUpdateMembers}
+          runSaveBatch={runSaveBatch}
           onShowFlagOnScheme={(flagName) => {
             closeRegionDetails();
             highlights.applyHighlightFlag(flagName);
@@ -727,6 +862,25 @@ export default function App() {
         </div>
       )}
       {whatsNew.dialog}
+      {showActionHistory && session.scheme && (
+        <ActionHistoryDialog
+          entries={schemeHistory.entries}
+          currentIndex={schemeHistory.currentIndex}
+          onSelect={(index) => { void navigateHistory(index); }}
+          onClose={() => setShowActionHistory(false)}
+        />
+      )}
+      {showHistoryBranchConfirm && (
+        <ConfirmDialog
+          title={t('history.branchConfirmTitle')}
+          message={t('history.branchConfirmBody')}
+          confirmLabel={t('history.branchConfirmYes')}
+          cancelLabel={t('history.branchConfirmNo')}
+          confirmClass="warning"
+          onConfirm={confirmHistoryBranch}
+          onCancel={cancelHistoryBranch}
+        />
+      )}
     </div>
   );
 }

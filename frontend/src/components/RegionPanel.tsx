@@ -51,6 +51,8 @@ interface RegionPanelProps {
   ) => Promise<void>;
   /** Open flag highlight scheme for a saved flag name. */
   onShowFlagOnScheme?: (flagName: string) => void;
+  /** Batch region panel save into one history entry. */
+  runSaveBatch?: (regionId: string, fn: () => Promise<void>) => Promise<void>;
 }
 
 type IntersectSortKey = 'id' | 'blocks' | 'percent';
@@ -251,6 +253,7 @@ export function RegionPanel({
   onUpdatePriority,
   onUpdateMembers,
   onShowFlagOnScheme,
+  runSaveBatch,
 }: RegionPanelProps) {
   const { t } = useI18n();
   const flagsByName = useMemo(
@@ -259,7 +262,7 @@ export function RegionPanel({
   );
 
   const isTemp = isTemporaryRegion(region);
-  const canEditGeometry = Boolean(onUpdateGeometry) && (isTemp || region.type !== 'global');
+  const canEditGeometry = Boolean(onUpdateGeometry);
 
   const draft = useRegionDraftState({
     region,
@@ -271,6 +274,9 @@ export function RegionPanel({
     onUpdateGeometry,
     onUpdatePriority,
     onUpdateMembers,
+    runSaveBatch: runSaveBatch
+      ? (fn) => runSaveBatch(region.id, fn)
+      : undefined,
   });
 
   const {

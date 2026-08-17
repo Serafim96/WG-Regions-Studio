@@ -23,6 +23,23 @@ export function keepUpdateNotifications(list: AppNotification[]): AppNotificatio
   return list.filter((n) => n.kind === 'update');
 }
 
+const MAX_VISIBLE_TOASTS = 5;
+
+/** Keep at most five conflict toasts on screen. */
+export function trimNotificationToasts(toasts: AppNotification[]): AppNotification[] {
+  return toasts.slice(0, MAX_VISIBLE_TOASTS);
+}
+
+/** Stable key for toast dedupe — spatial amb/res transitions share one toast. */
+export function notificationToastDedupeKey(
+  n: Pick<AppNotification, 'kind' | 'conflictKey' | 'flagName' | 'aId' | 'bId' | 'relation'>,
+): string {
+  if (n.kind === 'spatial' && n.flagName && n.aId && n.bId && n.relation) {
+    return `sp|${n.flagName}|${n.aId}|${n.bId}|${n.relation}`;
+  }
+  return n.conflictKey;
+}
+
 export function rememberDismissedUpdate(n: AppNotification) {
   if (n.kind !== 'update') return;
   const latest = n.params?.latest;

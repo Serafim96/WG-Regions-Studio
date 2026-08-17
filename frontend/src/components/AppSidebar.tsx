@@ -29,6 +29,11 @@ export type AppSidebarProps = {
   onOpenChangelog: () => void;
   onResetScheme: () => void;
   onClearScheme: () => void;
+  canHistoryBack: boolean;
+  canHistoryForward: boolean;
+  onHistoryBack: () => void;
+  onHistoryForward: () => void;
+  onOpenHistory: () => void;
 };
 
 export function AppSidebar({
@@ -54,6 +59,11 @@ export function AppSidebar({
   onOpenChangelog,
   onResetScheme,
   onClearScheme,
+  canHistoryBack,
+  canHistoryForward,
+  onHistoryBack,
+  onHistoryForward,
+  onOpenHistory,
 }: AppSidebarProps) {
   const { t, locale, setLocale } = useI18n();
   const { theme, toggleTheme } = useTheme();
@@ -184,6 +194,40 @@ export function AppSidebar({
             </span>,
             document.body,
           )}
+        </section>
+        <section className="toolbar-section toolbar-section--history">
+          <div className="scheme-history-nav">
+            <button
+              type="button"
+              className="scheme-history-open"
+              onClick={onOpenHistory}
+              disabled={!hasScheme || schemeActionsDisabled || Boolean(busyMessage)}
+            >
+              <span aria-hidden>🕘 </span>{t('history.open')}
+            </button>
+            <div className="scheme-history-arrows">
+              <button
+              type="button"
+              className="icon-btn"
+              disabled={!hasScheme || schemeActionsDisabled || !canHistoryBack || Boolean(busyMessage)}
+              title={t('history.back')}
+              aria-label={t('history.back')}
+              onClick={onHistoryBack}
+            >
+                ←
+              </button>
+              <button
+              type="button"
+              className="icon-btn"
+              disabled={!hasScheme || schemeActionsDisabled || !canHistoryForward || Boolean(busyMessage)}
+              title={t('history.forward')}
+              aria-label={t('history.forward')}
+              onClick={onHistoryForward}
+            >
+                →
+            </button>
+            </div>
+          </div>
         </section>
         <section className="toolbar-section">
           <button type="button" onClick={onOpenFlagsManager} disabled={schemeActionsDisabled}>

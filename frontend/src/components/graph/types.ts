@@ -8,6 +8,8 @@ export type FlagHighlightState = {
   intersectPartialEdgeKeys?: Set<string>;
   conflictIds?: Set<string>;
   conflictEdgeKeys?: Set<string>;
+  resolvedConflictIds?: Set<string>;
+  resolvedConflictEdgeKeys?: Set<string>;
   valueLabels?: Map<string, { text: string; defining: boolean }>;
 } | null;
 
