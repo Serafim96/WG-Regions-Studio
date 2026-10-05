@@ -1,0 +1,269 @@
+# Demo WorldGuard regions.yml for cross-flag conflict checks in WG Regions Studio.
+# Load via file picker. Each cuboid is named after the rule it should trigger.
+# Categories: overridden (A*), negated (B*), range (C1), hazard (C2), ignored (D1),
+# leak (E1), dead (F*). G1 (exit-override on overlap) is not implemented yet.
+#
+# Layout: 20×20×20 cubes on a grid so only demo_overlap_* intersect.
+
+regions:
+  __global__:
+    type: global
+    priority: 0
+    flags: {}
+    owners: {}
+    members: {}
+
+  # --- A. overridden: narrow allow blocked by wide deny ---
+
+  demo_A1_interact_vs_use:
+    type: cuboid
+    priority: 0
+    flags:
+      interact: deny
+      use: allow
+    owners: {}
+    members: {}
+    min: {x: 0, y: 64, z: 0}
+    max: {x: 19, y: 83, z: 19}
+
+  demo_A2_break_vs_tnt:
+    type: cuboid
+    priority: 0
+    flags:
+      block-break: deny
+      tnt: allow
+    owners: {}
+    members: {}
+    min: {x: 40, y: 64, z: 0}
+    max: {x: 59, y: 83, z: 19}
+
+  demo_A3_place_vs_lighter:
+    type: cuboid
+    priority: 0
+    flags:
+      block-place: deny
+      lighter: allow
+    owners: {}
+    members: {}
+    min: {x: 80, y: 64, z: 0}
+    max: {x: 99, y: 83, z: 19}
+
+  demo_A4_lighter_vs_firespread:
+    type: cuboid
+    priority: 0
+    flags:
+      lighter: deny
+      fire-spread: allow
+    owners: {}
+    members: {}
+    min: {x: 120, y: 64, z: 0}
+    max: {x: 139, y: 83, z: 19}
+
+  # --- B. negated: invincibility / creative cancels damage flags ---
+
+  demo_B1_invincible_vs_pvp:
+    type: cuboid
+    priority: 0
+    flags:
+      invincible: allow
+      pvp: allow
+    owners: {}
+    members: {}
+    min: {x: 0, y: 64, z: 40}
+    max: {x: 19, y: 83, z: 59}
+
+  demo_B2_creative_vs_heal:
+    type: cuboid
+    priority: 0
+    flags:
+      game-mode: creative
+      heal-amount: -1
+    owners: {}
+    members: {}
+    min: {x: 40, y: 64, z: 40}
+    max: {x: 59, y: 83, z: 59}
+
+  # --- C. range / hazard ---
+
+  demo_C1_heal_range:
+    type: cuboid
+    priority: 0
+    flags:
+      heal-amount: 1
+      heal-min-health: 12
+      heal-max-health: 4
+    owners: {}
+    members: {}
+    min: {x: 80, y: 64, z: 40}
+    max: {x: 99, y: 83, z: 59}
+
+  demo_C1_feed_range:
+    type: cuboid
+    priority: 0
+    flags:
+      feed-amount: 1
+      feed-min-hunger: 15
+      feed-max-hunger: 5
+    owners: {}
+    members: {}
+    min: {x: 120, y: 64, z: 40}
+    max: {x: 139, y: 83, z: 59}
+
+  demo_C2_heal_hazard:
+    type: cuboid
+    priority: 0
+    flags:
+      heal-delay: 0
+      heal-amount: -2
+    owners: {}
+    members: {}
+    min: {x: 160, y: 64, z: 40}
+    max: {x: 179, y: 83, z: 59}
+
+  demo_C2_feed_hazard:
+    type: cuboid
+    priority: 0
+    flags:
+      feed-delay: 0
+      feed-amount: -2
+    owners: {}
+    members: {}
+    min: {x: 200, y: 64, z: 40}
+    max: {x: 219, y: 83, z: 59}
+
+  # --- D. ignored: whitelist wins ---
+
+  demo_D1_cmds:
+    type: cuboid
+    priority: 0
+    flags:
+      allowed-cmds: [/spawn, /home]
+      blocked-cmds: [/op, /spawn]
+    owners: {}
+    members: {}
+    min: {x: 0, y: 64, z: 80}
+    max: {x: 19, y: 83, z: 99}
+
+  # --- E. leak: exit deny without teleport deny ---
+
+  demo_E1_exit_leak:
+    type: cuboid
+    priority: 0
+    flags:
+      exit: deny
+    owners: {}
+    members: {}
+    min: {x: 40, y: 64, z: 80}
+    max: {x: 59, y: 83, z: 99}
+
+  # --- F. dead: flags with no effect ---
+
+  demo_F1_entry_message:
+    type: cuboid
+    priority: 0
+    flags:
+      entry-deny-message: You shall not pass
+    owners: {}
+    members: {}
+    min: {x: 80, y: 64, z: 80}
+    max: {x: 99, y: 83, z: 99}
+
+  demo_F2_exit_message:
+    type: cuboid
+    priority: 0
+    flags:
+      exit-deny-message: Stay a while
+    owners: {}
+    members: {}
+    min: {x: 120, y: 64, z: 80}
+    max: {x: 139, y: 83, z: 99}
+
+  demo_F2_exit_teleport_dead:
+    type: cuboid
+    priority: 0
+    flags:
+      exit-via-teleport: deny
+    owners: {}
+    members: {}
+    min: {x: 160, y: 64, z: 80}
+    max: {x: 179, y: 83, z: 99}
+
+  demo_F3_heal_extras:
+    type: cuboid
+    priority: 0
+    flags:
+      heal-delay: 5
+      heal-min-health: 2
+      heal-max-health: 18
+    owners: {}
+    members: {}
+    min: {x: 200, y: 64, z: 80}
+    max: {x: 219, y: 83, z: 99}
+
+  demo_F3_feed_extras:
+    type: cuboid
+    priority: 0
+    flags:
+      feed-delay: 5
+      feed-min-hunger: 2
+      feed-max-hunger: 18
+    owners: {}
+    members: {}
+    min: {x: 240, y: 64, z: 80}
+    max: {x: 259, y: 83, z: 99}
+
+  demo_F4_deny_spawn_redundant:
+    type: cuboid
+    priority: 0
+    flags:
+      mob-spawning: deny
+      deny-spawn: [creeper, zombie]
+    owners: {}
+    members: {}
+    min: {x: 280, y: 64, z: 80}
+    max: {x: 299, y: 83, z: 99}
+
+  # --- Parent inheritance (still A1 on the child) ---
+
+  demo_A1_parent:
+    type: cuboid
+    priority: 0
+    flags:
+      interact: deny
+    owners: {}
+    members: {}
+    min: {x: 0, y: 64, z: 120}
+    max: {x: 39, y: 83, z: 159}
+
+  demo_A1_child:
+    type: cuboid
+    priority: 1
+    flags:
+      use: allow
+    owners: {}
+    members: {}
+    parent: demo_A1_parent
+    min: {x: 10, y: 64, z: 130}
+    max: {x: 29, y: 83, z: 149}
+
+  # --- Overlap-only A1 (neither region alone has both flags) ---
+
+  demo_overlap_left:
+    type: cuboid
+    priority: 0
+    flags:
+      interact: deny
+    owners: {}
+    members: {}
+    min: {x: 0, y: 64, z: 180}
+    max: {x: 29, y: 83, z: 209}
+
+  demo_overlap_right:
+    type: cuboid
+    priority: 0
+    flags:
+      use: allow
+    owners: {}
+    members: {}
+    min: {x: 15, y: 64, z: 190}
+    max: {x: 44, y: 83, z: 219}

@@ -150,6 +150,17 @@ function compareSpatial(a: SpatialConflict, b: SpatialConflict): number {
   return compareNatural(aFirst, bFirst) || compareNatural(aSecond, bSecond);
 }
 
+/** Category header: thin lines above and below the title. */
+function CategoryBand({ label }: { label: string }) {
+  return (
+    <div className="flag-conflicts-category-band" role="separator" aria-label={label}>
+      <span className="flag-conflicts-category-band-line" aria-hidden />
+      <span className="flag-conflicts-category-band-label">{label}</span>
+      <span className="flag-conflicts-category-band-line" aria-hidden />
+    </div>
+  );
+}
+
 export function FlagConflictsDialog({
   scheme,
   result,
@@ -321,68 +332,72 @@ export function FlagConflictsDialog({
                     {t('flagConflicts.entryCount', { count: visibleCross.length })}
                     <HintBubble text={t('flagConflicts.crossHint')} />
                   </p>
-                  {crossByCategory.map(([category, items]) => (
-                    <div key={category} className="flag-conflicts-group">
-                      <h3>{t(`flagConflicts.category.${category}` as TranslationKey)}</h3>
-                      <ul>
-                        {items.map((c) => (
-                          <li key={`${c.scope}|${c.regionId}|${c.otherRegionId ?? ''}|${c.ruleId}|${c.flags.map((f) => f.name).join(',')}`}>
-                            <div>
-                              <strong>{t(`flagConflicts.rule.${c.ruleId}` as TranslationKey)}</strong>
-                              {' · '}
-                              <button type="button" className="region-link" onClick={() => onFocusRegion(c.regionId)}>
-                                {c.regionId}
-                              </button>
-                              {c.otherRegionId && (
-                                <>
-                                  {' '}
-                                  {c.relation === 'contains'
-                                    ? t('flagConflicts.relationContains')
-                                    : t('flagConflicts.relationIntersects')}
-                                  {' '}
-                                  <button type="button" className="region-link" onClick={() => onFocusRegion(c.otherRegionId!)}>
-                                    {c.otherRegionId}
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                            <div>
-                              {c.flags.map((f) => `${f.name}=${formatValue(f.value)} (${f.definedBy ?? c.regionId})`).join(' · ')}
-                            </div>
-                            <div className="flag-conflicts-outcome">{t(c.reasonKey as TranslationKey)}</div>
-                            <div className="modal-actions">
-                              <button
-                                type="button"
-                                className="primary"
-                                onClick={() => {
-                                  if (c.otherRegionId && c.relation && onShowSpatialOnScheme) {
-                                    onShowSpatialOnScheme({
-                                      flagName: c.flags[0]?.name ?? c.ruleId,
-                                      relation: c.relation,
-                                      aId: c.regionId,
-                                      bId: c.otherRegionId,
-                                      aPriority: 0,
-                                      bPriority: 0,
-                                      aValue: c.flags[0]?.value,
-                                      bValue: c.flags[1]?.value,
-                                      winnerId: undefined,
-                                      winnerValue: undefined,
-                                      ambiguous: false,
-                                      commonAncestorId: null,
-                                    });
-                                    return;
-                                  }
-                                  onFocusRegion(c.regionId);
-                                }}
-                              >
-                                {t('flagConflicts.showOnScheme')}
-                              </button>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ))}
+                  {crossByCategory.map(([category, items]) => {
+                    const categoryLabel = t(`flagConflicts.category.${category}` as TranslationKey);
+                    return (
+                      <div key={category} className="flag-conflicts-group flag-conflicts-group--cross">
+                        <CategoryBand label={categoryLabel} />
+                        <ul>
+                          {items.map((c) => (
+                            <li key={`${c.scope}|${c.regionId}|${c.otherRegionId ?? ''}|${c.ruleId}|${c.flags.map((f) => f.name).join(',')}`}>
+                              <div>
+                                <strong>{t(`flagConflicts.rule.${c.ruleId}` as TranslationKey)}</strong>
+                                {' · '}
+                                <button type="button" className="region-link" onClick={() => onFocusRegion(c.regionId)}>
+                                  {c.regionId}
+                                </button>
+                                {c.otherRegionId && (
+                                  <>
+                                    {' '}
+                                    {c.relation === 'contains'
+                                      ? t('flagConflicts.relationContains')
+                                      : t('flagConflicts.relationIntersects')}
+                                    {' '}
+                                    <button type="button" className="region-link" onClick={() => onFocusRegion(c.otherRegionId!)}>
+                                      {c.otherRegionId}
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                              <div>
+                                {c.flags.map((f) => `${f.name}=${formatValue(f.value)} (${f.definedBy ?? c.regionId})`).join(' · ')}
+                              </div>
+                              <div className="flag-conflicts-outcome">{t(c.reasonKey as TranslationKey)}</div>
+                              <div className="modal-actions">
+                                <button
+                                  type="button"
+                                  className="primary"
+                                  onClick={() => {
+                                    if (c.otherRegionId && c.relation && onShowSpatialOnScheme) {
+                                      onShowSpatialOnScheme({
+                                        flagName: c.flags[0]?.name ?? c.ruleId,
+                                        relation: c.relation,
+                                        aId: c.regionId,
+                                        bId: c.otherRegionId,
+                                        aPriority: 0,
+                                        bPriority: 0,
+                                        aValue: c.flags[0]?.value,
+                                        bValue: c.flags[1]?.value,
+                                        winnerId: undefined,
+                                        winnerValue: undefined,
+                                        ambiguous: false,
+                                        commonAncestorId: null,
+                                      });
+                                      return;
+                                    }
+                                    onFocusRegion(c.regionId);
+                                  }}
+                                >
+                                  {t('flagConflicts.showOnScheme')}
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="flag-conflicts-category-end" aria-hidden />
+                      </div>
+                    );
+                  })}
                 </>
               ) : tab === 'overwrites' ? (
                 <>

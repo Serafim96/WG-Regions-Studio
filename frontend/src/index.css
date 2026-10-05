@@ -3809,14 +3809,57 @@ button.success:hover:not(:disabled) {
   margin-bottom: 16px;
 }
 
+.flag-conflicts-group--cross {
+  margin-bottom: 8px;
+}
+
 .flag-conflicts-group h3 {
   margin: 8px 0;
   font-size: 0.95rem;
 }
 
+.flag-conflicts-category-band {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  margin: 14px 0 10px;
+}
+
+.flag-conflicts-group--cross > .flag-conflicts-category-band:first-child {
+  margin-top: 4px;
+}
+
+.flag-conflicts-category-end {
+  margin: 10px 0 4px;
+  height: 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-border-input) 85%, transparent);
+}
+
+.flag-conflicts-category-band-line {
+  display: block;
+  height: 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-border-input) 85%, transparent);
+}
+
+.flag-conflicts-category-band-label {
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+  line-height: 1.3;
+}
+
 .flag-conflicts-group ul {
   margin: 0;
   padding-left: 18px;
+}
+
+.flag-conflicts-group ul > li + li {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--color-border-input) 70%, transparent);
 }
 
 .flag-conflicts-outcome {
