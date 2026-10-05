@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [Unreleased]
+
+### Added
+
+- Flag dialog tab **Flag interactions**: warnings when different flags cancel each other on one region or on an overlap (for example `interact deny` together with `use allow`). They do not block YAML export.
+
 ## [2.0.17] — 2026-08-17
 
 ### Added
