@@ -2,6 +2,7 @@ import { localizedFlagDescription } from '../i18n/flagDescription';
 import type { Locale } from '../i18n/I18nContext';
 import type { FlagInfo, RegionData, Scheme } from '../types';
 import type { FlagConflictsResult, FlagOverwrite, SpatialConflict } from './flagConflicts';
+import type { CrossFlagConflict } from './crossFlagRules';
 import { compareNatural } from './naturalSort';
 
 /**
@@ -114,12 +115,27 @@ export interface FlagConflictReport {
     spatialAmbiguousCount: number;
     spatialResolvedCount: number;
     regionCount: number;
+    crossFlagCount: number;
   };
   hardErrors: string[];
   flags: Record<string, { type: string | null; description: string | null }>;
   regions: Record<string, FlagConflictExportRegion>;
   overwrites: FlagConflictExportOverwrite[];
   spatialConflicts: FlagConflictExportSpatial[];
+  crossFlagConflicts: FlagConflictExportCross[];
+}
+
+export interface FlagConflictExportCross {
+  ruleId: string;
+  category: string;
+  severity: 'warning';
+  classification: ExplicitLevel;
+  scope: 'region' | 'overlap';
+  regionId: string;
+  otherRegionId: string | null;
+  relation: 'intersects' | 'contains' | null;
+  reasonKey: string;
+  flags: { name: string; value: unknown; definedBy: string | null }[];
 }
 
 const GUIDE_RU = [
@@ -130,6 +146,7 @@ const GUIDE_RU = [
   'spatialConflicts — регионы пересекаются в мире, не являются парой родитель/потомок, и действующие значения одного флага различаются. Побеждает больший priority, даже если там allow, а у более низкого deny. У флага типа state при равном максимальном priority итог deny, если deny есть среди этих значений, иначе allow: classification = предупреждение, экспорт YAML не блокируется. У остальных типов равный priority и разные значения — classification = ошибка, победитель не определён, экспорт блокируется.',
   'definedBy — регион, который локально задаёт действующее значение (сам регион или предок). Править нужно флаг у definedBy, а не у наследника, если localValue=null.',
   'relation=contains: regionA полностью внутри regionB. relation=intersects: частичное пересечение, overlapBlocks — общий объём в блоках. regions — геометрия, parent, priority и локальные флаги всех упомянутых регионов.',
+  'crossFlagConflicts — разные флаги, которые вместе меняют действие друг друга. scope=region: действующие флаги одного региона. scope=overlap: объединённые действующие значения пересекающихся регионов, которых нет у каждого по отдельности. classification всегда предупреждение, экспорт YAML не блокируется. reasonKey — ключ пояснения.',
 ];
 
 const GUIDE_EN = [
@@ -140,6 +157,7 @@ const GUIDE_EN = [
   'spatialConflicts: regions overlap in the world, are not a parent/child pair, and their effective values for one flag differ. Higher priority wins, even when that value is allow and a lower priority has deny. For a state flag at equal max priority, deny wins if any of those values is deny, otherwise allow: classification = warning, YAML export is not blocked. For every other flag type, equal priority and different values mean classification = error, no defined winner, and YAML export is blocked.',
   'definedBy is the region that locally assigns the effective value (itself or an ancestor). Edit the flag on definedBy, not on the inheriting region, when localValue is null.',
   'relation=contains: regionA is fully inside regionB. relation=intersects: partial overlap; overlapBlocks is the shared volume in blocks. regions holds geometry, parent, priority, and local flags for every region mentioned.',
+  'crossFlagConflicts: different flags that change each other\'s effect. scope=region uses one region\'s effective flags. scope=overlap uses the combined effective values of overlapping regions and omits hits already reported for either region alone. classification is always a warning and does not block YAML export. reasonKey identifies the explanation.',
 ];
 
 export function flagConflictExportFileName(sourcePath: string): string {
@@ -304,9 +322,36 @@ export function buildFlagConflictReport(
     };
   });
 
+  const crossRows: FlagConflictExportCross[] = (filters.warnings ? result.crossFlagConflicts : []).map(
+    (item: CrossFlagConflict) => {
+      mentioned.add(item.regionId);
+      if (item.otherRegionId) mentioned.add(item.otherRegionId);
+      for (const flag of item.flags) {
+        if (flag.definedBy) mentioned.add(flag.definedBy);
+      }
+      return {
+        ruleId: item.ruleId,
+        category: item.category,
+        severity: 'warning' as const,
+        classification: WARNING_LEVEL,
+        scope: item.scope,
+        regionId: item.regionId,
+        otherRegionId: item.otherRegionId ?? null,
+        relation: item.relation ?? null,
+        reasonKey: item.reasonKey,
+        flags: item.flags.map((flag) => ({
+          name: flag.name,
+          value: flag.value,
+          definedBy: flag.definedBy,
+        })),
+      };
+    },
+  );
+
   const flagNames = new Set<string>([
     ...overwriteRows.map((row) => row.flag),
     ...spatialRows.map((row) => row.flag),
+    ...crossRows.flatMap((row) => row.flags.map((flag) => flag.name)),
   ]);
   const flags: FlagConflictReport['flags'] = {};
   for (const name of [...flagNames].sort(compareNatural)) {
@@ -343,12 +388,14 @@ export function buildFlagConflictReport(
       spatialAmbiguousCount: spatialRows.filter((row) => row.ambiguous).length,
       spatialResolvedCount: spatialRows.filter((row) => !row.ambiguous).length,
       regionCount: Object.keys(regions).length,
+      crossFlagCount: crossRows.length,
     },
     hardErrors: [...result.hardErrors],
     flags,
     regions,
     overwrites: overwriteRows,
     spatialConflicts: spatialRows,
+    crossFlagConflicts: crossRows,
   };
 }
 
