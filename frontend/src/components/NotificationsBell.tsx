@@ -45,14 +45,46 @@ function selectionHasText(): boolean {
   return Boolean(sel && sel.toString().trim().length > 0);
 }
 
+function typeKey(n: Pick<AppNotification, 'level' | 'kind'>): string {
+  return `${n.level}:${n.kind}`;
+}
+
+const TYPE_LABEL: Record<string, TranslationKey> = {
+  'error:spatial': 'notifications.type.spatialError',
+  'warning:spatial': 'notifications.type.spatialWarning',
+  'warning:overwrite': 'notifications.type.overwrite',
+  'warning:orphan': 'notifications.type.orphan',
+  'warning:height': 'notifications.type.height',
+  'error:invalidId': 'notifications.type.invalidId',
+  'error:cycle': 'notifications.type.cycle',
+  'error:incompleteManual': 'notifications.type.incompleteManual',
+  'warning:update': 'notifications.type.update',
+  'warning:info': 'notifications.type.info',
+  'error:info': 'notifications.type.info',
+};
+
+const ERROR_TYPE_KEYS = [
+  'error:spatial',
+  'error:invalidId',
+  'error:cycle',
+  'error:incompleteManual',
+] as const;
+
+const WARNING_TYPE_KEYS = [
+  'warning:spatial',
+  'warning:overwrite',
+  'warning:orphan',
+  'warning:height',
+] as const;
+
 interface Props {
   open: boolean;
   notifications: AppNotification[];
   onToggle: () => void;
   onClose: () => void;
   onRefresh: () => void;
-  onMarkAllRead: (level: NotificationLevel) => void;
-  onClear: () => void;
+  onMarkAllRead: (ids: string[]) => void;
+  onClear: (ids: string[]) => void;
   onDismiss: (id: string) => void;
   onOpenItem: (n: AppNotification) => void;
 }
@@ -70,14 +102,39 @@ export function NotificationsBell({
 }: Props) {
   const { t } = useI18n();
   const [tab, setTab] = useState<NotificationLevel>('error');
+  const [hiddenTypes, setHiddenTypes] = useState<Set<string>>(() => new Set());
 
-  const errors = notifications.filter((n) => n.level === 'error');
-  const warnings = notifications.filter((n) => n.level === 'warning');
+  const shown = (n: AppNotification) => !hiddenTypes.has(typeKey(n));
+  const errorsAll = notifications.filter((n) => n.level === 'error');
+  const warningsAll = notifications.filter((n) => n.level === 'warning');
+  const errors = errorsAll.filter(shown);
+  const warnings = warningsAll.filter(shown);
   const unreadErrors = errors.filter((n) => !n.read).length;
   const unreadWarnings = warnings.filter((n) => !n.read).length;
   const unreadOnTab = tab === 'error' ? unreadErrors : unreadWarnings;
   const activeList = tab === 'error' ? errors : warnings;
+  const activeAll = tab === 'error' ? errorsAll : warningsAll;
   const hasErrors = errors.length > 0;
+
+  const typeCounts = new Map<string, number>();
+  for (const n of activeAll) {
+    const key = typeKey(n);
+    typeCounts.set(key, (typeCounts.get(key) ?? 0) + 1);
+  }
+  const catalog: readonly string[] = tab === 'error' ? ERROR_TYPE_KEYS : WARNING_TYPE_KEYS;
+  const typeRows = [
+    ...catalog,
+    ...[...typeCounts.keys()].filter((key) => !catalog.includes(key) && key.startsWith(`${tab}:`)),
+  ];
+
+  const toggleType = (key: string) => {
+    setHiddenTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const btnClass = hasErrors
     ? 'graph-ctrl-btn graph-ctrl-btn--error-active'
@@ -103,6 +160,7 @@ export function NotificationsBell({
       </button>
       {open && (
         <div className="notifications-panel" role="dialog" aria-label={t('notifications.title')}>
+          <div className="notifications-panel-top">
           <header>
             <div className="notifications-header-title">
               <h3>{t('notifications.title')}</h3>
@@ -144,7 +202,7 @@ export function NotificationsBell({
             <button
               type="button"
               className="notifications-action-btn"
-              onClick={() => onMarkAllRead(tab)}
+              onClick={() => onMarkAllRead(activeList.map((n) => n.id))}
               disabled={unreadOnTab === 0}
             >
               {t('notifications.markRead')}
@@ -153,13 +211,32 @@ export function NotificationsBell({
               <button
                 type="button"
                 className="notifications-action-btn"
-                onClick={onClear}
+                onClick={() => onClear(activeList.map((n) => n.id))}
                 disabled={warnings.length === 0}
               >
                 {t('notifications.clear')}
               </button>
             )}
           </div>
+          {typeRows.length > 0 && (
+            <div className="notifications-type-filters">
+              {typeRows.map((key) => (
+                <label key={key}>
+                  <input
+                    type="checkbox"
+                    checked={!hiddenTypes.has(key)}
+                    onChange={() => toggleType(key)}
+                  />
+                  <span>
+                    {TYPE_LABEL[key] ? t(TYPE_LABEL[key]) : key}
+                    {` (${typeCounts.get(key) ?? 0})`}
+                  </span>
+                </label>
+              ))}
+            </div>
+          )}
+          </div>
+          <div className="notifications-panel-list">
           {activeList.length === 0 ? (
             <p className="notifications-empty">
               {tab === 'error' ? t('notifications.emptyErrors') : t('notifications.emptyWarnings')}
@@ -210,6 +287,7 @@ export function NotificationsBell({
               ))}
             </ul>
           )}
+          </div>
         </div>
       )}
     </div>

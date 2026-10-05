@@ -61,6 +61,8 @@ export interface FlagHighlight {
   /** Priority-resolved spatial-conflict participants. */
   resolvedConflictIds?: Set<string>;
   resolvedConflictEdgeKeys?: Set<string>;
+  /** Winner text on a resolved conflict edge (`relation-source-target` → value). */
+  resolvedEdgeLabels?: Map<string, string>;
   /** Flag values to show next to highlighted nodes (skipped for set-types). */
   valueLabels?: Map<string, FlagValueLabel>;
 }
@@ -371,6 +373,13 @@ export function buildFlagHighlight(
   };
 }
 
+function edgeWinnerLabel(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  const text = formatFlagValueShort(value);
+  if (!text) return null;
+  return text.length > MAX_VALUE_LABEL_LEN ? `${text.slice(0, MAX_VALUE_LABEL_LEN - 1)}…` : text;
+}
+
 /** Attach all spatial conflicts for `flagName` onto an existing highlight. */
 export function attachFlagConflicts(
   highlight: FlagHighlight,
@@ -380,6 +389,7 @@ export function attachFlagConflicts(
     aId: string;
     bId: string;
     ambiguous: boolean;
+    winnerValue?: unknown;
   }>,
   flagName: string,
 ): FlagHighlight {
@@ -387,6 +397,7 @@ export function attachFlagConflicts(
   const conflictEdgeKeys = new Set<string>(highlight.conflictEdgeKeys);
   const resolvedConflictIds = new Set<string>(highlight.resolvedConflictIds);
   const resolvedConflictEdgeKeys = new Set<string>(highlight.resolvedConflictEdgeKeys);
+  const resolvedEdgeLabels = new Map<string, string>(highlight.resolvedEdgeLabels);
   for (const c of conflicts) {
     if (c.flagName !== flagName) continue;
     const edgeKey1 = `${c.relation}-${c.aId}-${c.bId}`;
@@ -401,6 +412,11 @@ export function attachFlagConflicts(
       resolvedConflictIds.add(c.bId);
       resolvedConflictEdgeKeys.add(edgeKey1);
       resolvedConflictEdgeKeys.add(edgeKey2);
+      const label = edgeWinnerLabel(c.winnerValue);
+      if (label) {
+        resolvedEdgeLabels.set(edgeKey1, label);
+        resolvedEdgeLabels.set(edgeKey2, label);
+      }
     }
   }
   if (conflictIds.size === 0 && resolvedConflictIds.size === 0) return highlight;
@@ -408,7 +424,13 @@ export function attachFlagConflicts(
     ...highlight,
     conflictIds,
     conflictEdgeKeys,
-    ...(resolvedConflictIds.size > 0 ? { resolvedConflictIds, resolvedConflictEdgeKeys } : {}),
+    ...(resolvedConflictIds.size > 0
+      ? {
+          resolvedConflictIds,
+          resolvedConflictEdgeKeys,
+          ...(resolvedEdgeLabels.size > 0 ? { resolvedEdgeLabels } : {}),
+        }
+      : {}),
   };
 }
 

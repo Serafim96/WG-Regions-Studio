@@ -168,6 +168,40 @@ export function computeEffectiveFlagsByRegion(
   return memo;
 }
 
+function stateToken(value: unknown): 'allow' | 'deny' | null {
+  if (typeof value !== 'string') return null;
+  const token = value.trim().toLowerCase();
+  if (token === 'allow' || token === 'deny') return token;
+  return null;
+}
+
+/**
+ * Equal max priority on a state flag: deny beats allow.
+ * WorldGuard does not leave this case undefined.
+ * Returns null when the flag is not state or neither allow nor deny is present.
+ */
+function pickStateTie(
+  top: Array<{ id: string; priority: number; value: unknown }>,
+  flagType: string | undefined,
+): {
+  winnerId: string | undefined;
+  winnerValue: unknown | undefined;
+  ambiguous: boolean;
+  undefinedReason?: string;
+} | null {
+  if ((flagType ?? '').trim().toLowerCase() !== 'state') return null;
+  for (const token of ['deny', 'allow'] as const) {
+    const matches = top.filter((c) => stateToken(c.value) === token);
+    if (matches.length === 0) continue;
+    return {
+      winnerId: matches.length === 1 ? matches[0].id : undefined,
+      winnerValue: matches.length === 1 ? matches[0].value : token,
+      ambiguous: false,
+    };
+  }
+  return null;
+}
+
 function pickWinnerForSpatial(
   aId: string,
   bId: string,
@@ -177,6 +211,7 @@ function pickWinnerForSpatial(
   bValue: unknown,
   aPriority: number,
   bPriority: number,
+  flagType: string | undefined,
 ): {
   winnerId: string | undefined;
   winnerValue: unknown | undefined;
@@ -215,8 +250,10 @@ function pickWinnerForSpatial(
     };
   }
 
-  // Equal priority: WorldGuard may pick either region (order / internal rules vary).
-  // Treat as a dangerous superposition → errors in the bell, not a "clear winner".
+  const stateTie = pickStateTie(top, flagType);
+  if (stateTie) return stateTie;
+
+  // Non-state flags: WorldGuard does not define a winner at equal priority.
   return {
     winnerId: undefined,
     winnerValue: undefined,
@@ -260,6 +297,7 @@ export function runWorldGuardFlagChecks({
   const effectiveByRegion = precomputedEffective ?? computeEffectiveFlagsByRegion(scheme);
   const parentMap = buildParentMap(scheme);
   const regionsById = new Map(scheme.regions.map((r) => [r.id, r]));
+  const flagTypeByName = new Map(flagsCatalog.map((f) => [f.name, f.type]));
 
   const overwrites: FlagOverwrite[] = [];
   const spatialConflicts: SpatialConflict[] = [];
@@ -322,6 +360,7 @@ export function runWorldGuardFlagChecks({
         bVal,
         aRegion.priority,
         bRegion.priority,
+        flagTypeByName.get(flagName),
       );
 
       spatialConflicts.push({

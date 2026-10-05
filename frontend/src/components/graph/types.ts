@@ -10,6 +10,7 @@ export type FlagHighlightState = {
   conflictEdgeKeys?: Set<string>;
   resolvedConflictIds?: Set<string>;
   resolvedConflictEdgeKeys?: Set<string>;
+  resolvedEdgeLabels?: Map<string, string>;
   valueLabels?: Map<string, { text: string; defining: boolean }>;
 } | null;
 

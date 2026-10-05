@@ -174,6 +174,7 @@ export function applyHighlightOverlay(
       const isIntersects = edge.hasClass('intersects');
 
       if (flagHighlight) {
+        edge.removeData('winnerLabel');
         if (isHierarchy) {
           const edgeKey = `${source}->${target}`;
           if (flagHighlight.brightEdgeKeys.has(edgeKey)) edge.addClass('flag-path-edge');
@@ -192,6 +193,10 @@ export function applyHighlightOverlay(
             || flagHighlight.resolvedConflictEdgeKeys?.has(edgeKeyAlt)
           ) {
             edge.addClass('flag-conflict-resolved-edge');
+            const winner = flagHighlight.resolvedEdgeLabels?.get(edgeKey)
+              ?? flagHighlight.resolvedEdgeLabels?.get(edgeKeyAlt);
+            if (winner) edge.data('winnerLabel', winner);
+            else edge.removeData('winnerLabel');
           } else if (
             flagHighlight.containedNoInheritEdgeKeys?.has(edgeKey)
             || flagHighlight.containedNoInheritEdgeKeys?.has(edgeKeyAlt)

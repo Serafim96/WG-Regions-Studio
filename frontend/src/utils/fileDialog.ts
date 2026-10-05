@@ -56,11 +56,17 @@ function getWindowWithPicker(): Window & {
   return window;
 }
 
+export type SavePickerType = {
+  description: string;
+  accept: Record<string, string[]>;
+};
+
 /** Save text via the OS save dialog; falls back to a browser download. */
 export async function saveTextWithDialog(
   text: string,
   suggestedName: string,
   mimeType = 'application/json',
+  pickerType?: SavePickerType,
 ): Promise<string> {
   const w = getWindowWithPicker();
   if (typeof w.showSaveFilePicker === 'function') {
@@ -68,7 +74,7 @@ export async function saveTextWithDialog(
       const handle = await w.showSaveFilePicker({
         suggestedName,
         excludeAcceptAllOption: true,
-        types: [{ description: 'MRV scheme', accept: SCHEME_ACCEPT }],
+        types: [pickerType ?? { description: 'MRV scheme', accept: SCHEME_ACCEPT }],
       });
       const writable = await handle.createWritable();
       await writable.write(text);

@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { localizedFlagDescription } from '../i18n/flagDescription';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo, Scheme } from '../types';
 import { ModalOverlay } from './ModalOverlay';
@@ -31,7 +32,7 @@ interface Props {
 export function FlagsCatalogDialog({
   scheme, flagsCatalog, onClose, onAdd, onDelete, onDeleteAll, onImport, onExport,
 }: Props) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const importRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = useState<'standard' | 'custom'>('standard');
   const [query, setQuery] = useState('');
@@ -46,9 +47,9 @@ export function FlagsCatalogDialog({
     const source = tab === 'standard' ? flagsCatalog.filter((flag) => flag.builtin !== false) : custom;
     const needle = query.trim().toLowerCase();
     return needle
-      ? source.filter((flag) => `${flag.name} ${flag.type} ${flag.description}`.toLowerCase().includes(needle))
+      ? source.filter((flag) => `${flag.name} ${flag.type} ${flag.description} ${localizedFlagDescription(flag, locale)}`.toLowerCase().includes(needle))
       : source;
-  }, [custom, flagsCatalog, query, tab]);
+  }, [custom, flagsCatalog, locale, query, tab]);
   const affectedIds = useMemo(() => {
     if (!confirmNames || !scheme) return [];
     const names = new Set(confirmNames);
@@ -119,7 +120,7 @@ export function FlagsCatalogDialog({
             {error && <p className="flags-manager-error">{error}</p>}
             {visible.length === 0 ? <p className="legend-extra">{t('legend.flagsNoMatch')}</p> : (
               <div className="legend-flags-table-wrap"><table className="legend-table legend-flags-table"><thead><tr><th>{t('region.flagName')}</th><th>{t('region.flagType')}</th><th>{t('region.flagDescription')}</th><th /></tr></thead>
-                <tbody>{visible.map((flag) => <tr key={flag.name}><td><code>{flag.name}</code></td><td>{flag.type}</td><td className="legend-flag-desc">{flag.description.trim() || t('flagHelp.unknown')}</td><td>{flag.builtin === false && <button type="button" className="flags-row-remove" title={t('legend.flagsDeleteCustom')} onClick={() => setConfirmNames([flag.name])}>×</button>}</td></tr>)}</tbody>
+                <tbody>{visible.map((flag) => <tr key={flag.name}><td><code>{flag.name}</code></td><td>{flag.type}</td><td className="legend-flag-desc">{localizedFlagDescription(flag, locale).trim() || t('flagHelp.unknown')}</td><td>{flag.builtin === false && <button type="button" className="flags-row-remove" title={t('legend.flagsDeleteCustom')} onClick={() => setConfirmNames([flag.name])}>×</button>}</td></tr>)}</tbody>
               </table></div>
             )}
           </div>

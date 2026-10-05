@@ -2,6 +2,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo } from '../types';
+import { localizedFlagDescription } from '../i18n/flagDescription';
 import { IconFlag } from './GraphControlIcons';
 
 export function findFlagInfo(
@@ -26,7 +27,7 @@ export function FlagHelpButton({
   flagsCatalog,
   placement = 'below',
 }: FlagHelpButtonProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const rootRef = useRef<HTMLSpanElement>(null);
@@ -122,8 +123,8 @@ export function FlagHelpButton({
                 </button>
               </header>
               <p className="flag-help-desc">
-                {info.description?.trim()
-                  ? info.description
+                {localizedFlagDescription(info, locale).trim()
+                  ? localizedFlagDescription(info, locale)
                   : t('flagHelp.unknown')}
               </p>
             </div>,

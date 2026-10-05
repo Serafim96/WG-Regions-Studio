@@ -185,16 +185,6 @@ export default function App() {
     [flagConflicts],
   );
 
-  const resolvedConflictRegionIds = useMemo(
-    () => (flagConflicts ? flagConflicts.resolvedConflictRegionIds : new Set<string>()),
-    [flagConflicts],
-  );
-
-  const resolvedConflictEdgeKeys = useMemo(
-    () => (flagConflicts ? flagConflicts.resolvedConflictEdgeKeys : new Set<string>()),
-    [flagConflicts],
-  );
-
   const schemeHistory = useSchemeHistory();
 
   const ensureCanMutate = useCallback((): Promise<boolean> => {
@@ -740,6 +730,7 @@ export default function App() {
         deleteTarget={deleteTarget}
         showFlagConflictsDialog={showFlagConflictsDialog}
         notificationToasts={notifications.notificationToasts}
+        onStatus={session.setStatus}
         actions={dialogActions}
       />
 
@@ -760,8 +751,6 @@ export default function App() {
               layoutRequest={camera.layoutRequest}
               locked={camera.graphLocked}
               conflictRegionIds={conflictRegionIds}
-              resolvedConflictRegionIds={resolvedConflictRegionIds}
-              resolvedConflictEdgeKeys={resolvedConflictEdgeKeys}
               flagHighlight={highlights.flagHighlight}
               attentionBrightIds={highlights.attentionBrightIds}
               attentionBrightEdgeKeys={highlights.attentionBrightEdgeKeys}
