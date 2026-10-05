@@ -135,9 +135,18 @@ export function useConflictNotifications(
       activeKeys.add(spatialKey(c));
       activeToastKeys.add(spatialToastKey(c));
     }
+    const crossFlags = flagConflicts && flagConflicts.hardErrors.length === 0
+      ? flagConflicts.crossFlagConflicts
+      : [];
+    const crossKey = (c: { ruleId: string; reasonKey: string; regionId: string; otherRegionId?: string; flags: { name: string }[] }) =>
+      `xf|${c.ruleId}|${c.reasonKey}|${c.regionId}|${c.otherRegionId ?? ''}|${c.flags.map((f) => f.name).join(',')}`;
     for (const o of overwrites) {
       activeKeys.add(overwriteKey(o));
       activeToastKeys.add(overwriteKey(o));
+    }
+    for (const c of crossFlags) {
+      activeKeys.add(crossKey(c));
+      activeToastKeys.add(crossKey(c));
     }
     for (const id of orphanIds) {
       activeKeys.add(orphanKey(id));
@@ -318,8 +327,34 @@ export function useConflictNotifications(
       if (c.ambiguous) pushAmbiguous(c, key);
       else pushResolved(c, key);
     }
+    const pushCross = (c: (typeof crossFlags)[number], key: string) => {
+      const item: AppNotification = {
+        id: `${key}|${now}`,
+        createdAt: now,
+        level: 'warning',
+        kind: 'crossFlag',
+        conflictKey: key,
+        titleKey: 'notifications.crossFlagTitle',
+        bodyKey: 'notifications.crossFlagBody',
+        params: {
+          rule: c.ruleId,
+          region: c.otherRegionId ? `${c.regionId} / ${c.otherRegionId}` : c.regionId,
+          flags: c.flags.map((f) => f.name).join(', '),
+        },
+        aId: c.regionId,
+        bId: c.otherRegionId,
+        read: false,
+      };
+      if (!shouldToast(item)) return;
+      rememberToast(item);
+      fresh.push(item);
+    };
+
     for (const o of overwrites) {
       pushOverwrite(o, overwriteKey(o));
+    }
+    for (const c of crossFlags) {
+      pushCross(c, crossKey(c));
     }
     for (const id of orphanIds) {
       pushOrphan(id, orphanKey(id));

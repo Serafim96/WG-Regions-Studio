@@ -7,6 +7,7 @@ export type NotificationLevel = 'error' | 'warning';
 export type NotificationKind =
   | 'spatial'
   | 'overwrite'
+  | 'crossFlag'
   | 'orphan'
   | 'height'
   | 'info'

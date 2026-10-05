@@ -1,6 +1,7 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n/I18nContext';
+import type { TranslationKey } from '../i18n/translations';
 import type { FlagInfo, Scheme } from '../types';
 import {
   buildFlagConflictReport,
@@ -9,6 +10,7 @@ import {
 } from '../utils/flagConflictExport';
 import { isUserCancelled, saveTextWithDialog } from '../utils/fileDialog';
 import type { FlagConflictsResult, FlagOverwrite, SpatialConflict } from '../utils/flagConflicts';
+import type { CrossFlagConflict } from '../utils/crossFlagRules';
 import { compareNatural } from '../utils/naturalSort';
 import { FlagNameWithHelp } from './FlagHelpButton';
 import { ModalOverlay } from './ModalOverlay';
@@ -168,7 +170,7 @@ export function FlagConflictsDialog({
   onStatus?: (message: string) => void;
 }) {
   const { t, locale } = useI18n();
-  const [tab, setTab] = useState<'overwrites' | 'spatial'>('overwrites');
+  const [tab, setTab] = useState<'overwrites' | 'spatial' | 'cross'>('overwrites');
   const [showErrors, setShowErrors] = useState(true);
   const [showWarnings, setShowWarnings] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -219,6 +221,19 @@ export function FlagConflictsDialog({
     () => groupByFlagNameSorted(visibleSpatial, compareSpatial),
     [visibleSpatial],
   );
+  const visibleCross = useMemo(
+    () => (showWarnings ? result.crossFlagConflicts : []),
+    [showWarnings, result.crossFlagConflicts],
+  );
+  const crossByCategory = useMemo(() => {
+    const groups = new Map<string, CrossFlagConflict[]>();
+    for (const item of visibleCross) {
+      const list = groups.get(item.category) ?? [];
+      list.push(item);
+      groups.set(item.category, list);
+    }
+    return [...groups.entries()].sort(([a], [b]) => compareNatural(a, b));
+  }, [visibleCross]);
 
   const hasHardErrors = result.hardErrors.length > 0;
 
@@ -289,9 +304,87 @@ export function FlagConflictsDialog({
                 >
                   {t('flagConflicts.tabSpatial')} ({visibleSpatial.length})
                 </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className={`notifications-tab${tab === 'cross' ? ' active' : ''}`}
+                  aria-selected={tab === 'cross'}
+                  onClick={() => setTab('cross')}
+                >
+                  {t('flagConflicts.tabCross')} ({visibleCross.length})
+                </button>
               </div>
 
-              {tab === 'overwrites' ? (
+              {tab === 'cross' ? (
+                <>
+                  <p className="flag-conflicts-count">
+                    {t('flagConflicts.entryCount', { count: visibleCross.length })}
+                    <HintBubble text={t('flagConflicts.crossHint')} />
+                  </p>
+                  {crossByCategory.map(([category, items]) => (
+                    <div key={category} className="flag-conflicts-group">
+                      <h3>{t(`flagConflicts.category.${category}` as TranslationKey)}</h3>
+                      <ul>
+                        {items.map((c) => (
+                          <li key={`${c.scope}|${c.regionId}|${c.otherRegionId ?? ''}|${c.ruleId}|${c.flags.map((f) => f.name).join(',')}`}>
+                            <div>
+                              <strong>{t(`flagConflicts.rule.${c.ruleId}` as TranslationKey)}</strong>
+                              {' · '}
+                              <button type="button" className="region-link" onClick={() => onFocusRegion(c.regionId)}>
+                                {c.regionId}
+                              </button>
+                              {c.otherRegionId && (
+                                <>
+                                  {' '}
+                                  {c.relation === 'contains'
+                                    ? t('flagConflicts.relationContains')
+                                    : t('flagConflicts.relationIntersects')}
+                                  {' '}
+                                  <button type="button" className="region-link" onClick={() => onFocusRegion(c.otherRegionId!)}>
+                                    {c.otherRegionId}
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            <div>
+                              {c.flags.map((f) => `${f.name}=${formatValue(f.value)} (${f.definedBy ?? c.regionId})`).join(' · ')}
+                            </div>
+                            <div className="flag-conflicts-outcome">{t(c.reasonKey as TranslationKey)}</div>
+                            <div className="modal-actions">
+                              <button
+                                type="button"
+                                className="primary"
+                                onClick={() => {
+                                  if (c.otherRegionId && c.relation && onShowSpatialOnScheme) {
+                                    onShowSpatialOnScheme({
+                                      flagName: c.flags[0]?.name ?? c.ruleId,
+                                      relation: c.relation,
+                                      aId: c.regionId,
+                                      bId: c.otherRegionId,
+                                      aPriority: 0,
+                                      bPriority: 0,
+                                      aValue: c.flags[0]?.value,
+                                      bValue: c.flags[1]?.value,
+                                      winnerId: undefined,
+                                      winnerValue: undefined,
+                                      ambiguous: false,
+                                      commonAncestorId: null,
+                                    });
+                                    return;
+                                  }
+                                  onFocusRegion(c.regionId);
+                                }}
+                              >
+                                {t('flagConflicts.showOnScheme')}
+                              </button>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </>
+              ) : tab === 'overwrites' ? (
                 <>
                   <p className="flag-conflicts-count">
                     {t('flagConflicts.entryCount', { count: visibleOverwrites.length })}

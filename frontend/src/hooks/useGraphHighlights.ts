@@ -148,6 +148,7 @@ export function useGraphHighlights(
         ids.add(o.parentId);
         ids.add(o.childId);
       }
+      for (const id of flagConflicts?.crossFlagRegionIds ?? []) ids.add(id);
       for (const id of orphanIds) ids.add(id);
       for (const id of nonStandardHeightIds) ids.add(id);
     }
@@ -368,6 +369,7 @@ export function useGraphHighlights(
         ids.add(o.parentId);
         ids.add(o.childId);
       }
+      for (const id of flagConflicts?.crossFlagRegionIds ?? []) ids.add(id);
       for (const id of orphanIds) ids.add(id);
       for (const id of nonStandardHeightIds) ids.add(id);
     }
