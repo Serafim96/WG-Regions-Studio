@@ -1,11 +1,12 @@
 {
   "name": "wg-regions-studio-frontend",
   "private": true,
-  "version": "2.0.17",
+  "version": "2.0.18",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test:rules": "tsx --test src/utils/__tests__/crossFlagRules.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

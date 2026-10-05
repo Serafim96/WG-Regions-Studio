@@ -1,7 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n/I18nContext';
-import type { FlagInfo } from '../types';
+import type { TranslationKey } from '../i18n/translations';
+import type { FlagInfo, Scheme } from '../types';
+import {
+  buildFlagConflictReport,
+  flagConflictExportFileName,
+  serializeFlagConflictReport,
+} from '../utils/flagConflictExport';
+import { isUserCancelled, saveTextWithDialog } from '../utils/fileDialog';
 import type { FlagConflictsResult, FlagOverwrite, SpatialConflict } from '../utils/flagConflicts';
+import type { CrossFlagConflict } from '../utils/crossFlagRules';
 import { compareNatural } from '../utils/naturalSort';
 import { FlagNameWithHelp } from './FlagHelpButton';
 import { ModalOverlay } from './ModalOverlay';
@@ -40,6 +49,99 @@ function compareOverwrite(a: FlagOverwrite, b: FlagOverwrite): number {
     || compareNatural(a.parentId, b.parentId);
 }
 
+/** «?» that opens the tab hint as a comic speech balloon. */
+function HintBubble({ text }: { text: string }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [coords, setCoords] = useState<{ top: number; left: number; tail: number; above: boolean } | null>(null);
+  const rootRef = useRef<HTMLSpanElement>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const panelId = useId();
+
+  useLayoutEffect(() => {
+    if (!open || !rootRef.current) {
+      setCoords(null);
+      return;
+    }
+    const update = () => {
+      const rect = rootRef.current!.getBoundingClientRect();
+      const width = Math.min(360, window.innerWidth - 24);
+      let left = rect.left - 12;
+      if (left + width > window.innerWidth - 8) {
+        left = Math.max(8, window.innerWidth - width - 8);
+      }
+      const tail = Math.min(width - 28, Math.max(14, rect.left + rect.width / 2 - left - 8));
+      let top = rect.bottom + 14;
+      let above = false;
+      if (top + 160 > window.innerHeight - 8) {
+        top = Math.max(8, rect.top - 160 - 14);
+        above = true;
+      }
+      setCoords({ top, left, tail, above });
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (bubbleRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <span className="flag-help hint-bubble-anchor" ref={rootRef}>
+      <button
+        type="button"
+        className="flag-help-btn"
+        aria-expanded={open}
+        aria-controls={panelId}
+        title={t('flagConflicts.hintOpen')}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        ?
+      </button>
+      {open && coords
+        ? createPortal(
+            <div
+              ref={bubbleRef}
+              id={panelId}
+              className={`hint-bubble${coords.above ? ' hint-bubble--above' : ''}`}
+              role="dialog"
+              style={{ top: coords.top, left: coords.left, ['--hint-tail' as string]: `${coords.tail}px` }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span className="hint-bubble-tail" aria-hidden />
+              {text}
+            </div>,
+            document.body,
+          )
+        : null}
+    </span>
+  );
+}
+
 function compareSpatial(a: SpatialConflict, b: SpatialConflict): number {
   const aFirst = compareNatural(a.aId, a.bId) <= 0 ? a.aId : a.bId;
   const aSecond = compareNatural(a.aId, a.bId) <= 0 ? a.bId : a.aId;
@@ -48,32 +150,101 @@ function compareSpatial(a: SpatialConflict, b: SpatialConflict): number {
   return compareNatural(aFirst, bFirst) || compareNatural(aSecond, bSecond);
 }
 
+/** Category header: thin lines above and below the title. */
+function CategoryBand({ label }: { label: string }) {
+  return (
+    <div className="flag-conflicts-category-band" role="separator" aria-label={label}>
+      <span className="flag-conflicts-category-band-line" aria-hidden />
+      <span className="flag-conflicts-category-band-label">{label}</span>
+      <span className="flag-conflicts-category-band-line" aria-hidden />
+    </div>
+  );
+}
+
 export function FlagConflictsDialog({
+  scheme,
   result,
   flagsCatalog,
   onClose,
   onFocusRegion,
   onShowSpatialOnScheme,
   onShowOverwriteOnScheme,
+  onStatus,
 }: {
+  scheme: Scheme;
   result: FlagConflictsResult;
   flagsCatalog: FlagInfo[];
   onClose: () => void;
   onFocusRegion: (id: string) => void;
   onShowSpatialOnScheme?: (conflict: SpatialConflict) => void;
   onShowOverwriteOnScheme?: (overwrite: FlagOverwrite) => void;
+  onStatus?: (message: string) => void;
 }) {
-  const { t } = useI18n();
-  const [tab, setTab] = useState<'overwrites' | 'spatial'>('overwrites');
+  const { t, locale } = useI18n();
+  const [tab, setTab] = useState<'overwrites' | 'spatial' | 'cross'>('overwrites');
+  const [showErrors, setShowErrors] = useState(true);
+  const [showWarnings, setShowWarnings] = useState(true);
+  const [exporting, setExporting] = useState(false);
+
+  const exportReport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const text = serializeFlagConflictReport(
+        buildFlagConflictReport(scheme, result, flagsCatalog, new Date().toISOString(), {
+          errors: showErrors,
+          warnings: showWarnings,
+        }, locale),
+      );
+      const name = await saveTextWithDialog(
+        text,
+        flagConflictExportFileName(scheme.sourcePath),
+        'application/json',
+        {
+          description: t('flagConflicts.exportFileType'),
+          accept: { 'application/json': ['.json'] },
+        },
+      );
+      onStatus?.(t('status.flagConflictsExported', { path: name }));
+    } catch (err) {
+      if (!isUserCancelled(err)) {
+        onStatus?.(t('status.error', { msg: String(err) }));
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const visibleOverwrites = useMemo(
+    () => (showWarnings ? result.overwrites : []),
+    [showWarnings, result.overwrites],
+  );
+  const visibleSpatial = useMemo(
+    () => result.spatialConflicts.filter((c) => (c.ambiguous ? showErrors : showWarnings)),
+    [showErrors, showWarnings, result.spatialConflicts],
+  );
 
   const overwritesByFlag = useMemo(
-    () => groupByFlagNameSorted(result.overwrites, compareOverwrite),
-    [result.overwrites],
+    () => groupByFlagNameSorted(visibleOverwrites, compareOverwrite),
+    [visibleOverwrites],
   );
   const spatialByFlag = useMemo(
-    () => groupByFlagNameSorted(result.spatialConflicts, compareSpatial),
-    [result.spatialConflicts],
+    () => groupByFlagNameSorted(visibleSpatial, compareSpatial),
+    [visibleSpatial],
   );
+  const visibleCross = useMemo(
+    () => (showWarnings ? result.crossFlagConflicts : []),
+    [showWarnings, result.crossFlagConflicts],
+  );
+  const crossByCategory = useMemo(() => {
+    const groups = new Map<string, CrossFlagConflict[]>();
+    for (const item of visibleCross) {
+      const list = groups.get(item.category) ?? [];
+      list.push(item);
+      groups.set(item.category, list);
+    }
+    return [...groups.entries()].sort(([a], [b]) => compareNatural(a, b));
+  }, [visibleCross]);
 
   const hasHardErrors = result.hardErrors.length > 0;
 
@@ -82,7 +253,17 @@ export function FlagConflictsDialog({
       <div className="modal flag-conflicts-modal" onClick={(e) => e.stopPropagation()}>
         <header>
           <h2>{t('flagConflicts.dialogTitle')}</h2>
-          <button type="button" onClick={onClose}>×</button>
+          <div className="flag-conflicts-header-actions">
+            <button
+              type="button"
+              className="flag-conflicts-export"
+              onClick={() => { void exportReport(); }}
+              disabled={exporting}
+            >
+              {t('flagConflicts.export')}
+            </button>
+            <button type="button" className="modal-close" onClick={onClose}>×</button>
+          </div>
         </header>
         <div className="modal-body">
           {hasHardErrors ? (
@@ -96,29 +277,136 @@ export function FlagConflictsDialog({
             </>
           ) : (
             <>
-              <div className="flag-conflicts-tabs">
+              <div className="flag-conflicts-checks">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={showErrors}
+                    onChange={() => setShowErrors((v) => !v)}
+                  />
+                  {t('flagConflicts.filterErrors')}
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={showWarnings}
+                    onChange={() => setShowWarnings((v) => !v)}
+                  />
+                  {t('flagConflicts.filterWarnings')}
+                </label>
+              </div>
+
+              <div className="notifications-tabs flag-conflicts-switch" role="tablist">
                 <button
                   type="button"
-                  className={tab === 'overwrites' ? 'primary' : ''}
+                  role="tab"
+                  className={`notifications-tab${tab === 'overwrites' ? ' active' : ''}`}
+                  aria-selected={tab === 'overwrites'}
                   onClick={() => setTab('overwrites')}
                 >
-                  {t('flagConflicts.tabOverwrites')}
+                  {t('flagConflicts.tabOverwrites')} ({visibleOverwrites.length})
                 </button>
                 <button
                   type="button"
-                  className={tab === 'spatial' ? 'primary' : ''}
+                  role="tab"
+                  className={`notifications-tab${tab === 'spatial' ? ' active' : ''}`}
+                  aria-selected={tab === 'spatial'}
                   onClick={() => setTab('spatial')}
                 >
-                  {t('flagConflicts.tabSpatial')}
+                  {t('flagConflicts.tabSpatial')} ({visibleSpatial.length})
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className={`notifications-tab${tab === 'cross' ? ' active' : ''}`}
+                  aria-selected={tab === 'cross'}
+                  onClick={() => setTab('cross')}
+                >
+                  {t('flagConflicts.tabCross')} ({visibleCross.length})
                 </button>
               </div>
 
-              {tab === 'overwrites' ? (
-                result.overwrites.length === 0 ? (
-                  <p className="flag-conflicts-empty">{t('flagConflicts.noneOverwrites')}</p>
-                ) : (
+              {tab === 'cross' ? (
+                <>
+                  <p className="flag-conflicts-count">
+                    {t('flagConflicts.entryCount', { count: visibleCross.length })}
+                    <HintBubble text={t('flagConflicts.crossHint')} />
+                  </p>
+                  {crossByCategory.map(([category, items]) => {
+                    const categoryLabel = t(`flagConflicts.category.${category}` as TranslationKey);
+                    return (
+                      <div key={category} className="flag-conflicts-group flag-conflicts-group--cross">
+                        <CategoryBand label={categoryLabel} />
+                        <ul>
+                          {items.map((c) => (
+                            <li key={`${c.scope}|${c.regionId}|${c.otherRegionId ?? ''}|${c.ruleId}|${c.flags.map((f) => f.name).join(',')}`}>
+                              <div>
+                                <strong>{t(`flagConflicts.rule.${c.ruleId}` as TranslationKey)}</strong>
+                                {' · '}
+                                <button type="button" className="region-link" onClick={() => onFocusRegion(c.regionId)}>
+                                  {c.regionId}
+                                </button>
+                                {c.otherRegionId && (
+                                  <>
+                                    {' '}
+                                    {c.relation === 'contains'
+                                      ? t('flagConflicts.relationContains')
+                                      : t('flagConflicts.relationIntersects')}
+                                    {' '}
+                                    <button type="button" className="region-link" onClick={() => onFocusRegion(c.otherRegionId!)}>
+                                      {c.otherRegionId}
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                              <div>
+                                {c.flags.map((f) => `${f.name}=${formatValue(f.value)} (${f.definedBy ?? c.regionId})`).join(' · ')}
+                              </div>
+                              <div className="flag-conflicts-outcome">{t(c.reasonKey as TranslationKey)}</div>
+                              <div className="modal-actions">
+                                <button
+                                  type="button"
+                                  className="primary"
+                                  onClick={() => {
+                                    if (c.otherRegionId && c.relation && onShowSpatialOnScheme) {
+                                      onShowSpatialOnScheme({
+                                        flagName: c.flags[0]?.name ?? c.ruleId,
+                                        relation: c.relation,
+                                        aId: c.regionId,
+                                        bId: c.otherRegionId,
+                                        aPriority: 0,
+                                        bPriority: 0,
+                                        aValue: c.flags[0]?.value,
+                                        bValue: c.flags[1]?.value,
+                                        winnerId: undefined,
+                                        winnerValue: undefined,
+                                        ambiguous: false,
+                                        commonAncestorId: null,
+                                      });
+                                      return;
+                                    }
+                                    onFocusRegion(c.regionId);
+                                  }}
+                                >
+                                  {t('flagConflicts.showOnScheme')}
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="flag-conflicts-category-end" aria-hidden />
+                      </div>
+                    );
+                  })}
+                </>
+              ) : tab === 'overwrites' ? (
+                <>
+                  <p className="flag-conflicts-count">
+                    {t('flagConflicts.entryCount', { count: visibleOverwrites.length })}
+                    <HintBubble text={t('flagConflicts.overwritesHint')} />
+                  </p>
+                  {visibleOverwrites.length === 0 ? null : (
                   <>
-                  <p className="flag-conflicts-hint">{t('flagConflicts.overwritesHint')}</p>
                   {overwritesByFlag.map(([flagName, items]) => (
                       <div key={flagName} className="flag-conflicts-group">
                         <h3>
@@ -170,13 +458,16 @@ export function FlagConflictsDialog({
                       </div>
                   ))}
                   </>
-                )
+                  )}
+                </>
               ) : (
-                result.spatialConflicts.length === 0 ? (
-                  <p className="flag-conflicts-empty">{t('flagConflicts.noneSpatial')}</p>
-                ) : (
+                <>
+                  <p className="flag-conflicts-count">
+                    {t('flagConflicts.entryCount', { count: visibleSpatial.length })}
+                    <HintBubble text={t('flagConflicts.spatialHint')} />
+                  </p>
+                  {visibleSpatial.length === 0 ? null : (
                   <>
-                  <p className="flag-conflicts-hint">{t('flagConflicts.spatialHint')}</p>
                   {spatialByFlag.map(([flagName, items]) => (
                       <div key={flagName} className="flag-conflicts-group">
                         <h3>
@@ -240,7 +531,8 @@ export function FlagConflictsDialog({
                       </div>
                   ))}
                   </>
-                )
+                  )}
+                </>
               )}
             </>
           )}

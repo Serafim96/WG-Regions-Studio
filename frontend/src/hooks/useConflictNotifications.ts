@@ -46,7 +46,7 @@ export function useConflictNotifications(
   const [showNotifications, setShowNotifications] = useState(false);
   /** Conflict keys that already popped a toast — survives amb/res key changes. */
   const toastedConflictKeysRef = useRef<Set<string>>(new Set());
-  /** Scheme for which current conflict keys were seeded (load: only ambiguous → bell). */
+  /** Scheme for which current conflict keys were seeded (load: errors and warnings → bell). */
   const conflictNotifySeededForRef = useRef<string | null>(null);
   /** Next notification sync replaces the list but skips toast popups. */
   const quietNotificationReseedRef = useRef(false);
@@ -135,9 +135,18 @@ export function useConflictNotifications(
       activeKeys.add(spatialKey(c));
       activeToastKeys.add(spatialToastKey(c));
     }
+    const crossFlags = flagConflicts && flagConflicts.hardErrors.length === 0
+      ? flagConflicts.crossFlagConflicts
+      : [];
+    const crossKey = (c: { ruleId: string; reasonKey: string; regionId: string; otherRegionId?: string; flags: { name: string }[] }) =>
+      `xf|${c.ruleId}|${c.reasonKey}|${c.regionId}|${c.otherRegionId ?? ''}|${c.flags.map((f) => f.name).join(',')}`;
     for (const o of overwrites) {
       activeKeys.add(overwriteKey(o));
       activeToastKeys.add(overwriteKey(o));
+    }
+    for (const c of crossFlags) {
+      activeKeys.add(crossKey(c));
+      activeToastKeys.add(crossKey(c));
     }
     for (const id of orphanIds) {
       activeKeys.add(orphanKey(id));
@@ -312,34 +321,46 @@ export function useConflictNotifications(
 
     if (isReseed) {
       conflictNotifySeededForRef.current = schemeKey;
-      for (const c of spatial) {
-        const key = spatialKey(c);
-        if (c.ambiguous) pushAmbiguous(c, key);
-      }
-      for (const o of overwrites) {
-        pushOverwrite(o, overwriteKey(o));
-      }
-      for (const id of orphanIds) {
-        pushOrphan(id, orphanKey(id));
-      }
-      for (const id of nonStandardHeightIds) {
-        pushHeight(id, heightKey(id));
-      }
-    } else {
-      for (const c of spatial) {
-        const key = spatialKey(c);
-        if (c.ambiguous) pushAmbiguous(c, key);
-        else pushResolved(c, key);
-      }
-      for (const o of overwrites) {
-        pushOverwrite(o, overwriteKey(o));
-      }
-      for (const id of orphanIds) {
-        pushOrphan(id, orphanKey(id));
-      }
-      for (const id of nonStandardHeightIds) {
-        pushHeight(id, heightKey(id));
-      }
+    }
+    for (const c of spatial) {
+      const key = spatialKey(c);
+      if (c.ambiguous) pushAmbiguous(c, key);
+      else pushResolved(c, key);
+    }
+    const pushCross = (c: (typeof crossFlags)[number], key: string) => {
+      const item: AppNotification = {
+        id: `${key}|${now}`,
+        createdAt: now,
+        level: 'warning',
+        kind: 'crossFlag',
+        conflictKey: key,
+        titleKey: 'notifications.crossFlagTitle',
+        bodyKey: 'notifications.crossFlagBody',
+        params: {
+          rule: c.ruleId,
+          region: c.otherRegionId ? `${c.regionId} / ${c.otherRegionId}` : c.regionId,
+          flags: c.flags.map((f) => f.name).join(', '),
+        },
+        aId: c.regionId,
+        bId: c.otherRegionId,
+        read: false,
+      };
+      if (!shouldToast(item)) return;
+      rememberToast(item);
+      fresh.push(item);
+    };
+
+    for (const o of overwrites) {
+      pushOverwrite(o, overwriteKey(o));
+    }
+    for (const c of crossFlags) {
+      pushCross(c, crossKey(c));
+    }
+    for (const id of orphanIds) {
+      pushOrphan(id, orphanKey(id));
+    }
+    for (const id of nonStandardHeightIds) {
+      pushHeight(id, heightKey(id));
     }
 
     setNotifications((prev) => {
@@ -357,7 +378,7 @@ export function useConflictNotifications(
         return syncSpatialNotification(n, current, expectedKey);
       });
       if (isReseed) {
-        return reconcileSpatial([...keep, ...exportErrorsMerged, ...freshMerged]).slice(0, 100);
+        return reconcileSpatial([...keep, ...exportErrorsMerged, ...freshMerged]);
       }
       const pruned = withoutExport.filter(
         (n) => n.kind === 'update' || !n.conflictKey || activeKeys.has(n.conflictKey),
@@ -365,7 +386,7 @@ export function useConflictNotifications(
       if (freshMerged.length === 0 && exportErrorsMerged.length === 0) {
         return reconcileSpatial(pruned);
       }
-      return reconcileSpatial([...exportErrorsMerged, ...freshMerged, ...pruned]).slice(0, 100);
+      return reconcileSpatial([...exportErrorsMerged, ...freshMerged, ...pruned]);
     });
 
     viewSettersRef.current.setConflictSchemeView((current) => {
@@ -459,18 +480,20 @@ export function useConflictNotifications(
     setNotificationToasts((prev) => prev.filter((item) => item.id !== id));
   }, []);
 
-  const markAllRead = useCallback((level: 'error' | 'warning') => {
-    setNotifications((prev) => prev.map((n) => (n.level === level ? { ...n, read: true } : n)));
+  const markAllRead = useCallback((ids: string[]) => {
+    const idSet = new Set(ids);
+    setNotifications((prev) => prev.map((n) => (idSet.has(n.id) ? { ...n, read: true } : n)));
   }, []);
 
-  const clearWarningNotifications = useCallback(() => {
+  const clearWarningNotifications = useCallback((ids: string[]) => {
+    const idSet = new Set(ids);
     setNotifications((prev) => {
       for (const n of prev) {
-        if (n.level === 'warning') rememberDismissedUpdate(n);
+        if (idSet.has(n.id)) rememberDismissedUpdate(n);
       }
-      return prev.filter((n) => n.level !== 'warning');
+      return prev.filter((n) => !idSet.has(n.id));
     });
-    setNotificationToasts((prev) => prev.filter((n) => n.level !== 'warning'));
+    setNotificationToasts((prev) => prev.filter((n) => !idSet.has(n.id)));
   }, []);
 
   return {

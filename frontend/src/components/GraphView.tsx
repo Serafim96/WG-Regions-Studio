@@ -68,8 +68,6 @@ interface GraphViewProps {
   hiddenNodes: Set<string>;
   orphanIds: Set<string>;
   conflictRegionIds: Set<string>;
-  resolvedConflictRegionIds: Set<string>;
-  resolvedConflictEdgeKeys: Set<string>;
   /** When set, dim nodes outside the flag assignment path. */
   flagHighlight: FlagHighlightState;
   /** Dim nodes not in this set (problem mode / subtree highlight). Ignored while flagHighlight is active. */
@@ -117,8 +115,6 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
     hiddenNodes,
     orphanIds,
     conflictRegionIds,
-    resolvedConflictRegionIds,
-    resolvedConflictEdgeKeys,
     flagHighlight,
     attentionBrightIds,
     attentionBrightEdgeKeys,
@@ -327,7 +323,6 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
       const classes: string[] = [];
       if (orphanIds.has(region.id)) classes.push('orphan');
       if (conflictRegionIds.has(region.id)) classes.push('flag-conflict');
-      else if (resolvedConflictRegionIds.has(region.id)) classes.push('flag-conflict-resolved');
       if (hiddenN > 0) classes.push('has-collapsed');
       if (manual) classes.push('draft');
 
@@ -376,14 +371,7 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
     for (const edge of visibleSpatial) {
       if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) continue;
       if (!edgeAllowedByDisplayFilters(edge.relation, edgeDisplayFilters)) continue;
-      const edgeKey = `${edge.relation}-${edge.source}-${edge.target}`;
-      const edgeKeyAlt = `${edge.relation}-${edge.target}-${edge.source}`;
-      const edgeClasses = [
-        edge.relation,
-        ...(resolvedConflictEdgeKeys.has(edgeKey) || resolvedConflictEdgeKeys.has(edgeKeyAlt)
-          ? ['flag-conflict-resolved-edge']
-          : []),
-      ];
+      const edgeClasses = [edge.relation];
       elements.push({
         data: {
           id: `s-${edge.relation}-${edge.source}-${edge.target}`,
@@ -594,8 +582,6 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
     hiddenNodes,
     orphanIds,
     conflictRegionIds,
-    resolvedConflictRegionIds,
-    resolvedConflictEdgeKeys,
     // Re-layout only when entering/leaving flag highlight вЂ” not on layer toggles.
     flagLayoutActive,
     edgeDisplayFilters,

@@ -115,6 +115,7 @@ export type AppDialogsProps = {
   deleteTarget: { regionId: string; childIds: string[]; parentId: string | null } | null;
   showFlagConflictsDialog: boolean;
   notificationToasts: AppNotification[];
+  onStatus: (message: string) => void;
   actions: AppDialogsActions;
 };
 
@@ -143,6 +144,7 @@ export function AppDialogs({
   deleteTarget,
   showFlagConflictsDialog,
   notificationToasts,
+  onStatus,
   actions: a,
 }: AppDialogsProps) {
   const { t } = useI18n();
@@ -350,9 +352,11 @@ export function AppDialogs({
 
       {showFlagConflictsDialog && scheme && flagConflicts && (
         <FlagConflictsDialog
+          scheme={scheme}
           result={flagConflicts}
           flagsCatalog={flagsCatalog}
           onClose={a.closeFlagConflicts}
+          onStatus={onStatus}
           onFocusRegion={(id) => {
             a.focusRegion(id);
           }}

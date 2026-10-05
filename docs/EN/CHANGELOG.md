@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМЕНЕНИЙ.md)
 
+## [Unreleased]
+
+## [2.0.18] — 2026-10-05
+
+### Added
+
+- Flag dialog tab **Flag interactions**: warnings when different flags cancel each other on one region or on an overlap (for example `interact deny` together with `use allow`). They do not block YAML export.
+- Cross-flag hits are included in the conflict JSON export and shown in the notifications bell.
+
+### Changed
+
+- In the flag-conflicts dialog, list items are separated by thin dividers; on **Flag interactions**, each category has a labeled band at the top and a single line at the bottom.
+- Severity rule clarified: an **error** is only an undefined WorldGuard winner (non-`state` overlap at equal priority). Everything else, including all flag-interaction rules, is a **warning**.
+
 ## [2.0.17] — 2026-08-17
 
 ### Added

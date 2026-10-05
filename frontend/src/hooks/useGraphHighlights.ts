@@ -3,6 +3,7 @@ import type { AppNotification } from '../components/NotificationsBell';
 import type { HighlightBranchMode } from '../components/GraphView';
 import type { FlagInfo, Scheme } from '../types';
 import type { FlagConflictsResult, SpatialConflict } from '../utils/flagConflicts';
+import { formatFlagValueShort } from '../utils/flagRows';
 import {
   attachConflictInheritancePaths,
   attachFlagConflicts,
@@ -147,6 +148,7 @@ export function useGraphHighlights(
         ids.add(o.parentId);
         ids.add(o.childId);
       }
+      for (const id of flagConflicts?.crossFlagRegionIds ?? []) ids.add(id);
       for (const id of orphanIds) ids.add(id);
       for (const id of nonStandardHeightIds) ids.add(id);
     }
@@ -201,7 +203,18 @@ export function useGraphHighlights(
         ),
         ...(conflictSchemeView.ambiguous
           ? { conflictIds: pairIds, conflictEdgeKeys: pairEdgeKeys }
-          : { resolvedConflictIds: pairIds, resolvedConflictEdgeKeys: pairEdgeKeys }),
+          : {
+              resolvedConflictIds: pairIds,
+              resolvedConflictEdgeKeys: pairEdgeKeys,
+              ...(conflictSchemeView.winnerValue != null
+                ? {
+                    resolvedEdgeLabels: new Map([
+                      [`${conflictSchemeView.relation}-${conflictSchemeView.aId}-${conflictSchemeView.bId}`, formatFlagValueShort(conflictSchemeView.winnerValue)],
+                      [`${conflictSchemeView.relation}-${conflictSchemeView.bId}-${conflictSchemeView.aId}`, formatFlagValueShort(conflictSchemeView.winnerValue)],
+                    ]),
+                  }
+                : {}),
+            }),
       };
     } else if (overwriteSchemeView && overwriteSchemeView.flagName === highlightFlag) {
       withConflict = {
@@ -356,6 +369,7 @@ export function useGraphHighlights(
         ids.add(o.parentId);
         ids.add(o.childId);
       }
+      for (const id of flagConflicts?.crossFlagRegionIds ?? []) ids.add(id);
       for (const id of orphanIds) ids.add(id);
       for (const id of nonStandardHeightIds) ids.add(id);
     }
