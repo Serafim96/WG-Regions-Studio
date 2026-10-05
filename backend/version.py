@@ -9,7 +9,7 @@ import httpx
 
 # Bump when cutting a GitHub release (tag vX.Y.Z).
 # Full checklist: docs/dev/RELEASE.md
-APP_VERSION = "2.0.17"
+APP_VERSION = "2.0.18"
 GITHUB_REPO = "Serafim96/WG-Regions-Studio"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
@@ -18,12 +18,12 @@ RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
 # The first-launch dialog reads the full release history from docs/*/CHANGELOG*.md.
 CURRENT_HIGHLIGHTS: dict[str, list[str]] = {
     "ru": [
-        "Легенда: вкладка «Клавиши» со всеми горячими клавишами и управлением мышью",
-        "Ctrl+F — поиск, Ctrl+Z / Ctrl+Y — история, F — полный экран",
+        "Вкладка «Взаимодействие флагов»: предупреждения, когда разные флаги мешают друг другу",
+        "Ошибка только при неопределённом победителе на пересечении; остальное — предупреждения",
     ],
     "en": [
-        "Legend: Shortcuts tab lists all hotkeys and mouse controls",
-        "Ctrl+F search, Ctrl+Z / Ctrl+Y history, F fullscreen",
+        "Flag interactions tab: warnings when different flags cancel each other",
+        "Errors only for undefined overlap winners; everything else is a warning",
     ],
 }
 
