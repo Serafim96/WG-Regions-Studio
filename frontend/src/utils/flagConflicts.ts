@@ -1,4 +1,9 @@
 import type { FlagInfo, RegionData, Scheme, SpatialEdge } from '../types';
+import {
+  CROSS_FLAG_NAMES,
+  findCrossFlagHits,
+  type CrossFlagConflict,
+} from './crossFlagRules';
 
 /** Child locally overrides a flag inherited from parent (not a real conflict). */
 export interface FlagOverwrite {
@@ -42,6 +47,9 @@ export interface FlagConflictsResult {
   resolvedConflictEdgeKeys: Set<string>;
   overwrites: FlagOverwrite[];
   spatialConflicts: SpatialConflict[];
+  /** Different flags that cancel or contradict each other. Always warnings. */
+  crossFlagConflicts: CrossFlagConflict[];
+  crossFlagRegionIds: Set<string>;
 }
 
 function stableStringify(value: unknown): string {
@@ -287,6 +295,8 @@ export function runWorldGuardFlagChecks({
       resolvedConflictEdgeKeys: new Set(),
       overwrites: [],
       spatialConflicts: [],
+      crossFlagConflicts: [],
+      crossFlagRegionIds: new Set(),
     };
   }
 
@@ -391,6 +401,19 @@ export function runWorldGuardFlagChecks({
     }
   }
 
+  const crossFlagConflicts = collectCrossFlagConflicts({
+    scheme,
+    effectiveByRegion,
+    parentMap,
+    regionsById,
+    flagTypeByName,
+  });
+  const crossFlagRegionIds = new Set<string>();
+  for (const hit of crossFlagConflicts) {
+    crossFlagRegionIds.add(hit.regionId);
+    if (hit.otherRegionId) crossFlagRegionIds.add(hit.otherRegionId);
+  }
+
   const spatialAmbiguousCount = spatialConflicts.filter((c) => c.ambiguous).length;
   const spatialResolvedCount = spatialConflicts.length - spatialAmbiguousCount;
 
@@ -407,5 +430,157 @@ export function runWorldGuardFlagChecks({
     resolvedConflictEdgeKeys,
     overwrites,
     spatialConflicts,
+    crossFlagConflicts,
+    crossFlagRegionIds,
   };
+}
+
+function flagDefinedBy(
+  regionId: string,
+  flagName: string,
+  regionsById: Map<string, RegionData>,
+  parentMap: Map<string, string | null>,
+): string | null {
+  let current: string | null | undefined = regionId;
+  const seen = new Set<string>();
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const region = regionsById.get(current);
+    if (region?.flags && Object.prototype.hasOwnProperty.call(region.flags, flagName)) {
+      return current;
+    }
+    current = parentMap.get(current) ?? null;
+  }
+  return null;
+}
+
+function hitKey(hit: { ruleId: string; reasonKey: string; flags: { name: string }[] }): string {
+  return `${hit.ruleId}|${hit.reasonKey}|${hit.flags.map((f) => f.name).join(',')}`;
+}
+
+function mergedOverlapFlags(
+  aId: string,
+  bId: string,
+  aEff: Map<string, unknown>,
+  bEff: Map<string, unknown>,
+  aPriority: number,
+  bPriority: number,
+  flagTypeByName: Map<string, string>,
+  regionsById: Map<string, RegionData>,
+  parentMap: Map<string, string | null>,
+): { flags: Map<string, unknown>; definedBy: (name: string) => string | null } {
+  const names = new Set<string>();
+  for (const name of aEff.keys()) if (CROSS_FLAG_NAMES.has(name) || name.endsWith('-group')) names.add(name);
+  for (const name of bEff.keys()) if (CROSS_FLAG_NAMES.has(name) || name.endsWith('-group')) names.add(name);
+  const flags = new Map<string, unknown>();
+  const owners = new Map<string, string>();
+  for (const name of names) {
+    const aHas = aEff.has(name);
+    const bHas = bEff.has(name);
+    if (!aHas && !bHas) continue;
+    if (aHas && !bHas) {
+      flags.set(name, aEff.get(name));
+      owners.set(name, aId);
+      continue;
+    }
+    if (bHas && !aHas) {
+      flags.set(name, bEff.get(name));
+      owners.set(name, bId);
+      continue;
+    }
+    const aVal = aEff.get(name);
+    const bVal = bEff.get(name);
+    if (valuesEqual(aVal, bVal)) {
+      flags.set(name, aVal);
+      owners.set(name, aPriority >= bPriority ? aId : bId);
+      continue;
+    }
+    const picked = pickWinnerForSpatial(
+      aId, bId, true, true, aVal, bVal, aPriority, bPriority, flagTypeByName.get(name),
+    );
+    if (picked.ambiguous || picked.winnerValue === undefined) continue;
+    flags.set(name, picked.winnerValue);
+    owners.set(name, picked.winnerId ?? (aPriority >= bPriority ? aId : bId));
+  }
+  return {
+    flags,
+    definedBy: (name) => {
+      const owner = owners.get(name);
+      if (!owner) return null;
+      return flagDefinedBy(owner, name, regionsById, parentMap);
+    },
+  };
+}
+
+function collectCrossFlagConflicts({
+  scheme,
+  effectiveByRegion,
+  parentMap,
+  regionsById,
+  flagTypeByName,
+}: {
+  scheme: Scheme;
+  effectiveByRegion: Map<string, Map<string, unknown>>;
+  parentMap: Map<string, string | null>;
+  regionsById: Map<string, RegionData>;
+  flagTypeByName: Map<string, string>;
+}): CrossFlagConflict[] {
+  const found: CrossFlagConflict[] = [];
+  const regionKeys = new Map<string, Set<string>>();
+
+  for (const region of scheme.regions) {
+    const effective = effectiveByRegion.get(region.id) ?? new Map();
+    const hits = findCrossFlagHits(
+      effective,
+      (name) => flagDefinedBy(region.id, name, regionsById, parentMap),
+    );
+    const keys = new Set<string>();
+    for (const hit of hits) {
+      keys.add(hitKey(hit));
+      found.push({ ...hit, severity: 'warning', scope: 'region', regionId: region.id });
+    }
+    regionKeys.set(region.id, keys);
+  }
+
+  for (const edge of scheme.spatialEdges) {
+    if (
+      isAncestor(edge.source, edge.target, parentMap)
+      || isAncestor(edge.target, edge.source, parentMap)
+    ) {
+      continue;
+    }
+    const aRegion = regionsById.get(edge.source);
+    const bRegion = regionsById.get(edge.target);
+    if (!aRegion || !bRegion) continue;
+    const aEff = effectiveByRegion.get(edge.source) ?? new Map();
+    const bEff = effectiveByRegion.get(edge.target) ?? new Map();
+    const { flags, definedBy } = mergedOverlapFlags(
+      edge.source,
+      edge.target,
+      aEff,
+      bEff,
+      aRegion.priority,
+      bRegion.priority,
+      flagTypeByName,
+      regionsById,
+      parentMap,
+    );
+    const hits = findCrossFlagHits(flags, definedBy);
+    const aKeys = regionKeys.get(edge.source) ?? new Set();
+    const bKeys = regionKeys.get(edge.target) ?? new Set();
+    for (const hit of hits) {
+      const key = hitKey(hit);
+      if (aKeys.has(key) || bKeys.has(key)) continue;
+      found.push({
+        ...hit,
+        severity: 'warning',
+        scope: 'overlap',
+        regionId: edge.source,
+        otherRegionId: edge.target,
+        relation: edge.relation,
+      });
+    }
+  }
+
+  return found;
 }
