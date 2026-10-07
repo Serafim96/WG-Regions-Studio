@@ -136,14 +136,17 @@ function _buildStylesheetUncached(theme: Theme) {
       },
     },
     {
-      // Dim: keep region fill; mute border and caption only.
+      // Dim on flag scheme: flat gray fill (not hierarchy hue) — opaque so edges stay covered.
       selector: 'node.flag-dim',
       style: {
         opacity: 1,
+        'background-color': isDark ? '#4a5058' : '#b4b8c0',
         'background-opacity': 1,
-        'border-color': isDark ? '#5c6168' : '#c5c5cc',
+        'background-whiten': 0,
+        'background-blacken': 0,
+        'border-color': isDark ? '#5c6168' : '#9a9ea6',
         'border-width': 1,
-        color: isDark ? '#8b9098' : '#9a9aa3',
+        color: textColor,
         'text-opacity': 1,
       },
     },

@@ -4665,10 +4665,10 @@ th:has(> .region-sort-btn):hover {
 }
 
 .legend-node--flag-dim {
-  background: hsl(210, 55%, 72%);
+  background: #b4b8c0;
   opacity: 1;
-  border: 1px solid #c5c5cc;
-  color: #9a9aa3;
+  border: 1px solid #9a9ea6;
+  color: #222;
 }
 
 .legend-node--flag-conflict-warning {

@@ -635,7 +635,7 @@ def _pick_split_plane(
         planes = _cuboid_split_planes(box, region)
         if planes:
             return sorted(planes, key=lambda p: (p[0], p[1]))[0]
-    poly = subj_poly if region.type == "poly2d" and subj_poly is not None else poly_cache.get(region.id)
+    poly = poly_cache.get(region.id)
     if poly is None:
         poly = _region_xz_polygon(region)
         poly_cache[region.id] = poly
@@ -677,7 +677,7 @@ def _decompose_applicable_volumes(
             continue
 
         covering: set[str] = set()
-        partial: Region | None = None
+        partial_candidates: list[Region] = []
         for rid in sorted(candidate_ids):
             region = by_id.get(rid)
             if region is None:
@@ -686,20 +686,24 @@ def _decompose_applicable_volumes(
             if rel == "full":
                 covering.add(rid)
             elif rel == "partial":
-                partial = region
-                break
+                partial_candidates.append(region)
 
-        if partial is None and subj_rel == "partial":
-            partial = subject
+        if not partial_candidates and subj_rel == "partial":
+            partial_candidates.append(subject)
 
-        if partial is None:
+        if not partial_candidates:
             vol = box.volume()
             if vol > 0:
                 key = frozenset(covering)
                 out[key] = out.get(key, 0) + vol
             continue
 
-        plane = _pick_split_plane(box, partial, subj_poly, poly_cache)
+        plane: tuple[str, int] | None = None
+        for partial in partial_candidates:
+            plane = _pick_split_plane(box, partial, subj_poly, poly_cache)
+            if plane is not None:
+                break
+
         if plane is None:
             cx = (box.x0 + box.x1) / 2.0
             cy = (box.y0 + box.y1) / 2.0

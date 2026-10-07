@@ -8,6 +8,16 @@ Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМ�
 
 ## [Unreleased]
 
+## [2.0.20] — 2026-10-07
+
+### Changed
+
+- Flag scheme: regions not in the current flag highlight use a flat gray node fill (not hierarchy hue); legend sample and descriptions updated (RU/EN).
+
+### Fixed
+
+- Effective flags / spatial coverage: when decomposing a region volume, try every partial spatial neighbor for a split plane and cut poly2d neighbors by their own footprint — fixes missing intersection rows (for example `sleep` via `the_wall_main` on long cuboid tunnels).
+
 ## [2.0.19] — 2026-10-07
 
 ### Added

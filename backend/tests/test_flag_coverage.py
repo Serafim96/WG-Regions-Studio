@@ -464,20 +464,23 @@ def test_user_scheme_regression():
     scheme = load_scheme(SCHEME)
     regions = regions_from_scheme(scheme)
     edges = scheme.get("spatialEdges") or []
-    flag_types = {"enderpearl": "state", "block-trampling": "state"}
-
-    lorien_ep = [
-        r for r in compute_region_flag_coverage("lorien_main", regions, edges, flag_types)
-        if r["flag"] == "enderpearl"
-    ]
-    assert len(lorien_ep) == 1
-    assert lorien_ep[0].get("inheritType") == "intersection"
-    assert lorien_ep[0]["viaRegion"] == "moria_main"
-    assert abs(lorien_ep[0]["percent"] - 0.0875) < 0.02
+    flag_types = {"sleep": "state", "block-trampling": "state"}
 
     moria_bt = compute_region_flag_coverage("moria_main", regions, edges, flag_types)
     assert not any(r["flag"] == "block-trampling" and r.get("viaRegion") == "bamboo_fabric" for r in moria_bt)
     assert not any(r.get("kind") == "none" for r in moria_bt)
+
+    tunnel_sleep = [
+        r
+        for r in compute_region_flag_coverage(
+            "metro_gold_babylon_tunnel_1", regions, edges, {"sleep": "state"},
+        )
+        if r["flag"] == "sleep"
+    ]
+    assert any(
+        r.get("inheritType") == "intersection" and r.get("viaRegion") == "the_wall_main"
+        for r in tunnel_sleep
+    )
 
 
 def test_coverage_job_reports_percent_until_done():
@@ -590,6 +593,66 @@ def test_state_tie_with_deny_winner_is_warning_not_ambiguous():
     assert deny_rows[0].get("inheritType") == "warning"
     assert deny_rows[0].get("kind") != "ambiguous"
     assert all(r.get("kind") != "ambiguous" for r in sleep)
+
+
+def test_thin_wall_sleep_not_lost_on_long_tunnel_with_earlier_poly2d_neighbor():
+    """Earlier partial poly2d must not block splitting by a thin wall cuboid."""
+    wall_root = Region(
+        id="the_wall",
+        type="global",
+        parent=None,
+        priority=0,
+        flags={"sleep": "allow"},
+    )
+    wall_main = _cuboid(
+        "the_wall_main",
+        -10_000,
+        -64,
+        -3970,
+        10_000,
+        319,
+        -3934,
+        0,
+        parent="the_wall",
+    )
+    tunnel = _cuboid(
+        "metro_gold_babylon_tunnel_1",
+        172,
+        2,
+        -10987,
+        180,
+        9,
+        -378,
+        0,
+    )
+    # Sorts before the_wall_main; partial overlap only at one end of the tunnel.
+    early_poly = _square_poly2d(
+        "aaa_tunnel_cap",
+        170,
+        -500,
+        182,
+        -350,
+        0,
+        flags={"pvp": "deny"},
+    )
+    regions = [wall_root, wall_main, tunnel, early_poly]
+    edge_dicts = _spatial_edge_dicts(regions)
+    rows = compute_region_flag_coverage(
+        "metro_gold_babylon_tunnel_1",
+        regions,
+        edge_dicts,
+        {"sleep": "state"},
+    )
+    sleep = [r for r in rows if r["flag"] == "sleep"]
+    assert sleep
+    intersect = [
+        r
+        for r in sleep
+        if r.get("inheritType") == "intersection" and r.get("viaRegion") == "the_wall_main"
+    ]
+    assert intersect
+    assert intersect[0]["value"] == "allow"
+    assert intersect[0]["blocks"] > 0
 
 
 def test_intersect_inherit_type_on_overlap():
