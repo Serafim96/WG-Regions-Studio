@@ -23,9 +23,38 @@ export const FLAG_EDGE_CLASSES = [
   'flag-dim-edge',
   'flag-path-edge',
   'flag-conflict-edge',
+  'flag-conflict-resolved-edge',
+  'flag-conflict-labeled-edge',
+  'flag-conflict-resolved-labeled-edge',
   'flag-no-inherit-edge',
   'flag-intersect-edge',
+  'flag-intersect-labeled-edge',
+  'flag-contains-labeled-edge',
+  'flag-hierarchy-labeled-edge',
 ] as const;
+
+function clearFlagEdgeLabelData(edge: { removeData: (key: string) => void }): void {
+  edge.removeData('intersectLabel');
+  edge.removeData('winnerLabel');
+  edge.removeData('intersectCenterLabel');
+  edge.removeData('intersectSourceLabel');
+  edge.removeData('intersectTargetLabel');
+  edge.removeData('intersectSourcePct');
+  edge.removeData('intersectTargetPct');
+}
+
+function applyEdgeEndpointPercents(
+  edge: { data: (key: string, value?: string) => unknown },
+  keysToTest: string[],
+  flagHighlight: NonNullable<FlagHighlightState>,
+): void {
+  const endpoints = keysToTest
+    .map((k) => flagHighlight.intersectEdgeEndpoints?.get(k))
+    .find(Boolean);
+  if (!endpoints) return;
+  edge.data('intersectSourcePct', endpoints.sourcePct);
+  edge.data('intersectTargetPct', endpoints.targetPct);
+}
 
 export function flagValueSuffix(
   valueInfo: { text: string; defining: boolean } | undefined,
@@ -167,6 +196,7 @@ export function applyHighlightOverlay(
 
     cy.edges().forEach((edge) => {
       edge.removeClass(flagEdgeClassStr);
+      clearFlagEdgeLabelData(edge);
       const source = edge.data('source') as string;
       const target = edge.data('target') as string;
       const isHierarchy = edge.hasClass('hierarchy');
@@ -177,38 +207,103 @@ export function applyHighlightOverlay(
         edge.removeData('winnerLabel');
         if (isHierarchy) {
           const edgeKey = `${source}->${target}`;
-          if (flagHighlight.brightEdgeKeys.has(edgeKey)) edge.addClass('flag-path-edge');
-          else edge.addClass('flag-dim-edge');
-        } else if (isContains || isIntersects) {
-          const relation = isContains ? 'contains' : 'intersects';
+          if (flagHighlight.brightEdgeKeys.has(edgeKey)) {
+            edge.addClass('flag-path-edge');
+            const hierarchyLabel = flagHighlight.hierarchyEdgeLabels?.get(edgeKey);
+            if (hierarchyLabel) {
+              edge.data('intersectLabel', hierarchyLabel);
+              edge.addClass('flag-hierarchy-labeled-edge');
+            }
+          } else edge.addClass('flag-dim-edge');
+        } else if (isContains) {
+          const relation = 'contains';
           const edgeKey = `${relation}-${source}-${target}`;
           const edgeKeyAlt = `${relation}-${target}-${source}`;
-          if (
-            flagHighlight.conflictEdgeKeys?.has(edgeKey)
-            || flagHighlight.conflictEdgeKeys?.has(edgeKeyAlt)
-          ) {
-            edge.addClass('flag-conflict-edge');
-          } else if (
-            flagHighlight.resolvedConflictEdgeKeys?.has(edgeKey)
-            || flagHighlight.resolvedConflictEdgeKeys?.has(edgeKeyAlt)
-          ) {
-            edge.addClass('flag-conflict-resolved-edge');
-            const winner = flagHighlight.resolvedEdgeLabels?.get(edgeKey)
-              ?? flagHighlight.resolvedEdgeLabels?.get(edgeKeyAlt);
-            if (winner) edge.data('winnerLabel', winner);
-            else edge.removeData('winnerLabel');
-          } else if (
-            flagHighlight.containedNoInheritEdgeKeys?.has(edgeKey)
-            || flagHighlight.containedNoInheritEdgeKeys?.has(edgeKeyAlt)
-          ) {
+          const origins = (edge.data('origins') as Array<{ source: string; target: string }> | undefined) ?? [];
+          const originKeys = (rel: string, list: Array<{ source: string; target: string }>) =>
+            list.flatMap((o) => [`${rel}-${o.source}-${o.target}`, `${rel}-${o.target}-${o.source}`]);
+          const keysToTest = [edgeKey, edgeKeyAlt, ...originKeys(relation, origins)];
+          const hasAny = (set?: Set<string>) => keysToTest.some((k) => set?.has(k));
+          // Containment edges stay purple (or dim); warnings/errors apply only to intersects.
+          if (hasAny(flagHighlight.containedNoInheritEdgeKeys)) {
             edge.addClass('flag-no-inherit-edge');
-          } else if (
-            flagHighlight.intersectPartialEdgeKeys?.has(edgeKey)
-            || flagHighlight.intersectPartialEdgeKeys?.has(edgeKeyAlt)
-          ) {
+            if (flagHighlight.containsEdgeLabels) {
+              const labels = keysToTest
+                .map((k) => flagHighlight.containsEdgeLabels!.get(k))
+                .filter((v): v is string => Boolean(v));
+              const unique = new Set(labels);
+              const containsLabel =
+                unique.size === 1 ? labels[0] : unique.size > 1 ? `×${unique.size}` : undefined;
+              if (containsLabel) {
+                edge.data('intersectLabel', containsLabel);
+                edge.addClass('flag-contains-labeled-edge');
+              }
+            }
+          } else {
+            edge.addClass('flag-dim-edge');
+          }
+        } else if (isIntersects) {
+          const relation = 'intersects';
+          const edgeKey = `${relation}-${source}-${target}`;
+          const edgeKeyAlt = `${relation}-${target}-${source}`;
+          const origins = (edge.data('origins') as Array<{ source: string; target: string }> | undefined) ?? [];
+          const originKeys = (rel: string, list: Array<{ source: string; target: string }>) =>
+            list.flatMap((o) => [`${rel}-${o.source}-${o.target}`, `${rel}-${o.target}-${o.source}`]);
+          const keysToTest = [edgeKey, edgeKeyAlt, ...originKeys(relation, origins)];
+          const hasAny = (set?: Set<string>) => keysToTest.some((k) => set?.has(k));
+          const isAmbiguousConflict = hasAny(flagHighlight.conflictEdgeKeys);
+          const isResolvedConflict = hasAny(flagHighlight.resolvedConflictEdgeKeys);
+          if (isAmbiguousConflict) {
+            edge.addClass('flag-conflict-edge');
+            const amb = keysToTest.map((k) => flagHighlight.ambiguousEdgeLabels?.get(k)).find(Boolean);
+            if (amb) {
+              edge.data('intersectLabel', amb);
+              edge.addClass('flag-conflict-labeled-edge');
+              applyEdgeEndpointPercents(edge, keysToTest, flagHighlight);
+            } else {
+              edge.removeData('intersectLabel');
+            }
+          } else if (isResolvedConflict) {
+            edge.addClass('flag-conflict-resolved-edge');
+            const winner = keysToTest.map((k) => flagHighlight.resolvedEdgeLabels?.get(k)).find(Boolean);
+            if (winner) {
+              edge.data('winnerLabel', winner);
+              edge.data('intersectLabel', winner);
+              edge.addClass('flag-conflict-resolved-labeled-edge');
+              applyEdgeEndpointPercents(edge, keysToTest, flagHighlight);
+            } else {
+              edge.removeData('winnerLabel');
+              edge.removeData('intersectLabel');
+            }
+          } else if (hasAny(flagHighlight.intersectPartialEdgeKeys)) {
             edge.addClass('flag-intersect-edge');
           } else {
             edge.addClass('flag-dim-edge');
+          }
+          const intersectEdgeLit = hasAny(flagHighlight.intersectPartialEdgeKeys);
+          const skipIntersectLabel = isAmbiguousConflict || isResolvedConflict;
+          if (isIntersects && flagHighlight.intersectEdgeLabels && intersectEdgeLit && !skipIntersectLabel) {
+            const labels = keysToTest
+              .map((k) => flagHighlight.intersectEdgeLabels!.get(k))
+              .filter((v): v is string => Boolean(v));
+            const unique = new Set(labels);
+            const intersectLabel =
+              unique.size === 1 ? labels[0] : unique.size > 1 ? `×${unique.size}` : undefined;
+            if (intersectLabel) {
+              edge.data('intersectLabel', intersectLabel);
+              edge.addClass('flag-intersect-labeled-edge');
+              applyEdgeEndpointPercents(edge, keysToTest, flagHighlight);
+            } else {
+              edge.removeData('intersectLabel');
+              edge.removeData('intersectCenterLabel');
+              edge.removeData('intersectSourceLabel');
+              edge.removeData('intersectTargetLabel');
+            }
+          } else if (isIntersects && !skipIntersectLabel) {
+            edge.removeData('intersectLabel');
+            edge.removeData('intersectCenterLabel');
+            edge.removeData('intersectSourceLabel');
+            edge.removeData('intersectTargetLabel');
           }
         }
       } else if (attentionBrightIds) {

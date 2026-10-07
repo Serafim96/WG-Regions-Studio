@@ -4,6 +4,7 @@ import {
   findCrossFlagHits,
   type CrossFlagConflict,
 } from './crossFlagRules';
+import { isNonSpatialFlag } from './flagSpatialRules';
 
 /** Child locally overrides a flag inherited from parent (not a real conflict). */
 export interface FlagOverwrite {
@@ -353,6 +354,7 @@ export function runWorldGuardFlagChecks({
     if (!aRegion || !bRegion) continue;
 
     for (const flagName of allFlagNames) {
+      if (isNonSpatialFlag(flagName)) continue;
       const aHas = aEff.has(flagName);
       const bHas = bEff.has(flagName);
       if (!aHas || !bHas) continue;

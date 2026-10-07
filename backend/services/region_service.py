@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
+import logging
+import sys
+import threading
+import uuid
+from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
 
-from backend.geometry.intersections import compute_spatial_edges
+from backend.flags.catalog import load_flags_catalog
+from backend.geometry.flag_coverage import (
+    CoverageCancelled,
+    compute_flag_scheme_coverage,
+    compute_region_flag_coverage,
+)
+from backend.geometry.intersections import NoIntersectionError, compute_spatial_edges, intersection_bbox_center
 from backend.manual_geometry import (
     apply_geometry_fields,
     is_manual_region,
@@ -20,10 +31,14 @@ from backend.services.helpers import raise_if_self_parent, validate_scheme_versi
 from backend.services.session_service import SessionStore
 from backend.util.region_ids import is_valid_region_id
 
+logger = logging.getLogger(__name__)
+
 
 class RegionService:
     def __init__(self, store: SessionStore) -> None:
         self._store = store
+        self._coverage_jobs: dict[str, dict[str, Any]] = {}
+        self._coverage_lock = threading.Lock()
 
     def find_by_id(self, region_id: str) -> Region | None:
         regions: list[Region] = list(self._store.get("regions") or [])
@@ -366,3 +381,141 @@ class RegionService:
             "updated": updated_ids,
             "count": len(updated_ids),
         }
+
+    def _flag_types(self) -> dict[str, str]:
+        if getattr(sys, "frozen", False):
+            flags_path = Path(getattr(sys, "_MEIPASS")) / "all_flags.txt"
+            writable = Path(sys.executable).resolve().parent
+        else:
+            app_root = Path(__file__).resolve().parents[2]
+            flags_path = app_root.parent / "all_flags.txt"
+            writable = app_root
+        custom_path = writable / "data" / "custom_flags.json"
+        catalog = load_flags_catalog(flags_path, custom_path=custom_path)
+        return {f.name: f.flag_type for f in catalog}
+
+    def _spatial_edges(self) -> list[dict[str, Any]]:
+        scheme = self._store.get("scheme") or {}
+        return list(scheme.get("spatialEdges") or [])
+
+    def begin_region_flag_coverage(self, region_id: str) -> str:
+        """Start coverage in a background thread and return a pollable job id."""
+        self._require_region(region_id)
+        regions = self._regions()
+        edges = self._spatial_edges()
+        flag_types = self._flag_types()
+        job_id = uuid.uuid4().hex
+        job: dict[str, Any] = {
+            "percent": 0.0,
+            "rows": [],
+            "done": False,
+            "error": None,
+            "cancel": False,
+        }
+        with self._coverage_lock:
+            for existing in self._coverage_jobs.values():
+                existing["cancel"] = True
+            self._coverage_jobs.clear()
+            self._coverage_jobs[job_id] = job
+
+        def _run() -> None:
+            def on_progress(percent: float, rows: list[dict[str, Any]]) -> bool:
+                with self._coverage_lock:
+                    if job["cancel"]:
+                        return False
+                    job["percent"] = round(percent, 1)
+                    job["rows"] = list(rows)
+                    return True
+
+            try:
+                rows = compute_region_flag_coverage(
+                    region_id,
+                    regions,
+                    edges,
+                    flag_types,
+                    on_progress=on_progress,
+                )
+                with self._coverage_lock:
+                    if not job["cancel"]:
+                        job["rows"] = rows
+                        job["percent"] = 100.0
+                        job["done"] = True
+            except CoverageCancelled:
+                with self._coverage_lock:
+                    job["done"] = True
+            except Exception as exc:
+                logger.exception("region_flag_coverage failed for %s", region_id)
+                with self._coverage_lock:
+                    job["error"] = f"{type(exc).__name__}: region {region_id!r} ({exc})"
+                    job["done"] = True
+
+        threading.Thread(
+            target=_run,
+            name=f"flag-coverage-{job_id[:8]}",
+            daemon=True,
+        ).start()
+        return job_id
+
+    def region_flag_coverage_job(self, job_id: str) -> dict[str, Any]:
+        with self._coverage_lock:
+            job = self._coverage_jobs.get(job_id)
+            if job is None:
+                raise HTTPException(status_code=404, detail="Unknown coverage job")
+            return {
+                "percent": job["percent"],
+                "rows": list(job["rows"]),
+                "done": job["done"],
+                "error": job["error"],
+            }
+
+    def cancel_region_flag_coverage_job(self, job_id: str) -> None:
+        with self._coverage_lock:
+            job = self._coverage_jobs.get(job_id)
+            if job is not None:
+                job["cancel"] = True
+
+    def region_flag_coverage(self, region_id: str) -> list[dict[str, Any]]:
+        self._require_region(region_id)
+        try:
+            return compute_region_flag_coverage(
+                region_id,
+                self._regions(),
+                self._spatial_edges(),
+                self._flag_types(),
+            )
+        except Exception as exc:
+            logger.exception("region_flag_coverage failed for %s", region_id)
+            raise HTTPException(
+                status_code=500,
+                detail=f"{type(exc).__name__}: region {region_id!r} ({exc})",
+            ) from exc
+
+    def region_intersection_center(self, region_id: str, other_id: str) -> dict[str, int]:
+        _, subject = self._require_region(region_id)
+        _, other = self._require_region(other_id)
+        try:
+            x, y, z = intersection_bbox_center(subject, other)
+        except NoIntersectionError:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No geometric intersection between {region_id!r} and {other_id!r}",
+            ) from None
+        return {"x": x, "y": y, "z": z}
+
+    def flag_scheme_coverage(self, flag_name: str) -> dict[str, Any]:
+        regions = self._regions()
+        if not regions:
+            raise HTTPException(status_code=400, detail="No regions loaded")
+        try:
+            return compute_flag_scheme_coverage(
+                flag_name,
+                regions,
+                self._spatial_edges(),
+                self._flag_types(),
+            )
+        except Exception as exc:
+            logger.exception("flag_scheme_coverage failed for flag %s", flag_name)
+            raise HTTPException(
+                status_code=500,
+                detail=f"{type(exc).__name__}: flag {flag_name!r} ({exc})",
+            ) from exc

@@ -1,5 +1,6 @@
 import type { FlagInfo, ForestNode, RegionData, Scheme } from '../types';
 import { computeEffectiveFlagsByRegion } from './flagConflicts';
+import { isNonSpatialFlag } from './flagSpatialRules';
 import { buildParentMap } from './graph';
 import { compareNatural } from './naturalSort';
 import { formatFlagValueShort } from './flagRows';
@@ -17,6 +18,8 @@ export interface FlagValueLabel {
   text: string;
   /** True when this region sets the flag locally. */
   defining: boolean;
+  /** Coverage is partial — several groups on the node caption. */
+  partial?: boolean;
 }
 
 export interface FlagHighlightOptions {
@@ -63,6 +66,16 @@ export interface FlagHighlight {
   resolvedConflictEdgeKeys?: Set<string>;
   /** Winner text on a resolved conflict edge (`relation-source-target` → value). */
   resolvedEdgeLabels?: Map<string, string>;
+  /** Label on ambiguous conflict edges (`relation-source-target` → text). */
+  ambiguousEdgeLabels?: Map<string, string>;
+  /** Effective flag value on intersect edges (`intersects-a-b` → label). */
+  intersectEdgeLabels?: Map<string, string>;
+  /** Endpoint percents for intersect/conflict edges (`intersects-a-b` → source/target). */
+  intersectEdgeEndpoints?: Map<string, { sourcePct: string; targetPct: string }>;
+  /** Labels on containment no-inherit edges (`contains-inner-outer`). */
+  containsEdgeLabels?: Map<string, string>;
+  /** Labels on bright hierarchy edges (`parent->child`). */
+  hierarchyEdgeLabels?: Map<string, string>;
   /** Flag values to show next to highlighted nodes (skipped for set-types). */
   valueLabels?: Map<string, FlagValueLabel>;
 }
@@ -96,10 +109,12 @@ export function enrichHighlightWithFlagValues(
   precomputed?: EffectiveFlagsMap,
 ): FlagHighlight {
   const flagType = flagsCatalog.find((f) => f.name === flagName)?.type;
+  const skipSpatialValues = isNonSpatialFlag(flagName);
   if (shouldSkipValueLabels(flagType)) {
     const valueLabels = new Map<string, FlagValueLabel>();
     const effectiveSkip = resolveEffective(scheme, precomputed);
     for (const id of highlight.containedNoInheritIds ?? []) {
+      if (skipSpatialValues) continue;
       if (effectiveSkip.get(id)?.has(flagName)) continue;
       const isNonInheritingInner = scheme.spatialEdges.some(
         (edge) =>
@@ -112,6 +127,7 @@ export function enrichHighlightWithFlagValues(
       }
     }
     for (const id of highlight.intersectPartialIds ?? []) {
+      if (skipSpatialValues) continue;
       valueLabels.set(id, { text: '≈', defining: false });
     }
     return { ...highlight, valueLabels };
@@ -140,6 +156,7 @@ export function enrichHighlightWithFlagValues(
   // mark containment and show the outer carrier's value (not inherited via parent).
   // Skip containers-without-flag that are only in the set for visibility.
   for (const id of highlight.containedNoInheritIds ?? []) {
+    if (skipSpatialValues) continue;
     if (valueLabels.has(id)) continue;
     if (effective.get(id)?.has(flagName)) continue;
     let carrierValue: string | null = null;
@@ -164,6 +181,7 @@ export function enrichHighlightWithFlagValues(
 
   // Intersects a carrier: show ≈ plus carrier value when short enough.
   for (const id of highlight.intersectPartialIds ?? []) {
+    if (skipSpatialValues) continue;
     if (valueLabels.has(id)) continue;
     let carrierValue: string | null = null;
     for (const edge of scheme.spatialEdges) {
@@ -295,7 +313,9 @@ export function buildFlagHighlight(
     }
   }
 
-  if (options.showContains && effective) {
+  const spatialHighlight = !isNonSpatialFlag(flagName);
+
+  if (options.showContains && effective && spatialHighlight) {
     for (const edge of scheme.spatialEdges) {
       if (edge.relation !== 'contains') continue;
       const innerId = edge.source;
@@ -327,7 +347,7 @@ export function buildFlagHighlight(
     }
   }
 
-  if (options.showIntersects && effective) {
+  if (options.showIntersects && effective && spatialHighlight) {
     for (const edge of scheme.spatialEdges) {
       if (edge.relation !== 'intersects') continue;
       const a = edge.source;
@@ -351,6 +371,8 @@ export function buildFlagHighlight(
         || brightIds.has(partialId)
         || containedNoInheritIds.has(partialId)
       ) {
+        intersectPartialEdgeKeys.add(`intersects-${a}-${b}`);
+        intersectPartialEdgeKeys.add(`intersects-${b}-${a}`);
         continue;
       }
       intersectPartialIds.add(partialId);
@@ -360,11 +382,14 @@ export function buildFlagHighlight(
     }
   }
 
+  const hasContainsHighlight =
+    containedNoInheritIds.size > 0 || containedNoInheritEdgeKeys.size > 0;
+
   return {
     definingIds,
     brightIds,
     brightEdgeKeys,
-    ...(containedNoInheritIds.size > 0
+    ...(hasContainsHighlight
       ? { containedNoInheritIds, containedNoInheritEdgeKeys }
       : {}),
     ...(intersectPartialIds.size > 0 || intersectPartialEdgeKeys.size > 0
@@ -380,6 +405,35 @@ function edgeWinnerLabel(value: unknown): string | null {
   return text.length > MAX_VALUE_LABEL_LEN ? `${text.slice(0, MAX_VALUE_LABEL_LEN - 1)}…` : text;
 }
 
+export type SpatialConflictEdgeLabelInput = {
+  ambiguous: boolean;
+  winnerValue?: unknown;
+  aValue?: unknown;
+  bValue?: unknown;
+};
+
+export function spatialConflictEdgeLabel(
+  conflict: SpatialConflictEdgeLabelInput,
+  t: (key: 'flagConflicts.edgeUndefined', params?: Record<string, string | number>) => string,
+): string {
+  if (conflict.ambiguous) {
+    return t('flagConflicts.edgeUndefined');
+  }
+  return edgeWinnerLabel(conflict.winnerValue) ?? '?';
+}
+
+/** Edge labels for a focused ambiguous conflict pair (both edge directions). */
+export function ambiguousEdgeLabelsForFocusedPair(
+  relation: string,
+  aId: string,
+  bId: string,
+  label: string,
+): Map<string, string> {
+  const edgeKey1 = `${relation}-${aId}-${bId}`;
+  const edgeKey2 = `${relation}-${bId}-${aId}`;
+  return new Map([[edgeKey1, label], [edgeKey2, label]]);
+}
+
 /** Attach all spatial conflicts for `flagName` onto an existing highlight. */
 export function attachFlagConflicts(
   highlight: FlagHighlight,
@@ -390,32 +444,52 @@ export function attachFlagConflicts(
     bId: string;
     ambiguous: boolean;
     winnerValue?: unknown;
+    aValue?: unknown;
+    bValue?: unknown;
   }>,
   flagName: string,
+  options: {
+    showResolved?: boolean;
+    showAmbiguous?: boolean;
+    edgeLabel?: (conflict: SpatialConflictEdgeLabelInput) => string;
+  } = {},
 ): FlagHighlight {
+  const showResolved = options.showResolved ?? true;
+  const showAmbiguous = options.showAmbiguous ?? true;
   const conflictIds = new Set<string>(highlight.conflictIds);
   const conflictEdgeKeys = new Set<string>(highlight.conflictEdgeKeys);
   const resolvedConflictIds = new Set<string>(highlight.resolvedConflictIds);
   const resolvedConflictEdgeKeys = new Set<string>(highlight.resolvedConflictEdgeKeys);
   const resolvedEdgeLabels = new Map<string, string>(highlight.resolvedEdgeLabels);
+  const ambiguousEdgeLabels = new Map<string, string>(highlight.ambiguousEdgeLabels);
+  const labelFor = options.edgeLabel;
   for (const c of conflicts) {
     if (c.flagName !== flagName) continue;
+    if (c.relation === 'contains') continue;
     const edgeKey1 = `${c.relation}-${c.aId}-${c.bId}`;
     const edgeKey2 = `${c.relation}-${c.bId}-${c.aId}`;
+    const text = labelFor
+      ? labelFor(c)
+      : (c.ambiguous ? null : edgeWinnerLabel((c as { winnerValue?: unknown }).winnerValue));
     if (c.ambiguous) {
+      if (!showAmbiguous) continue;
       conflictIds.add(c.aId);
       conflictIds.add(c.bId);
       conflictEdgeKeys.add(edgeKey1);
       conflictEdgeKeys.add(edgeKey2);
+      if (text) {
+        ambiguousEdgeLabels.set(edgeKey1, text);
+        ambiguousEdgeLabels.set(edgeKey2, text);
+      }
     } else {
+      if (!showResolved) continue;
       resolvedConflictIds.add(c.aId);
       resolvedConflictIds.add(c.bId);
       resolvedConflictEdgeKeys.add(edgeKey1);
       resolvedConflictEdgeKeys.add(edgeKey2);
-      const label = edgeWinnerLabel(c.winnerValue);
-      if (label) {
-        resolvedEdgeLabels.set(edgeKey1, label);
-        resolvedEdgeLabels.set(edgeKey2, label);
+      if (text) {
+        resolvedEdgeLabels.set(edgeKey1, text);
+        resolvedEdgeLabels.set(edgeKey2, text);
       }
     }
   }
@@ -424,6 +498,7 @@ export function attachFlagConflicts(
     ...highlight,
     conflictIds,
     conflictEdgeKeys,
+    ...(ambiguousEdgeLabels.size > 0 ? { ambiguousEdgeLabels } : {}),
     ...(resolvedConflictIds.size > 0
       ? {
           resolvedConflictIds,

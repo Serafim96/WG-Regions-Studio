@@ -8,14 +8,16 @@ export function useServerHealth(pollMs = 2000): boolean {
   useEffect(() => {
     let cancelled = false;
     let wasDown = false;
+    let misses = 0;
 
     const ping = async () => {
       const ctrl = new AbortController();
-      const timeoutId = window.setTimeout(() => ctrl.abort(), 2500);
+      const timeoutId = window.setTimeout(() => ctrl.abort(), 5000);
       try {
         const ok = await checkHealth(ctrl.signal);
         if (cancelled) return;
-        const down = !ok;
+        misses = ok ? 0 : misses + 1;
+        const down = misses >= 2;
         if (wasDown && !down) {
           try {
             window.focus();

@@ -246,46 +246,38 @@ export function findCrossFlagHits(
   }
 
   if (stateOf(flags, 'exit') === 'deny' && stateOf(flags, 'exit-via-teleport') !== 'deny') {
-    const names = ['exit'];
-    if (flags.has('exit-via-teleport')) names.push('exit-via-teleport');
     push(hits, flags, definedBy, {
       ruleId: 'E1',
       category: 'leak',
       reasonKey: 'crossFlag.reason.E1',
-      names,
+      names: ['exit', 'exit-via-teleport'],
     });
   }
 
   if (flags.has('entry-deny-message') && stateOf(flags, 'entry') !== 'deny') {
-    const names = ['entry-deny-message'];
-    if (flags.has('entry')) names.push('entry');
     push(hits, flags, definedBy, {
       ruleId: 'F1',
       category: 'dead',
       reasonKey: 'crossFlag.reason.F1',
-      names,
+      names: ['entry-deny-message', 'entry'],
     });
   }
 
   if (stateOf(flags, 'exit') !== 'deny') {
     if (flags.has('exit-deny-message')) {
-      const names = ['exit-deny-message'];
-      if (flags.has('exit')) names.push('exit');
       push(hits, flags, definedBy, {
         ruleId: 'F2',
         category: 'dead',
         reasonKey: 'crossFlag.reason.F2',
-        names,
+        names: ['exit-deny-message', 'exit'],
       });
     }
     if (flags.has('exit-via-teleport')) {
-      const names = ['exit-via-teleport'];
-      if (flags.has('exit')) names.push('exit');
       push(hits, flags, definedBy, {
         ruleId: 'F2',
         category: 'dead',
         reasonKey: 'crossFlag.reason.F2teleport',
-        names,
+        names: ['exit-via-teleport', 'exit'],
       });
     }
   }

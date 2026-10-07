@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo, RegionData, SpatialEdge } from '../types';
 import type { SpatialRelationsGrouped } from '../utils/graph';
@@ -7,7 +7,7 @@ import { isTemporaryRegion } from '../utils/regions';
 import { regionHasNonStandardHeight } from '../utils/worldHeight';
 import {
   findIntersectOverlapBlocks,
-  formatOneDecimal,
+  formatBlockCount,
   intersectionVolume,
   regionVolume,
 } from '../utils/volume';
@@ -18,7 +18,19 @@ import { useRegionDraftState } from '../hooks/useRegionDraftState';
 import { RegionPanelHeader } from './region/RegionPanelHeader';
 import { RegionParentEditor } from './region/RegionParentEditor';
 import { RegionFlagsEditor } from './region/RegionFlagsEditor';
+import { RegionEffectiveFlags } from './region/RegionEffectiveFlags';
 import { RegionMembersEditor } from './region/RegionMembersEditor';
+import { RegionPanelTableSection } from './region/RegionPanelTableSection';
+import { formatCoveragePercent } from '../utils/formatCoveragePercent';
+import { matchesPercentFilter, matchesTableSearch, type PercentCompareOp } from '../utils/tableSearch';
+import { CopyCenterButton } from './region/CopyCenterButton';
+import { NumberFilter } from './region/NumberFilter';
+import { RegionFilterInput } from './region/RegionFilterInput';
+import { RegionSortButton } from './region/RegionSortButton';
+import { IconAdd } from './GraphControlIcons';
+import { SearchPanel } from './SearchPanel';
+import { checkCanAddChild } from '../utils/regionHierarchy';
+import type { SpatialConflict } from '../utils/flagConflicts';
 
 interface RegionPanelProps {
   region: RegionData;
@@ -53,6 +65,11 @@ interface RegionPanelProps {
   onShowFlagOnScheme?: (flagName: string) => void;
   /** Batch region panel save into one history entry. */
   runSaveBatch?: (regionId: string, fn: () => Promise<void>) => Promise<void>;
+  spatialConflicts?: SpatialConflict[];
+  crossFlagConflicts?: import('../utils/crossFlagRules').CrossFlagConflict[];
+  effectiveFlagsFocus?: string | null;
+  effectiveFlagsFocusSeq?: number;
+  onShowConflictOnScheme?: (c: SpatialConflict) => void;
 }
 
 type IntersectSortKey = 'id' | 'blocks' | 'percent';
@@ -60,38 +77,59 @@ type SortDir = 'asc' | 'desc';
 
 function PartnerList({
   ids,
-  emptyText,
   onFocusRegion,
 }: {
   ids: string[];
-  emptyText?: string;
   onFocusRegion: (id: string) => void;
 }) {
+  const { t } = useI18n();
   const sorted = useMemo(() => [...ids].sort(compareNatural), [ids]);
 
-  if (sorted.length === 0) {
-    if (!emptyText) return null;
-    return <p className="partners-empty">{emptyText}</p>;
-  }
-
   return (
-    <div className="region-link-table">
-      <table>
+    <div className="region-link-table-inner">
+      <table className="flags-table region-effective-table">
+        <thead>
+          <tr>
+            <th>{t('region.intersectColRegion')}</th>
+          </tr>
+        </thead>
         <tbody>
-          {sorted.map((pid) => (
-            <tr key={pid}>
-              <td>
-                <button type="button" className="region-link" onClick={() => onFocusRegion(pid)}>
-                  {pid}
-                </button>
-              </td>
+          {sorted.length === 0 ? (
+            <tr>
+              <td>{t('region.tableEmpty')}</td>
             </tr>
-          ))}
+          ) : (
+            sorted.map((pid) => (
+              <tr key={pid}>
+                <td>
+                  <button type="button" className="region-link" onClick={() => onFocusRegion(pid)}>
+                    {pid}
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
     </div>
   );
 }
+
+type IntersectColumnFilters = {
+  id: string;
+  blocksOp: PercentCompareOp;
+  blocks: string;
+  percentOp: PercentCompareOp;
+  percent: string;
+};
+
+const EMPTY_INTERSECT_FILTERS: IntersectColumnFilters = {
+  id: '',
+  blocksOp: 'eq',
+  blocks: '',
+  percentOp: 'eq',
+  percent: '',
+};
 
 function IntersectsPartnerTable({
   region,
@@ -111,29 +149,39 @@ function IntersectsPartnerTable({
   const { t } = useI18n();
   const [sortKey, setSortKey] = useState<IntersectSortKey>('id');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [filters, setFilters] = useState<IntersectColumnFilters>(EMPTY_INTERSECT_FILTERS);
 
   const selfVolume = useMemo(() => regionVolume(region), [region]);
 
   const rows = useMemo(() => {
-    return partnerIds.map((id) => {
-      const fromEdge = findIntersectOverlapBlocks(spatialEdges, region.id, id);
-      let blocks: number | null;
-      if (typeof fromEdge === 'number') {
-        blocks = fromEdge;
-      } else {
-        const partner = regionsById.get(id);
-        blocks = partner ? intersectionVolume(region, partner) : null;
-      }
-      const percent =
-        blocks != null && selfVolume != null && selfVolume > 0
-          ? (blocks / selfVolume) * 100
-          : null;
-      return { id, blocks, percent };
-    });
+    return partnerIds
+      .map((id) => {
+        const fromEdge = findIntersectOverlapBlocks(spatialEdges, region.id, id);
+        let blocks: number | null;
+        if (typeof fromEdge === 'number') {
+          blocks = fromEdge;
+        } else {
+          const partner = regionsById.get(id);
+          blocks = partner ? intersectionVolume(region, partner) : null;
+        }
+        const percent =
+          blocks != null && selfVolume != null && selfVolume > 0
+            ? (blocks / selfVolume) * 100
+            : null;
+        return { id, blocks, percent };
+      })
+      .filter((row) => row.blocks !== 0);
   }, [partnerIds, spatialEdges, region, regionsById, selfVolume]);
 
+  const regionSuggestions = useMemo(() => partnerIds, [partnerIds]);
+
   const sorted = useMemo(() => {
-    const list = [...rows];
+    const list = rows.filter((row) => {
+      if (!matchesTableSearch(row.id, filters.id)) return false;
+      if (!matchesPercentFilter(row.blocks ?? 0, filters.blocksOp, filters.blocks)) return false;
+      if (!matchesPercentFilter(row.percent ?? 0, filters.percentOp, filters.percent)) return false;
+      return true;
+    });
     const dir = sortDir === 'asc' ? 1 : -1;
     list.sort((a, b) => {
       if (sortKey === 'id') {
@@ -148,7 +196,7 @@ function IntersectsPartnerTable({
       return compareNatural(a.id, b.id);
     });
     return list;
-  }, [rows, sortKey, sortDir]);
+  }, [rows, sortKey, sortDir, filters]);
 
   const toggleSort = (key: IntersectSortKey) => {
     if (sortKey === key) {
@@ -159,71 +207,269 @@ function IntersectsPartnerTable({
     setSortDir(key === 'id' ? 'asc' : 'desc');
   };
 
-  const sortMarker = (key: IntersectSortKey) => {
-    if (sortKey !== key) return '';
-    return sortDir === 'asc' ? ' ↑' : ' ↓';
-  };
-
-  if (sorted.length === 0) {
-    return <p className="partners-empty">{emptyText}</p>;
-  }
+  const sortTitle = sortDir === 'asc' ? t('region.intersectSortAsc') : t('region.intersectSortDesc');
 
   return (
-    <div className="region-link-table region-link-table--intersects">
-      <table>
+    <div className="region-link-table-inner region-link-table-inner--intersects">
+      <table className="flags-table region-effective-table">
         <thead>
           <tr>
             <th>
-              <button
-                type="button"
-                className="region-sort-btn"
+              <RegionSortButton
+                active={sortKey === 'id'}
+                direction={sortDir}
                 onClick={() => toggleSort('id')}
-                title={sortDir === 'asc' ? t('region.intersectSortAsc') : t('region.intersectSortDesc')}
+                title={sortTitle}
               >
                 {t('region.intersectColRegion')}
-                {sortMarker('id')}
-              </button>
+              </RegionSortButton>
             </th>
             <th className="region-num-col">
-              <button
-                type="button"
-                className="region-sort-btn"
+              <RegionSortButton
+                active={sortKey === 'blocks'}
+                direction={sortDir}
                 onClick={() => toggleSort('blocks')}
-                title={sortDir === 'asc' ? t('region.intersectSortAsc') : t('region.intersectSortDesc')}
+                title={sortTitle}
               >
                 {t('region.intersectColBlocks')}
-                {sortMarker('blocks')}
-              </button>
+              </RegionSortButton>
             </th>
             <th className="region-num-col">
-              <button
-                type="button"
-                className="region-sort-btn"
+              <RegionSortButton
+                active={sortKey === 'percent'}
+                direction={sortDir}
                 onClick={() => toggleSort('percent')}
-                title={sortDir === 'asc' ? t('region.intersectSortAsc') : t('region.intersectSortDesc')}
+                title={sortTitle}
               >
                 {t('region.intersectColPercent')}
-                {sortMarker('percent')}
-              </button>
+              </RegionSortButton>
+            </th>
+            <th className="region-copy-center-col">{t('region.effectiveCenterCol')}</th>
+          </tr>
+          <tr className="region-effective-filter-row">
+            <th>
+              <RegionFilterInput
+                value={filters.id}
+                onChange={(v) => setFilters((prev) => ({ ...prev, id: v }))}
+                suggestions={regionSuggestions}
+                ariaLabel={t('region.intersectColRegion')}
+              />
+            </th>
+            <th>
+              <NumberFilter
+                op={filters.blocksOp}
+                value={filters.blocks}
+                onOpChange={(op) => setFilters((prev) => ({ ...prev, blocksOp: op }))}
+                onValueChange={(v) => setFilters((prev) => ({ ...prev, blocks: v }))}
+                ariaLabel={t('region.intersectColBlocks')}
+              />
+            </th>
+            <th>
+              <NumberFilter
+                op={filters.percentOp}
+                value={filters.percent}
+                onOpChange={(op) => setFilters((prev) => ({ ...prev, percentOp: op }))}
+                onValueChange={(v) => setFilters((prev) => ({ ...prev, percent: v }))}
+                ariaLabel={t('region.intersectColPercent')}
+                placeholder="%"
+              />
+            </th>
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={4}>{t('region.tableEmpty')}</td>
+            </tr>
+          ) : sorted.length === 0 ? (
+            <tr>
+              <td colSpan={4} className="region-effective-no-match">
+                {t('region.panelTableNoMatch')}
+              </td>
+            </tr>
+          ) : (
+            sorted.map((row) => (
+              <tr key={row.id}>
+                <td>
+                  <button type="button" className="region-link" onClick={() => onFocusRegion(row.id)}>
+                    {row.id}
+                  </button>
+                </td>
+                <td className="region-num-col">
+                  {row.blocks == null ? '—' : formatBlockCount(row.blocks)}
+                </td>
+                <td className="region-num-col">
+                  {row.percent == null ? '—' : formatCoveragePercent(row.percent)}
+                </td>
+                <td className="region-copy-center-col">
+                  <CopyCenterButton regionId={region.id} otherRegionId={row.id} />
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ChildrenPartnerTable({
+  ids,
+  onFocusRegion,
+}: {
+  ids: string[];
+  onFocusRegion: (id: string) => void;
+}) {
+  const { t } = useI18n();
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [filter, setFilter] = useState('');
+
+  const sorted = useMemo(() => {
+    const list = ids.filter((id) => matchesTableSearch(id, filter));
+    const dir = sortDir === 'asc' ? 1 : -1;
+    list.sort((a, b) => compareNatural(a, b) * dir);
+    return list;
+  }, [ids, filter, sortDir]);
+
+  const regionColWidth = useMemo(() => {
+    const maxLen = ids.reduce((m, id) => Math.max(m, id.length), 0);
+    return `min(100%, max(16rem, ${maxLen}ch))`;
+  }, [ids]);
+
+  const sortTitle = sortDir === 'asc' ? t('region.intersectSortAsc') : t('region.intersectSortDesc');
+
+  return (
+    <div className="region-link-table-inner region-link-table-inner--contains region-link-table-inner--full">
+      <table
+        className="flags-table region-effective-table region-contains-table region-children-table"
+        style={{ '--region-contains-col': regionColWidth } as CSSProperties}
+      >
+        <thead>
+          <tr>
+            <th aria-sort={sortDir === 'asc' ? 'ascending' : 'descending'} style={{ width: regionColWidth }}>
+              <RegionSortButton
+                active
+                direction={sortDir}
+                onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                title={sortTitle}
+              >
+                {t('region.intersectColRegion')}
+              </RegionSortButton>
+            </th>
+          </tr>
+          <tr className="region-effective-filter-row">
+            <th>
+              <RegionFilterInput
+                value={filter}
+                onChange={setFilter}
+                suggestions={ids}
+                ariaLabel={t('region.intersectColRegion')}
+              />
             </th>
           </tr>
         </thead>
         <tbody>
-          {sorted.map((row) => (
-            <tr key={row.id}>
-              <td>
-                <button type="button" className="region-link" onClick={() => onFocusRegion(row.id)}>
-                  {row.id}
-                </button>
-              </td>
-              <td className="region-num-col">
-                {row.blocks == null ? '—' : formatOneDecimal(row.blocks)}
-              </td>
-              <td className="region-num-col">
-                {row.percent == null ? '—' : `${formatOneDecimal(row.percent)}%`}
-              </td>
+          {ids.length === 0 ? (
+            <tr>
+              <td>{t('region.tableEmpty')}</td>
             </tr>
-          ))}
+          ) : sorted.length === 0 ? (
+            <tr>
+              <td className="region-effective-no-match">{t('region.panelTableNoMatch')}</td>
+            </tr>
+          ) : (
+            sorted.map((pid) => (
+              <tr key={pid}>
+                <td>
+                  <button type="button" className="region-link" onClick={() => onFocusRegion(pid)}>
+                    {pid}
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ContainsPartnerTable({
+  ids,
+  onFocusRegion,
+}: {
+  ids: string[];
+  onFocusRegion: (id: string) => void;
+}) {
+  const { t } = useI18n();
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+  const [filter, setFilter] = useState('');
+
+  const sorted = useMemo(() => {
+    const list = ids.filter((id) => matchesTableSearch(id, filter));
+    const dir = sortDir === 'asc' ? 1 : -1;
+    list.sort((a, b) => compareNatural(a, b) * dir);
+    return list;
+  }, [ids, filter, sortDir]);
+
+  const regionColWidth = useMemo(() => {
+    const maxLen = ids.reduce((m, id) => Math.max(m, id.length), 0);
+    return `min(100%, max(16rem, ${maxLen}ch))`;
+  }, [ids]);
+
+  const sortTitle = sortDir === 'asc' ? t('region.intersectSortAsc') : t('region.intersectSortDesc');
+
+  return (
+    <div className="region-link-table-inner region-link-table-inner--contains">
+      <table
+        className="flags-table region-effective-table region-contains-table"
+        style={{ '--region-contains-col': regionColWidth } as CSSProperties}
+      >
+        <thead>
+          <tr>
+            <th aria-sort={sortDir === 'asc' ? 'ascending' : 'descending'} style={{ width: regionColWidth }}>
+              <RegionSortButton
+                active
+                direction={sortDir}
+                onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                title={sortTitle}
+              >
+                {t('region.intersectColRegion')}
+              </RegionSortButton>
+            </th>
+          </tr>
+          <tr className="region-effective-filter-row">
+            <th>
+              <RegionFilterInput
+                value={filter}
+                onChange={setFilter}
+                suggestions={ids}
+                ariaLabel={t('region.intersectColRegion')}
+              />
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {ids.length === 0 ? (
+            <tr>
+              <td>{t('region.tableEmpty')}</td>
+            </tr>
+          ) : sorted.length === 0 ? (
+            <tr>
+              <td className="region-effective-no-match">{t('region.panelTableNoMatch')}</td>
+            </tr>
+          ) : (
+            sorted.map((pid) => (
+              <tr key={pid}>
+                <td>
+                  <button type="button" className="region-link" onClick={() => onFocusRegion(pid)}>
+                    {pid}
+                  </button>
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
     </div>
@@ -254,6 +500,11 @@ export function RegionPanel({
   onUpdateMembers,
   onShowFlagOnScheme,
   runSaveBatch,
+  spatialConflicts = [],
+  crossFlagConflicts = [],
+  effectiveFlagsFocus = null,
+  effectiveFlagsFocusSeq = 0,
+  onShowConflictOnScheme,
 }: RegionPanelProps) {
   const { t } = useI18n();
   const flagsByName = useMemo(
@@ -323,11 +574,11 @@ export function RegionPanel({
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [showClearFlagsConfirm, setShowClearFlagsConfirm] = useState(false);
-  const [showCopiedFlash, setShowCopiedFlash] = useState(false);
-  const [copiedFlashPos, setCopiedFlashPos] = useState<{ left: number; top: number } | null>(null);
-  const copiedFlashTimerRef = useRef<number | null>(null);
-  const copyBtnRef = useRef<HTMLButtonElement>(null);
+  const [showAddChildSearch, setShowAddChildSearch] = useState(false);
+  const [pendingChild, setPendingChild] = useState<{ id: string; moveFrom: string | null } | null>(null);
+  const [addChildError, setAddChildError] = useState<string | null>(null);
   const [pendingLeave, setPendingLeave] = useState<null | (() => void)>(null);
+  const [pendingMembersClear, setPendingMembersClear] = useState<null | (() => void)>(null);
 
   const sortedChildIds = useMemo(() => [...childIds].sort(compareNatural), [childIds]);
 
@@ -365,34 +616,30 @@ export function RegionPanel({
     requestLeave(onHistoryForward);
   };
 
-  const copyName = () => {
-    void navigator.clipboard.writeText(region.id);
-    const btn = copyBtnRef.current;
-    if (btn) {
-      const rect = btn.getBoundingClientRect();
-      setCopiedFlashPos({
-        left: rect.left + rect.width / 2,
-        top: rect.top - 6,
-      });
-    } else {
-      setCopiedFlashPos(null);
-    }
-    setShowCopiedFlash(true);
-    if (copiedFlashTimerRef.current != null) {
-      window.clearTimeout(copiedFlashTimerRef.current);
-    }
-    copiedFlashTimerRef.current = window.setTimeout(() => {
-      setShowCopiedFlash(false);
-      setCopiedFlashPos(null);
-      copiedFlashTimerRef.current = null;
-    }, 2000);
-  };
+  const addChildCandidates = useMemo(() => {
+    const map = new Map<string, { parent?: string | null }>();
+    for (const [id, r] of regionsById) map.set(id, { parent: r.parent });
+    return regionIds.filter((id) => checkCanAddChild(region.id, id, map).ok);
+  }, [region.id, regionIds, regionsById]);
 
-  useEffect(() => () => {
-    if (copiedFlashTimerRef.current != null) {
-      window.clearTimeout(copiedFlashTimerRef.current);
+  const handleAddChildSelect = (childId: string) => {
+    const map = new Map<string, { parent?: string | null }>();
+    for (const [id, r] of regionsById) map.set(id, { parent: r.parent });
+    const check = checkCanAddChild(region.id, childId, map);
+    if (!check.ok) {
+      setAddChildError(t(`region.addChildError.${check.reason}`));
+      return;
     }
-  }, []);
+    setAddChildError(null);
+    if (check.moveFrom) {
+      setPendingChild({ id: childId, moveFrom: check.moveFrom });
+      setShowAddChildSearch(false);
+      return;
+    }
+    void onUpdateParent?.(childId, region.id).then(() => {
+      setShowAddChildSearch(false);
+    }).catch((err) => setAddChildError(String(err)));
+  };
 
   const requestClearFlags = () => {
     if (!fieldsEditable || flagRows.length === 0) return;
@@ -429,13 +676,9 @@ export function RegionPanel({
           fieldsLocked={fieldsLocked}
           saveBusy={saveBusy}
           isDirty={isDirty}
-          copiedFlashPos={copiedFlashPos}
-          showCopiedFlash={showCopiedFlash}
-          copyBtnRef={copyBtnRef}
           onHistoryBack={requestHistoryBack}
           onHistoryForward={requestHistoryForward}
           onRequestRename={onRequestRename}
-          onCopyName={copyName}
           onToggleLock={() => setFieldsLocked((v) => {
             if (!v) setEditingParent(false);
             return !v;
@@ -446,6 +689,7 @@ export function RegionPanel({
         />
 
         <div className="modal-body">
+          <div className="region-hierarchy-block">
           <RegionParentEditor
             fieldsLocked={fieldsLocked}
             fieldsEditable={fieldsEditable}
@@ -477,21 +721,26 @@ export function RegionPanel({
           <div className="region-priority-block">
             <p>
               <strong>{t('region.priority')}:</strong>{' '}
-              {onUpdatePriority && !fieldsLocked ? (
-                <input
-                  className="search-input region-priority-input"
-                  type="number"
-                  step={1}
-                  value={priorityDraft}
-                  disabled={!fieldsEditable}
-                  onChange={(e) => {
-                    setPriorityDraft(e.target.value);
-                    setPriorityError(null);
-                  }}
-                />
-              ) : (
-                priorityDraft.trim() || region.priority
-              )}
+              <span className="region-priority-inline">
+                {onUpdatePriority ? (
+                  <input
+                    className={`search-input region-priority-input${fieldsLocked ? ' region-flow-hidden' : ''}`}
+                    type="number"
+                    step={1}
+                    value={priorityDraft}
+                    disabled={!fieldsEditable || fieldsLocked}
+                    tabIndex={fieldsLocked ? -1 : 0}
+                    aria-hidden={fieldsLocked}
+                    onChange={(e) => {
+                      setPriorityDraft(e.target.value);
+                      setPriorityError(null);
+                    }}
+                  />
+                ) : null}
+                <span className={onUpdatePriority && !fieldsLocked ? 'region-flow-hidden' : undefined}>
+                  {priorityDraft.trim() || region.priority}
+                </span>
+              </span>
             </p>
             {priorityError && <p className="flags-manager-error">{priorityError}</p>}
           </div>
@@ -502,50 +751,73 @@ export function RegionPanel({
               {hierarchyDepth}
             </p>
           </div>
+          </div>
 
           <div className="partners-block children-block">
-            <p className="region-meta-label">
-              {t('region.children', { count: sortedChildIds.length })}
-            </p>
-            <PartnerList
-              ids={sortedChildIds}
-              emptyText={t('region.noChildren')}
-              onFocusRegion={navigateToRegion}
-            />
+            {addChildError && <p className="flags-manager-error">{addChildError}</p>}
+            <RegionPanelTableSection
+              title={
+                <span className="region-meta-label">
+                  {t('region.children', { count: sortedChildIds.length })}
+                </span>
+              }
+              actions={
+                <button
+                  type="button"
+                  className={`icon-btn region-add-child-btn${fieldsLocked ? ' region-flow-hidden' : ''}`}
+                  title={isDirty ? t('region.addChildSaveFirst') : t('region.addChild')}
+                  aria-label={t('region.addChild')}
+                  disabled={!onUpdateParent || saveBusy || fieldsLocked}
+                  tabIndex={fieldsLocked ? -1 : 0}
+                  onClick={() => {
+                    if (isDirty) {
+                      requestLeave(() => setShowAddChildSearch(true));
+                      return;
+                    }
+                    setShowAddChildSearch(true);
+                  }}
+                >
+                  <IconAdd size={20} />
+                </button>
+              }
+            >
+              <ChildrenPartnerTable ids={sortedChildIds} onFocusRegion={navigateToRegion} />
+            </RegionPanelTableSection>
           </div>
 
           {isTemp && <p className="badge-manual">{t('region.manualBadge')}</p>}
 
           {canEditGeometry ? (
             <div className="region-geometry-block">
-              <p className="region-meta-label">{t('region.geometryTitle')}</p>
+              {geometry.shape !== 'cuboid' ? (
+                <p className="region-meta-label">{t('region.geometryTitle')}</p>
+              ) : null}
               <RegionGeometryEditor
                 key={region.id}
                 value={geometry}
                 onChange={onGeometryChange}
                 disabled={saveBusy}
                 readOnly={fieldsLocked}
+                cuboidTitle={geometry.shape === 'cuboid' ? t('region.geometryTitle') : undefined}
               />
               {geometryError && <p className="flags-manager-error">{geometryError}</p>}
             </div>
           ) : (
-            <>
-              {region.min && region.max && (
-                <p>
-                  <strong>{t('region.coords')}:</strong>{' '}
-                  {t('region.coordsMin')} ({region.min.x}, {region.min.y}, {region.min.z}) —
-                  {t('region.coordsMax')} ({region.max.x}, {region.max.y}, {region.max.z})
-                </p>
-              )}
-              {region.points && (
-                <p>
-                  <strong>{t('region.poly2dPoints')}:</strong> {region.points.length}, Y: {region.min_y}–{region.max_y}
-                </p>
-              )}
+            <div className="region-geometry-block">
+              {geometry.shape !== 'cuboid' ? (
+                <p className="region-meta-label">{t('region.geometryTitle')}</p>
+              ) : null}
+              <RegionGeometryEditor
+                key={region.id}
+                value={geometry}
+                onChange={() => {}}
+                readOnly
+                cuboidTitle={geometry.shape === 'cuboid' ? t('region.geometryTitle') : undefined}
+              />
               {regionHasNonStandardHeight(region) && (
                 <p className="geometry-height-warn" role="status">{t('region.heightWarn')}</p>
               )}
-            </>
+            </div>
           )}
 
           <div className="partners-block">
@@ -554,17 +826,22 @@ export function RegionPanel({
             </p>
 
             <div className="partners-subsection">
-              <p className="partners-subtitle">
-                {t('region.intersects', { count: sortedSpatial.intersects.length })}
-              </p>
-              <IntersectsPartnerTable
-                region={region}
-                partnerIds={sortedSpatial.intersects}
-                spatialEdges={spatialEdges}
-                regionsById={regionsById}
-                emptyText={t('region.noIntersects')}
-                onFocusRegion={navigateToRegion}
-              />
+              <RegionPanelTableSection
+                title={
+                  <span className="partners-subtitle">
+                    {t('region.intersects', { count: sortedSpatial.intersects.length })}
+                  </span>
+                }
+              >
+                <IntersectsPartnerTable
+                  region={region}
+                  partnerIds={sortedSpatial.intersects}
+                  spatialEdges={spatialEdges}
+                  regionsById={regionsById}
+                  emptyText={t('region.noIntersects')}
+                  onFocusRegion={navigateToRegion}
+                />
+              </RegionPanelTableSection>
             </div>
 
             <div className="partners-subsection">
@@ -574,21 +851,24 @@ export function RegionPanel({
               <p className="partners-hint">{t('region.containedInHint')}</p>
               <PartnerList
                 ids={sortedSpatial.containedIn}
-                emptyText=""
                 onFocusRegion={navigateToRegion}
               />
             </div>
 
             <div className="partners-subsection">
-              <p className="partners-subtitle">
-                {t('region.contains', { count: sortedSpatial.contains.length })}
-              </p>
-              <p className="partners-hint">{t('region.containsHint')}</p>
-              <PartnerList
-                ids={sortedSpatial.contains}
-                emptyText=""
-                onFocusRegion={navigateToRegion}
-              />
+              <RegionPanelTableSection
+                title={
+                  <span className="partners-subtitle">
+                    {t('region.contains', { count: sortedSpatial.contains.length })}
+                  </span>
+                }
+                hint={<p className="partners-hint">{t('region.containsHint')}</p>}
+              >
+                <ContainsPartnerTable
+                  ids={sortedSpatial.contains}
+                  onFocusRegion={navigateToRegion}
+                />
+              </RegionPanelTableSection>
             </div>
           </div>
 
@@ -618,15 +898,19 @@ export function RegionPanel({
               setMembersUniqueIds(next);
               markMembersDirty();
             }}
+            onRequestClearList={(onConfirm) => setPendingMembersClear(() => onConfirm)}
           />
 
           <RegionFlagsEditor
+            regionId={region.id}
             fieldsLocked={fieldsLocked}
             fieldsEditable={fieldsEditable}
             flagRows={flagRows}
             flagsError={flagsError}
             flagsCatalog={flagsCatalog}
             flagsByName={flagsByName}
+            regionsById={regionsById}
+            spatialConflicts={spatialConflicts}
             isDirty={isDirty}
             canEdit={Boolean(onUpdateFlags)}
             onUpdateFlagRow={updateFlagRow}
@@ -634,6 +918,25 @@ export function RegionPanel({
             onAddFlagRow={addFlagRow}
             onRequestClearFlags={requestClearFlags}
             onShowFlagOnScheme={onShowFlagOnScheme}
+            onShowConflictOnScheme={(c) => {
+              if (!onShowConflictOnScheme) return;
+              requestLeave(() => onShowConflictOnScheme(c));
+            }}
+          />
+
+          <RegionEffectiveFlags
+            regionId={region.id}
+            refreshKey={`${region.priority}|${region.parent ?? ''}|${JSON.stringify(region.flags)}`}
+            flagsCatalog={flagsCatalog}
+            spatialConflicts={spatialConflicts}
+            crossFlagConflicts={crossFlagConflicts}
+            focusFlag={effectiveFlagsFocus}
+            focusFlagSeq={effectiveFlagsFocusSeq}
+            onFocusRegion={onFocusRegion}
+            onShowConflictOnScheme={(c) => {
+              if (!onShowConflictOnScheme) return;
+              requestLeave(() => onShowConflictOnScheme(c));
+            }}
           />
 
           {onDeleteManual && (
@@ -682,6 +985,43 @@ export function RegionPanel({
         onConfirm={() => {
           setShowClearFlagsConfirm(false);
           clearAllFlagRows();
+        }}
+      />
+    )}
+    {showAddChildSearch && (
+      <SearchPanel
+        regionIds={addChildCandidates}
+        onClose={() => setShowAddChildSearch(false)}
+        onSelect={handleAddChildSelect}
+        overlayClassName="modal-overlay--above-region"
+      />
+    )}
+    {pendingChild && onUpdateParent && (
+      <ConfirmDialog
+        title={t('region.addChild')}
+        message={t('region.addChildMoveConfirm', {
+          child: pendingChild.id,
+          from: pendingChild.moveFrom ?? '—',
+          to: region.id,
+        })}
+        onCancel={() => setPendingChild(null)}
+        onConfirm={() => {
+          const { id } = pendingChild;
+          setPendingChild(null);
+          void onUpdateParent(id, region.id).catch((err) => setAddChildError(String(err)));
+        }}
+      />
+    )}
+    {pendingMembersClear && (
+      <ConfirmDialog
+        title={t('region.stringListClearTitle')}
+        message={t('region.stringListClearConfirm')}
+        confirmClass="warning"
+        onCancel={() => setPendingMembersClear(null)}
+        onConfirm={() => {
+          const action = pendingMembersClear;
+          setPendingMembersClear(null);
+          action();
         }}
       />
     )}

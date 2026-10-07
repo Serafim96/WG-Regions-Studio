@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { Core } from 'cytoscape';
 import { applyHighlightOverlay } from '../../components/graph/highlightOverlay';
+import { updateIntersectEdgeLabels } from '../../components/graph/intersectEdgeLabels';
 import type { FlagHighlightState } from '../../components/graph/types';
 
 /** Flag / attention highlight: update classes & captions without re-layout. */
@@ -21,5 +22,6 @@ export function useHighlightOverlay(
       attentionBrightEdgeKeys,
       baseSize,
     );
+    updateIntersectEdgeLabels(cy);
   }, [cyRef, flagHighlight, attentionBrightIds, attentionBrightEdgeKeys, baseSize]);
 }

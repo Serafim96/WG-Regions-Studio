@@ -124,6 +124,31 @@ export function IconAdd({ size = GRAPH_ICON_SIZE, className }: SvgIconProps = {}
   );
 }
 
+export function IconCopy({ size = GRAPH_ICON_SIZE, className }: SvgIconProps = {}) {
+  return (
+    <svg {...strokeSvg(size)} className={className}>
+      <rect x="5.5" y="5.5" width="8" height="9" rx="1" />
+      <path d="M7 4.5h5.5a1 1 0 0 1 1 1V11" />
+    </svg>
+  );
+}
+
+export function IconMinus({ size = GRAPH_ICON_SIZE, className }: SvgIconProps = {}) {
+  return (
+    <svg {...strokeSvg(size)} className={className}>
+      <path d="M4 9h10" />
+    </svg>
+  );
+}
+
+export function IconTrash({ size = GRAPH_ICON_SIZE, className }: SvgIconProps = {}) {
+  return (
+    <svg {...strokeSvg(size)} className={className}>
+      <path d="M4 5h10M7 5V3.5h4V5M6.5 8v5M9 8v5M5.5 5 6 15h6l.5-10" />
+    </svg>
+  );
+}
+
 /** Закрытый замок */
 export function IconLock({ size = GRAPH_ICON_SIZE, className }: SvgIconProps = {}) {
   return (

@@ -54,7 +54,8 @@ def build_scheme(
                     {
                         "overlapBlocks": (
                             e.overlap_blocks if e.overlap_blocks is not None else 0
-                        )
+                        ),
+                        "componentIndex": e.component_index,
                     }
                     if e.relation == "intersects"
                     else {}

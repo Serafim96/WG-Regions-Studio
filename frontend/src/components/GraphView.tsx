@@ -42,6 +42,14 @@ import {
   zoomToFitSize,
 } from './graph/camera';
 import { applyHighlightOverlay, nodeBoxForLabel } from './graph/highlightOverlay';
+import { updateIntersectEdgeLabels } from './graph/intersectEdgeLabels';
+import {
+  beginViewportGesture,
+  cancelViewportGesture,
+  holdViewportGesture,
+  releaseViewportGesture,
+  VIEWPORT_GESTURE_SETTLE_MS,
+} from './graph/viewportGesture';
 import { applyRegionNodeStyles } from './graph/nodeStyles';
 import {
   DEFAULT_EDGE_DISPLAY_FILTERS,
@@ -50,6 +58,7 @@ import {
   type EdgeDisplayFilters,
   type FlagHighlightState,
   type HighlightBranchMode,
+  regionParticipatesInFlagScheme,
 } from './graph/types';
 import { useGraphCameraControl } from '../hooks/graph/useGraphCameraControl';
 import { useGraphEvents } from '../hooks/graph/useGraphEvents';
@@ -103,6 +112,9 @@ interface GraphViewProps {
   onExpandRecursive: (regionId: string) => void;
   onHighlightSubtree: (regionId: string, mode: HighlightBranchMode) => void;
   onClearSubtreeHighlight: () => void;
+  /** Active flag scheme name (for partial coverage links). */
+  highlightFlagName?: string | null;
+  onOpenRegionEffectiveFlags?: (regionId: string, flagName: string) => void;
 }
 
 export type { HighlightBranchMode, EdgeDisplayFilters };
@@ -143,6 +155,8 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
     onExpandRecursive,
     onHighlightSubtree,
     onClearSubtreeHighlight,
+    highlightFlagName = null,
+    onOpenRegionEffectiveFlags,
   },
   ref,
 ) {
@@ -161,6 +175,10 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
   onNodeSelectRef.current = onNodeSelect;
   const onNodeOpenRef = useRef(onNodeOpen);
   onNodeOpenRef.current = onNodeOpen;
+  const highlightFlagNameRef = useRef(highlightFlagName);
+  highlightFlagNameRef.current = highlightFlagName;
+  const onOpenRegionEffectiveFlagsRef = useRef(onOpenRegionEffectiveFlags);
+  onOpenRegionEffectiveFlagsRef.current = onOpenRegionEffectiveFlags;
   const onBackgroundTapRef = useRef(onBackgroundTap);
   onBackgroundTapRef.current = onBackgroundTap;
   const flagHighlightRef = useRef(flagHighlight);
@@ -182,10 +200,12 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
   } | null>(null);
   const expandContentSizeRef = useRef<{ w: number; h: number } | null>(null);
   const constrainingPanRef = useRef(false);
+  const beginGestureRef = useRef<(cy: Core) => void>(() => {});
   const flagLayoutActive = Boolean(flagHighlight);
 
   const cameraControl = useGraphCameraControl({
     cyRef,
+    beginGestureRef,
     focusRequest,
     centerRequest,
     fitRequest,
@@ -371,12 +391,21 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
     for (const edge of visibleSpatial) {
       if (!visibleIds.has(edge.source) || !visibleIds.has(edge.target)) continue;
       if (!edgeAllowedByDisplayFilters(edge.relation, edgeDisplayFilters)) continue;
-      const edgeClasses = [edge.relation];
+      const componentIdx = edge.componentIndex ?? 0;
+      const edgeClasses =
+        edge.relation === 'intersects'
+          ? [edge.relation, `intersects-idx-${componentIdx}`]
+          : [edge.relation];
       elements.push({
         data: {
-          id: `s-${edge.relation}-${edge.source}-${edge.target}`,
+          id:
+            edge.relation === 'intersects'
+              ? `s-${edge.relation}-${edge.source}-${edge.target}-${componentIdx}`
+              : `s-${edge.relation}-${edge.source}-${edge.target}`,
           source: edge.source,
           target: edge.target,
+          origins: edge.origins ?? [],
+          overlapBlocks: edge.overlapBlocks ?? undefined,
         },
         classes: edgeClasses.join(' '),
       });
@@ -410,9 +439,52 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
     // Deterministic wheel zoom: direction-only step, cursor-centered, no device heuristic.
     // Also stops any in-flight fit/focus tween so deltas do not stack on animation.
     const containerEl = containerRef.current;
+    let labelTimer: ReturnType<typeof setTimeout> | null = null;
+    const flushIntersectEdgeLabels = () => {
+      if (cyRef.current === cy) updateIntersectEdgeLabels(cy);
+    };
+    const onGestureSettle = () => {
+      if (labelTimer) {
+        clearTimeout(labelTimer);
+        labelTimer = null;
+      }
+      flushIntersectEdgeLabels();
+    };
+    beginGestureRef.current = (targetCy) => {
+      beginViewportGesture(targetCy, onGestureSettle);
+    };
+    const scheduleIntersectEdgeLabels = () => {
+      if (labelTimer) clearTimeout(labelTimer);
+      labelTimer = setTimeout(() => {
+        labelTimer = null;
+        flushIntersectEdgeLabels();
+      }, VIEWPORT_GESTURE_SETTLE_MS);
+    };
+
+    const onPointerDownCapture = () => {
+      if (cyRef.current === cy) holdViewportGesture(cy);
+    };
+    const onPointerRelease = () => {
+      if (labelTimer) {
+        clearTimeout(labelTimer);
+        labelTimer = null;
+      }
+      if (cyRef.current === cy) releaseViewportGesture(cy, onGestureSettle);
+    };
+    const onResize = () => {
+      cancelViewportGesture(cy);
+      scheduleIntersectEdgeLabels();
+    };
+
+    containerEl.addEventListener('pointerdown', onPointerDownCapture, { capture: true });
+    window.addEventListener('pointerup', onPointerRelease);
+    window.addEventListener('pointercancel', onPointerRelease);
+    window.addEventListener('blur', onPointerRelease);
+
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       if (cyRef.current !== cy) return;
+      beginViewportGesture(cy, onGestureSettle);
       cy.stop(true);
       const rect = containerEl.getBoundingClientRect();
       const nextZoom = nextWheelZoom(cy.zoom(), e.deltaY, cy.minZoom(), cy.maxZoom());
@@ -459,7 +531,20 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
         clearTimeout(clickTimerRef.current);
         clickTimerRef.current = null;
       }
-      onNodeOpenRef.current(evt.target.id());
+      const id = evt.target.id();
+      const fh = flagHighlightRef.current;
+      const flagName = highlightFlagNameRef.current;
+      const openEffective = onOpenRegionEffectiveFlagsRef.current;
+      if (
+        flagName
+        && openEffective
+        && fh
+        && regionParticipatesInFlagScheme(id, fh)
+      ) {
+        openEffective(id, flagName);
+      } else {
+        onNodeOpenRef.current(id);
+      }
     });
 
     cy.on('cxttap', 'node', (evt) => {
@@ -527,6 +612,10 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
       attentionBrightEdgeKeysRef.current,
       baseSize,
     );
+    updateIntersectEdgeLabels(cy);
+    cy.on('pan zoom', scheduleIntersectEdgeLabels);
+    cy.on('resize', onResize);
+    cy.on('drag', 'node', scheduleIntersectEdgeLabels);
 
     // Prefer focus (search/partners) over fit / expand-collapse center.
     // Each seq is applied only once so an old search does not keep winning on later rebuilds.
@@ -563,6 +652,13 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
     }
 
     return () => {
+      beginGestureRef.current = () => {};
+      cancelViewportGesture(cy);
+      if (labelTimer) clearTimeout(labelTimer);
+      containerEl.removeEventListener('pointerdown', onPointerDownCapture, { capture: true });
+      window.removeEventListener('pointerup', onPointerRelease);
+      window.removeEventListener('pointercancel', onPointerRelease);
+      window.removeEventListener('blur', onPointerRelease);
       containerEl.removeEventListener('wheel', onWheel, { capture: true });
       if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
       const living = cyRef.current;
@@ -592,7 +688,6 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
     t,
   ]);
 
-
   const blockBrowserMenu = (e: React.MouseEvent) => {
     e.preventDefault();
   };
@@ -604,11 +699,13 @@ export const GraphViewInner = forwardRef<GraphViewHandle, GraphViewProps>(functi
 
   return (
     <>
-      <div
-        ref={containerRef}
-        className="graph-container"
-        onContextMenu={blockBrowserMenu}
-      />
+      <div className="graph-shell">
+        <div
+          ref={containerRef}
+          className="graph-container"
+          onContextMenu={blockBrowserMenu}
+        />
+      </div>
       {contextMenu && (
         <GraphContextMenu
           contextMenu={contextMenu}

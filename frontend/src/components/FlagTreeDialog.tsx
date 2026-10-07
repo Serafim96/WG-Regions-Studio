@@ -83,6 +83,7 @@ export function FlagTreeDialog({
               flagsCatalog={usedCatalog}
               onChange={setFlagName}
               placeholder={t('flagsManager.namePlaceholder')}
+              autoFocus
             />
           </label>
           <div className="modal-actions">

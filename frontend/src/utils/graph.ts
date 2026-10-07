@@ -39,6 +39,7 @@ export function remapSpatialEdges(
   const result = new Map<string, SpatialEdge>();
 
   for (const edge of edges) {
+    const origin = { source: edge.source, target: edge.target, relation: edge.relation };
     let src = ancestors.get(edge.source) ?? edge.source;
     let tgt = ancestors.get(edge.target) ?? edge.target;
     if (hidden.has(src) || hidden.has(tgt) || src === tgt) continue;
@@ -51,10 +52,37 @@ export function remapSpatialEdges(
       out = { source: a, target: b, relation: 'intersects' };
     }
 
-    const key = `${out.relation}:${out.source}:${out.target}`;
+    const componentIdx = edge.componentIndex ?? 0;
+    const key =
+      out.relation === 'intersects'
+        ? `${out.relation}:${out.source}:${out.target}:${componentIdx}`
+        : `${out.relation}:${out.source}:${out.target}`;
     const existing = result.get(key);
-    if (!existing || EDGE_STRENGTH[out.relation] > EDGE_STRENGTH[existing.relation]) {
-      result.set(key, out);
+    const appendOrigin = (
+      list: Array<{ source: string; target: string; relation: string }>,
+      item: { source: string; target: string; relation: string },
+    ) => {
+      const sig = `${item.relation}:${item.source}:${item.target}`;
+      if (list.some((o) => `${o.relation}:${o.source}:${o.target}` === sig)) return list;
+      return [...list, item];
+    };
+
+    if (!existing) {
+      result.set(key, {
+        ...out,
+        ...(out.relation === 'intersects' ? { componentIndex: componentIdx } : {}),
+        origins: [origin],
+      });
+      continue;
+    }
+
+    const existingOrigins =
+      existing.origins ?? [{ source: existing.source, target: existing.target, relation: existing.relation }];
+
+    if (EDGE_STRENGTH[out.relation] > EDGE_STRENGTH[existing.relation]) {
+      result.set(key, { ...out, origins: appendOrigin(existingOrigins, origin) });
+    } else {
+      result.set(key, { ...existing, origins: appendOrigin(existingOrigins, origin) });
     }
   }
 

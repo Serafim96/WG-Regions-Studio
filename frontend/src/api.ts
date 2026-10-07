@@ -340,3 +340,90 @@ export async function checkForUpdates(signal?: AbortSignal): Promise<UpdateCheck
     return null;
   }
 }
+
+export interface RegionFlagCoverageRow {
+  flag: string;
+  value: unknown;
+  percent: number;
+  blocks: number;
+  viaRegion: string | null;
+  definedIn: string | null;
+  kind: string;
+  inheritType?: 'inheritance' | 'intersection' | 'containment' | 'warning' | null;
+}
+
+export interface IntersectionCenter {
+  x: number;
+  y: number;
+  z: number;
+}
+
+export async function fetchIntersectionCenter(
+  regionId: string,
+  otherRegionId: string,
+): Promise<IntersectionCenter> {
+  const params = new URLSearchParams({ other: otherRegionId });
+  const res = await fetch(
+    `${API}/regions/${encodeURIComponent(regionId)}/intersection-center?${params}`,
+  );
+  if (!res.ok) throw new Error(await readApiError(res));
+  return res.json() as Promise<IntersectionCenter>;
+}
+
+export async function fetchRegionFlagCoverage(regionId: string): Promise<RegionFlagCoverageRow[]> {
+  const res = await fetch(`${API}/regions/${encodeURIComponent(regionId)}/flag-coverage`);
+  if (!res.ok) throw new Error(await readApiError(res));
+  return res.json() as Promise<RegionFlagCoverageRow[]>;
+}
+
+export interface RegionFlagCoverageJob {
+  percent: number;
+  rows: RegionFlagCoverageRow[];
+  done: boolean;
+  error: string | null;
+}
+
+export async function startRegionFlagCoverage(regionId: string): Promise<string> {
+  const res = await fetch(
+    `${API}/regions/${encodeURIComponent(regionId)}/flag-coverage/jobs`,
+    { method: 'POST' },
+  );
+  if (!res.ok) throw new Error(await readApiError(res));
+  const data = (await res.json()) as { jobId: string };
+  return data.jobId;
+}
+
+export async function pollRegionFlagCoverage(jobId: string): Promise<RegionFlagCoverageJob> {
+  const res = await fetch(`${API}/flag-coverage/jobs/${encodeURIComponent(jobId)}`);
+  if (!res.ok) throw new Error(await readApiError(res));
+  return res.json() as Promise<RegionFlagCoverageJob>;
+}
+
+export function cancelRegionFlagCoverage(jobId: string): void {
+  void fetch(`${API}/flag-coverage/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
+}
+
+export interface FlagSchemeCoverageResponse {
+  flag: string;
+  regions: Record<string, {
+    regionId: string;
+    totalVolume: number;
+    label: string;
+    groups: RegionFlagCoverageRow[];
+  }>;
+  intersects: Array<{
+    aId: string;
+    bId: string;
+    label: string;
+    ambiguous: boolean;
+    groups: RegionFlagCoverageRow[];
+    aPercent?: number;
+    bPercent?: number;
+  }>;
+}
+
+export async function fetchFlagSchemeCoverage(flagName: string): Promise<FlagSchemeCoverageResponse> {
+  const res = await fetch(`${API}/flags/${encodeURIComponent(flagName)}/coverage`);
+  if (!res.ok) throw new Error(await readApiError(res));
+  return res.json() as Promise<FlagSchemeCoverageResponse>;
+}

@@ -9,7 +9,7 @@ from pathlib import Path
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 DIST_DIR = APP_ROOT / "dist" / "WG-Regions-Studio"
-OUT_DIR = APP_ROOT / "release"
+OUT_DIR = APP_ROOT / "dist"
 VERSION_FILE = APP_ROOT / "backend" / "version.py"
 
 

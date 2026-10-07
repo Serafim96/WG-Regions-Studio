@@ -27,6 +27,7 @@ import {
 } from './NotificationsBell';
 import type { FlagInfo } from '../types';
 import { useI18n } from '../i18n/I18nContext';
+import { isNonSpatialFlag } from '../utils/flagSpatialRules';
 
 export type GraphChromeActions = {
   toggleSidebarCollapsed: () => void;
@@ -51,6 +52,7 @@ export type GraphChromeActions = {
   setFlagHighlightShowContains: (v: boolean) => void;
   setFlagHighlightShowInheritance: (v: boolean) => void;
   setFlagHighlightShowConflicts: (v: boolean) => void;
+  setFlagHighlightShowUndefined: (v: boolean) => void;
   setEdgeDisplayFilters: React.Dispatch<React.SetStateAction<EdgeDisplayFilters>>;
   setProblemsMode: (mode: 'error' | 'warning' | null) => void;
   openLegend: () => void;
@@ -76,6 +78,7 @@ export type GraphChromeControlsProps = {
   flagHighlightShowContains: boolean;
   flagHighlightShowInheritance: boolean;
   flagHighlightShowConflicts: boolean;
+  flagHighlightShowUndefined: boolean;
   showFlagHighlightOptsMenu: boolean;
   showEdgeModeMenu: boolean;
   showProblemsMenu: boolean;
@@ -100,6 +103,7 @@ export function GraphChromeControls({
   flagHighlightShowContains,
   flagHighlightShowInheritance,
   flagHighlightShowConflicts,
+  flagHighlightShowUndefined,
   showFlagHighlightOptsMenu,
   showEdgeModeMenu,
   showProblemsMenu,
@@ -137,6 +141,9 @@ export function GraphChromeControls({
               >
                 {t('app.selectedFlagLabel', { flag: highlightFlag })}
               </button>
+              {isNonSpatialFlag(highlightFlag) && (
+                <p className="graph-flag-spatial-hint">{t('app.flagPassthroughSpatialHint')}</p>
+              )}
             </div>
           )}
           {collapseTarget && (
@@ -255,6 +262,7 @@ export function GraphChromeControls({
                 || flagHighlightShowContains
                 || flagHighlightShowInheritance
                 || flagHighlightShowConflicts
+                || flagHighlightShowUndefined
                   ? ' graph-ctrl-btn--active'
                   : ''
               }`}
@@ -265,6 +273,7 @@ export function GraphChromeControls({
                 || flagHighlightShowContains
                 || flagHighlightShowInheritance
                 || flagHighlightShowConflicts
+                || flagHighlightShowUndefined
               }
               aria-expanded={showFlagHighlightOptsMenu}
             >
@@ -303,6 +312,14 @@ export function GraphChromeControls({
                     onChange={(e) => a.setFlagHighlightShowConflicts(e.target.checked)}
                   />
                   <span>{t('app.flagHighlightShowConflicts')}</span>
+                </label>
+                <label className="graph-menu-check">
+                  <input
+                    type="checkbox"
+                    checked={flagHighlightShowUndefined}
+                    onChange={(e) => a.setFlagHighlightShowUndefined(e.target.checked)}
+                  />
+                  <span>{t('app.flagHighlightShowUndefined')}</span>
                 </label>
               </div>
             )}

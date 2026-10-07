@@ -419,6 +419,37 @@ def clear_all_region_flags() -> dict[str, Any]:
     return _regions.clear_all_region_flags()
 
 
+@app.get("/api/regions/{region_id}/flag-coverage")
+def region_flag_coverage(region_id: str) -> list[dict[str, Any]]:
+    return _regions.region_flag_coverage(region_id)
+
+
+@app.get("/api/regions/{region_id}/intersection-center")
+def region_intersection_center(region_id: str, other: str = Query(..., alias="other")) -> dict[str, int]:
+    return _regions.region_intersection_center(region_id, other)
+
+
+@app.post("/api/regions/{region_id}/flag-coverage/jobs")
+def start_region_flag_coverage(region_id: str) -> dict[str, str]:
+    return {"jobId": _regions.begin_region_flag_coverage(region_id)}
+
+
+@app.get("/api/flag-coverage/jobs/{job_id}")
+def region_flag_coverage_job(job_id: str) -> dict[str, Any]:
+    return _regions.region_flag_coverage_job(job_id)
+
+
+@app.delete("/api/flag-coverage/jobs/{job_id}")
+def cancel_region_flag_coverage_job(job_id: str) -> dict[str, bool]:
+    _regions.cancel_region_flag_coverage_job(job_id)
+    return {"ok": True}
+
+
+@app.get("/api/flags/{flag_name}/coverage")
+def flag_scheme_coverage(flag_name: str) -> dict[str, Any]:
+    return _regions.flag_scheme_coverage(flag_name)
+
+
 @app.get("/api/regions/export/yml")
 def export_regions_yml(
     include_manual: bool = Query(True, description="Include temporary regions"),

@@ -20,6 +20,10 @@ export interface SpatialEdge {
   relation: 'intersects' | 'contains';
   /** Shared intersection volume in blocks (intersects edges from a fresh build). */
   overlapBlocks?: number | null;
+  /** Disconnected overlap component index for the same region pair. */
+  componentIndex?: number;
+  /** Original endpoint pairs before collapse remap (for highlight key lookup). */
+  origins?: Array<{ source: string; target: string; relation: string }>;
 }
 
 export interface HierarchyEdge {

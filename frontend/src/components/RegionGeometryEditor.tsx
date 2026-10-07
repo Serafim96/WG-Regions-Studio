@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useI18n } from '../i18n/I18nContext';
 import { isYOutsideStandardWorld } from '../utils/worldHeight';
+import { formatTpCoords } from './region/formatTpCoords';
+import { IconCopy } from './GraphControlIcons';
+import { SpeechBubble } from './region/SpeechBubble';
+import { useSpeechBubble } from './region/useSpeechBubble';
 
 export type ManualShapeType = 'global' | 'cuboid' | 'poly2d';
 
@@ -78,6 +82,102 @@ function parseIntStrict(raw: string): number | null {
   const trimmed = raw.trim();
   if (trimmed === '' || !/^-?\d+$/.test(trimmed)) return null;
   return Number(trimmed);
+}
+
+const COORD_MAX_ABS = 30_000_000;
+const COORD_MAX_LEN = 10;
+
+function acceptCoordRaw(raw: string): boolean {
+  if (raw.length > COORD_MAX_LEN) return false;
+  const trimmed = raw.trim();
+  if (trimmed === '' || trimmed === '-') return true;
+  if (!/^-?\d+$/.test(trimmed)) return true;
+  const n = Number(trimmed);
+  return n >= -COORD_MAX_ABS && n <= COORD_MAX_ABS;
+}
+
+function CoordCopyIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path fill="currentColor" d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+    </svg>
+  );
+}
+
+function PointCoordsCopy({
+  label,
+  point,
+  vec,
+  readOnly,
+  editing,
+  onChange,
+}: {
+  label: string;
+  point: 'min' | 'max';
+  vec: Vec3Form;
+  readOnly: boolean;
+  editing: boolean;
+  onChange: (key: keyof Vec3Form, raw: string) => void;
+}) {
+  const { t } = useI18n();
+  const { bubble, show, anchorRef } = useSpeechBubble();
+  const tpText = formatTpCoords(vec.x, vec.y, vec.z);
+
+  const copyTp = () => {
+    if (!tpText) return;
+    void navigator.clipboard.writeText(tpText).then(() => {
+      show(t('region.copiedFlash'), 'ok');
+    });
+  };
+
+  const copyAxis = (axis: keyof Vec3Form, raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    void navigator.clipboard.writeText(trimmed).then(() => {
+      show(`${t('region.copiedFlash')}: ${trimmed}`, 'ok');
+    });
+  };
+
+  return (
+    <>
+      <p className="partners-subtitle geometry-point-label">
+        {label}
+        {tpText ? (
+          <button
+            ref={anchorRef}
+            type="button"
+            className="geometry-coord-copy-btn"
+            title={t('region.copyCoords')}
+            aria-label={t('region.copyCoords')}
+            onClick={copyTp}
+          >
+            <CoordCopyIcon />
+          </button>
+        ) : null}
+      </p>
+      <div className="geometry-xyz">
+        {(['x', 'y', 'z'] as const).map((key) => (
+          <label key={`${point}-${key}`}>
+            {key.toUpperCase()}
+            <input
+              value={vec[key]}
+              readOnly={readOnly}
+              disabled={!editing && !readOnly}
+              className={readOnly ? 'geometry-input--readonly geometry-input--no-select' : undefined}
+              onMouseDown={readOnly ? (e) => e.preventDefault() : undefined}
+              onClick={readOnly ? () => copyAxis(key, vec[key]) : undefined}
+              onChange={(e) => {
+                const raw = e.target.value;
+                if (!acceptCoordRaw(raw)) return;
+                onChange(key, raw);
+              }}
+            />
+          </label>
+        ))}
+      </div>
+      <SpeechBubble bubble={bubble} />
+    </>
+  );
 }
 
 export interface GeometryPayload {
@@ -206,11 +306,6 @@ export function geometryStateHasNonStandardHeight(state: RegionGeometryState): b
   return false;
 }
 
-function ReadonlyValue({ value }: { value: string }) {
-  const trimmed = value.trim();
-  return <span className="geometry-readonly-value">{trimmed === '' ? '—' : trimmed}</span>;
-}
-
 interface RegionGeometryEditorProps {
   value: RegionGeometryState;
   onChange: (next: RegionGeometryState) => void;
@@ -219,12 +314,56 @@ interface RegionGeometryEditorProps {
   readOnly?: boolean;
 }
 
+function CuboidTitleCopy({
+  min,
+  max,
+  title,
+}: {
+  min: Vec3Form;
+  max: Vec3Form;
+  title: string;
+}) {
+  const { t } = useI18n();
+  const { bubble, show, anchorRef } = useSpeechBubble();
+  const line1 = formatTpCoords(min.x, min.y, min.z);
+  const line2 = formatTpCoords(max.x, max.y, max.z);
+  const canCopy = line1 && line2;
+
+  const onClick = () => {
+    if (!canCopy) return;
+    const text = `${line1}\n${line2}`;
+    void navigator.clipboard.writeText(text).then(() => {
+      show(t('region.copiedFlash'), 'ok');
+    });
+  };
+
+  return (
+    <span className="region-meta-copy-row">
+      <p className="region-meta-label">{title}</p>
+      {canCopy ? (
+        <button
+          ref={anchorRef}
+          type="button"
+          className="icon-btn region-coord-copy-btn"
+          title={t('region.copyCoords')}
+          aria-label={t('region.copyCoords')}
+          onClick={onClick}
+        >
+          <IconCopy size={20} />
+        </button>
+      ) : null}
+      <SpeechBubble bubble={bubble} />
+    </span>
+  );
+}
+
 export function RegionGeometryEditor({
   value,
   onChange,
   disabled = false,
   readOnly = false,
-}: RegionGeometryEditorProps) {
+  cuboidTitle,
+}: RegionGeometryEditorProps & { cuboidTitle?: string }) {
   const { t } = useI18n();
   const isGlobal = value.shape === 'global';
   const [pointsExpanded, setPointsExpanded] = useState(false);
@@ -240,10 +379,12 @@ export function RegionGeometryEditor({
   };
 
   const setMin = (key: keyof Vec3Form, raw: string) => {
+    if (!acceptCoordRaw(raw)) return;
     onChange({ ...value, min: { ...value.min, [key]: raw } });
   };
 
   const setMax = (key: keyof Vec3Form, raw: string) => {
+    if (!acceptCoordRaw(raw)) return;
     onChange({ ...value, max: { ...value.max, [key]: raw } });
   };
 
@@ -278,7 +419,14 @@ export function RegionGeometryEditor({
           <label className="geometry-shape-label">
             <span className="geometry-field-caption">{t('region.shapeType')}</span>
             {readOnly ? (
-              <ReadonlyValue value={value.shape === 'global' ? 'cuboid' : value.shape} />
+              <select
+                value={value.shape === 'global' ? 'cuboid' : value.shape}
+                disabled
+                className="geometry-input--readonly"
+              >
+                <option value="cuboid">cuboid</option>
+                <option value="poly2d">poly2d</option>
+              </select>
             ) : (
               <select
                 value={value.shape === 'global' ? 'cuboid' : value.shape}
@@ -293,40 +441,25 @@ export function RegionGeometryEditor({
 
           {value.shape === 'cuboid' && (
             <div className="geometry-cuboid">
-              <p className="partners-subtitle">{t('region.coordsMin')}</p>
-              <div className="geometry-xyz">
-                {(['x', 'y', 'z'] as const).map((key) => (
-                  <label key={`min-${key}`}>
-                    {key.toUpperCase()}
-                    {readOnly ? (
-                      <ReadonlyValue value={value.min[key]} />
-                    ) : (
-                      <input
-                        value={value.min[key]}
-                        disabled={!editing}
-                        onChange={(e) => setMin(key, e.target.value)}
-                      />
-                    )}
-                  </label>
-                ))}
-              </div>
-              <p className="partners-subtitle">{t('region.coordsMax')}</p>
-              <div className="geometry-xyz">
-                {(['x', 'y', 'z'] as const).map((key) => (
-                  <label key={`max-${key}`}>
-                    {key.toUpperCase()}
-                    {readOnly ? (
-                      <ReadonlyValue value={value.max[key]} />
-                    ) : (
-                      <input
-                        value={value.max[key]}
-                        disabled={!editing}
-                        onChange={(e) => setMax(key, e.target.value)}
-                      />
-                    )}
-                  </label>
-                ))}
-              </div>
+              {cuboidTitle ? (
+                <CuboidTitleCopy min={value.min} max={value.max} title={cuboidTitle} />
+              ) : null}
+              <PointCoordsCopy
+                label={t('region.coordsMin')}
+                point="min"
+                vec={value.min}
+                readOnly={readOnly}
+                editing={editing}
+                onChange={setMin}
+              />
+              <PointCoordsCopy
+                label={t('region.coordsMax')}
+                point="max"
+                vec={value.max}
+                readOnly={readOnly}
+                editing={editing}
+                onChange={setMax}
+              />
               {heightWarn && (
                 <p className="geometry-height-warn" role="status">{t('region.heightWarn')}</p>
               )}
@@ -353,27 +486,25 @@ export function RegionGeometryEditor({
               <div className="geometry-xyz geometry-poly2d-y">
                 <label>
                   min-y
-                  {readOnly ? (
-                    <ReadonlyValue value={value.minY} />
-                  ) : (
-                    <input
-                      value={value.minY}
-                      disabled={!editing}
-                      onChange={(e) => onChange({ ...value, minY: e.target.value })}
-                    />
-                  )}
+                  <input
+                    value={value.minY}
+                    readOnly={readOnly}
+                    tabIndex={readOnly ? -1 : undefined}
+                    className={readOnly ? 'geometry-input--readonly' : undefined}
+                    disabled={!readOnly && !editing}
+                    onChange={(e) => onChange({ ...value, minY: e.target.value })}
+                  />
                 </label>
                 <label>
                   max-y
-                  {readOnly ? (
-                    <ReadonlyValue value={value.maxY} />
-                  ) : (
-                    <input
-                      value={value.maxY}
-                      disabled={!editing}
-                      onChange={(e) => onChange({ ...value, maxY: e.target.value })}
-                    />
-                  )}
+                  <input
+                    value={value.maxY}
+                    readOnly={readOnly}
+                    tabIndex={readOnly ? -1 : undefined}
+                    className={readOnly ? 'geometry-input--readonly' : undefined}
+                    disabled={!readOnly && !editing}
+                    onChange={(e) => onChange({ ...value, maxY: e.target.value })}
+                  />
                 </label>
               </div>
               {heightWarn && (
@@ -397,26 +528,24 @@ export function RegionGeometryEditor({
                           <tr key={index}>
                             <td className="geometry-points-index">{index + 1}</td>
                             <td>
-                              {readOnly ? (
-                                <ReadonlyValue value={point.x} />
-                              ) : (
-                                <input
-                                  value={point.x}
-                                  disabled={!editing}
-                                  onChange={(e) => setPoint(index, 'x', e.target.value)}
-                                />
-                              )}
+                              <input
+                                value={point.x}
+                                readOnly={readOnly}
+                                tabIndex={readOnly ? -1 : undefined}
+                                className={readOnly ? 'geometry-input--readonly' : undefined}
+                                disabled={!readOnly && !editing}
+                                onChange={(e) => setPoint(index, 'x', e.target.value)}
+                              />
                             </td>
                             <td>
-                              {readOnly ? (
-                                <ReadonlyValue value={point.z} />
-                              ) : (
-                                <input
-                                  value={point.z}
-                                  disabled={!editing}
-                                  onChange={(e) => setPoint(index, 'z', e.target.value)}
-                                />
-                              )}
+                              <input
+                                value={point.z}
+                                readOnly={readOnly}
+                                tabIndex={readOnly ? -1 : undefined}
+                                className={readOnly ? 'geometry-input--readonly' : undefined}
+                                disabled={!readOnly && !editing}
+                                onChange={(e) => setPoint(index, 'z', e.target.value)}
+                              />
                             </td>
                             {!readOnly && (
                               <td className="geometry-points-actions">

@@ -1,6 +1,7 @@
-import { createPortal } from 'react-dom';
 import { useI18n } from '../../i18n/I18nContext';
 import { IconLock, IconUnlock } from '../GraphControlIcons';
+import { SpeechBubble } from './SpeechBubble';
+import { useSpeechBubble } from './useSpeechBubble';
 
 function CopyIcon() {
   return (
@@ -17,13 +18,9 @@ export type RegionPanelHeaderProps = {
   fieldsLocked: boolean;
   saveBusy: boolean;
   isDirty: boolean;
-  copiedFlashPos: { left: number; top: number } | null;
-  showCopiedFlash: boolean;
-  copyBtnRef: React.RefObject<HTMLButtonElement | null>;
   onHistoryBack: () => void;
   onHistoryForward: () => void;
   onRequestRename?: (regionId: string) => void;
-  onCopyName: () => void;
   onToggleLock: () => void;
   onDiscard: () => void;
   onSave: () => void;
@@ -37,19 +34,21 @@ export function RegionPanelHeader({
   fieldsLocked,
   saveBusy,
   isDirty,
-  copiedFlashPos,
-  showCopiedFlash,
-  copyBtnRef,
   onHistoryBack,
   onHistoryForward,
   onRequestRename,
-  onCopyName,
   onToggleLock,
   onDiscard,
   onSave,
   onClose,
 }: RegionPanelHeaderProps) {
   const { t } = useI18n();
+  const { bubble, show, anchorRef } = useSpeechBubble();
+
+  const copyName = () => {
+    void navigator.clipboard.writeText(regionId);
+    show(t('region.copiedFlash'), 'ok');
+  };
 
   return (
     <header className="region-panel-header">
@@ -84,26 +83,17 @@ export function RegionPanelHeader({
         )}
         <span className="copy-name-wrap">
           <button
-            ref={copyBtnRef as React.Ref<HTMLButtonElement>}
+            ref={anchorRef}
             type="button"
             className="icon-btn"
             title={t('region.copyName')}
             aria-label={t('region.copyName')}
-            onClick={onCopyName}
+            onClick={copyName}
           >
             <CopyIcon />
           </button>
         </span>
-        {showCopiedFlash && copiedFlashPos && createPortal(
-          <span
-            className="copy-name-flash"
-            role="status"
-            style={{ left: copiedFlashPos.left, top: copiedFlashPos.top }}
-          >
-            {t('region.copiedFlash')}
-          </span>,
-          document.body,
-        )}
+        <SpeechBubble bubble={bubble} />
         <button
           type="button"
           className={`icon-btn region-fields-lock${fieldsLocked ? ' is-locked' : ' is-unlocked'}`}

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from shapely.geometry import Polygon
+from shapely.geometry import GeometryCollection, MultiPolygon, Polygon
 from shapely.geometry.base import BaseGeometry
 
 from backend.models.region import Region, Vec2, Vec3
@@ -25,12 +25,14 @@ class SpatialEdge:
     relation: SpatialRelation
     # Shared intersection volume in blocks (intersects edges only).
     overlap_blocks: int | None = None
+    # Index of a disconnected overlap component for the same region pair.
+    component_index: int = 0
 
-    def normalized_key(self) -> tuple[str, str, SpatialRelation]:
+    def normalized_key(self) -> tuple[str, str, SpatialRelation, int]:
         if self.relation == "intersects":
             a, b = sorted((self.source, self.target))
-            return (a, b, "intersects")
-        return (self.source, self.target, self.relation)
+            return (a, b, "intersects", self.component_index)
+        return (self.source, self.target, self.relation, 0)
 
 
 def cuboid_volume(region: Region) -> int | None:
@@ -340,6 +342,60 @@ def _cached_contains(outer: _CachedGeom, inner: _CachedGeom) -> bool:
     return _polygon_contains(poly_o, poly_i)
 
 
+def _positive_intersection_polygons(geom: BaseGeometry) -> list[Polygon]:
+    """Polygons with positive XZ area from a Shapely intersection result."""
+    if geom.is_empty:
+        return []
+    if isinstance(geom, Polygon):
+        return [geom] if geom.area > 0 else []
+    if isinstance(geom, MultiPolygon):
+        return [p for p in geom.geoms if p.area > 0]
+    if isinstance(geom, GeometryCollection):
+        out: list[Polygon] = []
+        for g in geom.geoms:
+            out.extend(_positive_intersection_polygons(g))
+        return out
+    return []
+
+
+def _cached_intersect_components(
+    a: _CachedGeom,
+    b: _CachedGeom,
+) -> list[int]:
+    """Overlap volumes in blocks per disconnected XZ intersection component."""
+    if not _y_ranges_overlap(a.y0, a.y1, b.y0, b.y1):
+        return []
+    if not _xz_aabb_positive_overlap(a, b):
+        return []
+
+    height = _inclusive_axis_overlap(a.y0, a.y1, b.y0, b.y1)
+    if height is None:
+        return []
+
+    if a.is_cuboid and b.is_cuboid:
+        assert a.region.min and a.region.max and b.region.min and b.region.max
+        if not _cuboid_aabb_overlap(
+            a.region.min, a.region.max, b.region.min, b.region.max
+        ):
+            return []
+        dx = _inclusive_axis_overlap(a.region.min.x, a.region.max.x, b.region.min.x, b.region.max.x)
+        dy = _inclusive_axis_overlap(a.region.min.y, a.region.max.y, b.region.min.y, b.region.max.y)
+        dz = _inclusive_axis_overlap(a.region.min.z, a.region.max.z, b.region.min.z, b.region.max.z)
+        if dx is None or dy is None or dz is None:
+            return []
+        return [dx * dy * dz]
+
+    poly_a = a.poly()
+    poly_b = b.poly()
+    if poly_a is None or poly_b is None:
+        return []
+    inter: BaseGeometry = poly_a.intersection(poly_b)
+    polys = _positive_intersection_polygons(inter)
+    if not polys:
+        return []
+    return [int(p.area * height) for p in polys]
+
+
 def _cached_intersect_volume(
     a: _CachedGeom,
     b: _CachedGeom,
@@ -440,7 +496,7 @@ def compute_spatial_edges(regions: list[Region]) -> list[SpatialEdge]:
             cached.append(entry)
 
     edges: list[SpatialEdge] = []
-    seen: set[tuple[str, str, SpatialRelation]] = set()
+    seen: set[tuple[str, ...]] = set()
 
     for i, j in _candidate_pairs(cached):
         a = cached[i]
@@ -475,19 +531,72 @@ def compute_spatial_edges(regions: list[Region]) -> list[SpatialEdge]:
                 )
             continue
 
-        intersects, vol = _cached_intersect_volume(a, b)
-        if intersects:
+        components = _cached_intersect_components(a, b)
+        if components:
             x, y = sorted((a.region.id, b.region.id))
-            key = (x, y, "intersects")
-            if key not in seen:
-                seen.add(key)
-                edges.append(
-                    SpatialEdge(
-                        source=x,
-                        target=y,
-                        relation="intersects",
-                        overlap_blocks=vol if vol is not None else 0,
+            for idx, vol in enumerate(components):
+                key = (x, y, "intersects", str(idx))
+                if key not in seen:
+                    seen.add(key)
+                    edges.append(
+                        SpatialEdge(
+                            source=x,
+                            target=y,
+                            relation="intersects",
+                            overlap_blocks=vol,
+                            component_index=idx,
+                        )
                     )
-                )
 
     return edges
+
+
+class NoIntersectionError(ValueError):
+    """Regions have no positive-volume overlap."""
+
+
+def intersection_bbox_center(a: Region, b: Region) -> tuple[int, int, int]:
+    """Block coordinates at the center of the A ∩ B axis-aligned bounding box."""
+    if not is_spatial(a) or not is_spatial(b):
+        raise NoIntersectionError("regions are not spatial")
+
+    y_a = _get_y_range(a)
+    y_b = _get_y_range(b)
+    if y_a is None or y_b is None:
+        raise NoIntersectionError("missing Y range")
+    y_lo = max(y_a[0], y_b[0])
+    y_hi = min(y_a[1], y_b[1])
+    if y_hi < y_lo:
+        raise NoIntersectionError("no Y overlap")
+
+    if a.type == "cuboid" and b.type == "cuboid":
+        assert a.min and a.max and b.min and b.max
+        x_lo = max(a.min.x, b.min.x)
+        x_hi = min(a.max.x, b.max.x)
+        z_lo = max(a.min.z, b.min.z)
+        z_hi = min(a.max.z, b.max.z)
+        if x_hi < x_lo or z_hi < z_lo:
+            raise NoIntersectionError("cuboids do not overlap")
+        cy_lo = max(a.min.y, b.min.y)
+        cy_hi = min(a.max.y, b.max.y)
+        if cy_hi < cy_lo:
+            raise NoIntersectionError("cuboids do not overlap")
+        return (
+            round((x_lo + x_hi) / 2),
+            round((cy_lo + cy_hi) / 2),
+            round((z_lo + z_hi) / 2),
+        )
+
+    poly_a = _cuboid_to_polygon_xz(a) if a.type == "cuboid" else _poly_to_polygon(a)
+    poly_b = _cuboid_to_polygon_xz(b) if b.type == "cuboid" else _poly_to_polygon(b)
+    if poly_a is None or poly_b is None:
+        raise NoIntersectionError("invalid geometry")
+    inter = poly_a.intersection(poly_b)
+    if inter.is_empty or inter.area <= 0:
+        raise NoIntersectionError("no XZ overlap")
+    minx, minz, maxx, maxz = inter.bounds
+    return (
+        round((minx + maxx) / 2),
+        round((y_lo + y_hi) / 2),
+        round((minz + maxz) / 2),
+    )

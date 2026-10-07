@@ -10,6 +10,13 @@ REM Or:    set FORCE_DEPS=1 && packaging\build_windows.bat
 echo === WG Regions Studio — Windows release build ===
 echo.
 
+echo Checking for running WG-Regions-Studio.exe...
+taskkill /IM WG-Regions-Studio.exe /F >nul 2>nul
+if not errorlevel 1 (
+    echo Closed WG-Regions-Studio.exe — waiting for file locks...
+    timeout /t 2 /nobreak >nul
+)
+
 if not exist ".venv\Scripts\activate.bat" (
     echo ERROR: .venv not found. Run setup.bat first.
     exit /b 1
@@ -69,16 +76,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Creating zip...
-python packaging\make_zip.py
-if errorlevel 1 (
-    echo ERROR: zip failed.
-    exit /b 1
-)
-
 echo.
 echo Done.
 echo   Folder: dist\WG-Regions-Studio\
 echo   Exe:    dist\WG-Regions-Studio\WG-Regions-Studio.exe
-echo   Zip:    release\WG-Regions-Studio-*-windows.zip
 echo Double-click WG-Regions-Studio.exe inside the folder ^(keep _internal beside it^).
+echo Zip for GitHub Release: python packaging\make_zip.py ^(writes to dist\, not release\^)

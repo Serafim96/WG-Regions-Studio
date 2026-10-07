@@ -1,8 +1,10 @@
 """Tests for spatial intersection engine."""
 
 from backend.geometry.intersections import (
+    NoIntersectionError,
     compute_spatial_edges,
     cuboid_volume,
+    intersection_bbox_center,
     poly2d_volume,
     region_contains,
     regions_intersect,
@@ -136,3 +138,86 @@ def test_poly2d_intersection_volume():
     )
     # XZ overlap 5×5 = 25, height 10 → 250
     assert intersection_volume(a, b) == 250
+
+
+def test_intersection_bbox_center_cuboids():
+    a = _cuboid("a", 0, 0, 0, 10, 10, 10)
+    b = _cuboid("b", 5, 5, 5, 15, 15, 15)
+    x, y, z = intersection_bbox_center(a, b)
+    assert (x, y, z) == (8, 8, 8)
+
+
+def test_intersection_bbox_center_poly2d():
+    a = Region(
+        id="a",
+        type="poly2d",
+        parent=None,
+        priority=0,
+        min_y=0,
+        max_y=9,
+        points=[Vec2(0, 0), Vec2(10, 0), Vec2(10, 10), Vec2(0, 10)],
+    )
+    b = Region(
+        id="b",
+        type="poly2d",
+        parent=None,
+        priority=0,
+        min_y=0,
+        max_y=9,
+        points=[Vec2(5, 5), Vec2(15, 5), Vec2(15, 15), Vec2(5, 15)],
+    )
+    x, y, z = intersection_bbox_center(a, b)
+    assert 4 <= x <= 8
+    assert y == 4
+    assert 4 <= z <= 8
+
+
+def test_disjoint_intersect_components_poly2d():
+    """Disconnected XZ overlap patches yield one intersect edge per component."""
+    from shapely.geometry import LineString
+
+    strip = Region(
+        id="strip",
+        type="poly2d",
+        parent=None,
+        priority=0,
+        min_y=0,
+        max_y=9,
+        points=[Vec2(0, 20), Vec2(80, 20), Vec2(80, 24), Vec2(0, 24)],
+    )
+    line = LineString([(10, 10), (10, 28), (30, 12), (50, 28), (70, 12), (70, 30)])
+    wave = line.buffer(2, cap_style=2)
+    wave_pts = [Vec2(float(x), float(z)) for x, z in wave.exterior.coords[:-1]]
+    zigzag = Region(
+        id="zigzag",
+        type="poly2d",
+        parent=None,
+        priority=0,
+        min_y=0,
+        max_y=9,
+        points=wave_pts,
+    )
+    edges = compute_spatial_edges([strip, zigzag])
+    intersects = [e for e in edges if e.relation == "intersects"]
+    assert len(intersects) >= 2
+    assert {e.component_index for e in intersects} == set(range(len(intersects)))
+    assert all((e.overlap_blocks or 0) > 0 for e in intersects)
+
+
+def test_contains_suppresses_intersects_for_pair():
+    outer = _cuboid("outer", 0, 0, 0, 20, 20, 20)
+    inner = _cuboid("inner", 5, 5, 5, 10, 10, 10)
+    edges = compute_spatial_edges([outer, inner])
+    assert len(edges) == 1
+    assert edges[0].relation == "contains"
+
+
+def test_intersection_bbox_center_no_overlap():
+    a = _cuboid("a", 0, 0, 0, 5, 5, 5)
+    b = _cuboid("b", 10, 10, 10, 15, 15, 15)
+    try:
+        intersection_bbox_center(a, b)
+        raised = False
+    except NoIntersectionError:
+        raised = True
+    assert raised

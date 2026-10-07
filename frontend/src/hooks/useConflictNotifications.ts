@@ -202,7 +202,7 @@ export function useConflictNotifications(
         level: 'warning',
         kind: 'spatial',
         conflictKey: key,
-        titleKey: 'notifications.ambiguousTitle',
+        titleKey: 'notifications.resolvedTitle',
         bodyKey: 'notifications.resolvedBody',
         params: {
           flag: c.flagName,
@@ -232,7 +232,7 @@ export function useConflictNotifications(
       id: `${key}|${n.createdAt}`,
       conflictKey: key,
       level: c.ambiguous ? 'error' : 'warning',
-      titleKey: 'notifications.ambiguousTitle',
+      titleKey: c.ambiguous ? 'notifications.ambiguousTitle' : 'notifications.resolvedTitle',
       bodyKey: c.ambiguous ? 'notifications.ambiguousBody' : 'notifications.resolvedBody',
       params: c.ambiguous
         ? {
@@ -340,7 +340,9 @@ export function useConflictNotifications(
           rule: c.ruleId,
           region: c.otherRegionId ? `${c.regionId} / ${c.otherRegionId}` : c.regionId,
           flags: c.flags.map((f) => f.name).join(', '),
+          firstFlag: c.flags[0]?.name ?? '',
         },
+        detailKey: c.reasonKey as AppNotification['detailKey'],
         aId: c.regionId,
         bId: c.otherRegionId,
         read: false,

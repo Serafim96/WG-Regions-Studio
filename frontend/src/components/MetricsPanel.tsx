@@ -1,5 +1,6 @@
 import { useI18n } from '../i18n/I18nContext';
 import type { MetricsData } from '../types';
+import { formatBlockCount } from '../utils/volume';
 import { ModalOverlay } from './ModalOverlay';
 
 interface MetricsPanelProps {
@@ -82,13 +83,15 @@ export function MetricsPanel({ metrics, onClose, onSelectRegion }: MetricsPanelP
                     </tr>
                   </thead>
                   <tbody>
-                    {metrics.by_volume.slice(0, 20).map((item, index) => (
+                    {metrics.by_volume.slice(0, 12).map((item, index) => (
                       <tr key={item.id}>
                         <td className="metrics-rank">{index + 1}</td>
                         <td className="metrics-id">
                           <RegionCell id={item.id} onSelect={onSelectRegion} />
                         </td>
-                        <td className="metrics-num">{formatNumber(item.volume)}</td>
+                        <td className="metrics-num">
+                          {item.volume == null ? '—' : formatBlockCount(item.volume)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -108,7 +111,7 @@ export function MetricsPanel({ metrics, onClose, onSelectRegion }: MetricsPanelP
                     </tr>
                   </thead>
                   <tbody>
-                    {metrics.by_points.slice(0, 20).map((item, index) => (
+                    {metrics.by_points.slice(0, 12).map((item, index) => (
                       <tr key={item.id}>
                         <td className="metrics-rank">{index + 1}</td>
                         <td className="metrics-id">
@@ -134,7 +137,7 @@ export function MetricsPanel({ metrics, onClose, onSelectRegion }: MetricsPanelP
                     </tr>
                   </thead>
                   <tbody>
-                    {metrics.by_intersections.slice(0, 20).map((item, index) => (
+                    {metrics.by_intersections.slice(0, 12).map((item, index) => (
                       <tr key={item.id}>
                         <td className="metrics-rank">{index + 1}</td>
                         <td className="metrics-id">

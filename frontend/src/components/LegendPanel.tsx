@@ -11,6 +11,36 @@ function LegendDirectedEdge({ color, width = 2.5 }: { color: string; width?: num
   );
 }
 
+function LegendEdgeCaption({
+  center,
+  source,
+  target,
+  variant,
+}: {
+  center: string;
+  source?: string;
+  target?: string;
+  variant?: 'hierarchy' | 'contain' | 'warning' | 'undefined';
+}) {
+  const variantClass =
+    variant === 'hierarchy'
+      ? ' legend-edge-caption-sample--hierarchy'
+      : variant === 'contain'
+        ? ' legend-edge-caption-sample--contain'
+        : variant === 'warning'
+          ? ' legend-edge-caption-sample--warning'
+          : variant === 'undefined'
+            ? ' legend-edge-caption-sample--undefined'
+            : '';
+  return (
+    <span className={`legend-edge-caption-sample${variantClass}`} aria-hidden>
+      {source ? <span className="legend-edge-caption-end">{source}</span> : null}
+      <span className="legend-edge-caption-center">{center}</span>
+      {target ? <span className="legend-edge-caption-end">{target}</span> : null}
+    </span>
+  );
+}
+
 function LegendPlainEdge({
   color,
   width = 2.5,
@@ -32,6 +62,28 @@ function LegendPlainEdge({
         strokeDasharray={dashed ? '5 4' : undefined}
       />
     </svg>
+  );
+}
+
+/** Edge label on a line (as on the flag scheme), not beside it. */
+function LegendEdgeCaptionOnLine({
+  lineColor,
+  lineWidth = 3,
+  center,
+  variant,
+}: {
+  lineColor: string;
+  lineWidth?: number;
+  center: string;
+  variant: 'undefined';
+}) {
+  return (
+    <span className="legend-edge-caption-on-line" aria-hidden>
+      <svg width="120" height="24" viewBox="0 0 120 24" className="legend-arrow-svg">
+        <line x1="4" y1="12" x2="116" y2="12" stroke={lineColor} strokeWidth={lineWidth} />
+      </svg>
+      <LegendEdgeCaption center={center} variant={variant} />
+    </span>
   );
 }
 
@@ -152,6 +204,14 @@ export function LegendPanel({ onClose }: { onClose: () => void }) {
       meaning: t('legend.flagIntersectPartial'),
     },
     {
+      sample: <LegendNode variant="flag-path" title="mix" subtitle="◇ 12% allow" />,
+      meaning: t('legend.flagPartialNode'),
+    },
+    {
+      sample: <LegendNode variant="flag-conflict-warning" title="warn" subtitle="◆ deny" />,
+      meaning: t('legend.flagConflictWarning'),
+    },
+    {
       sample: <LegendNode variant="flag-dim" title="other" />,
       meaning: t('legend.flagDim'),
     },
@@ -161,8 +221,39 @@ export function LegendPanel({ onClose }: { onClose: () => void }) {
     },
     { sample: <LegendDirectedEdge color="#1abc9c" width={5} />, meaning: t('legend.flagPathEdge') },
     { sample: <LegendDirectedEdge color="#ef4444" width={6} />, meaning: t('legend.flagConflictEdge') },
+    {
+      sample: <LegendPlainEdge color="#c9a227" width={3} dashed />,
+      meaning: t('legend.flagWarningEdge'),
+    },
     { sample: <LegendDirectedEdge color="#a855f7" width={3} />, meaning: t('legend.flagContainEdge') },
     { sample: <LegendPlainEdge color="#f97316" width={3} />, meaning: t('legend.flagIntersectEdge') },
+    {
+      sample: <LegendEdgeCaption center="allow" source="(1%)" target="(28%)" />,
+      meaning: t('legend.flagEdgePercents'),
+    },
+    {
+      sample: <LegendEdgeCaption center="deny" variant="warning" />,
+      meaning: t('legend.flagWarningEdgeLabel'),
+    },
+    {
+      sample: (
+        <LegendEdgeCaptionOnLine lineColor="#ef4444" lineWidth={3} center="greeting" variant="undefined" />
+      ),
+      meaning: t('legend.flagUndefinedEdgeLabel'),
+    },
+    {
+      sample: <LegendEdgeCaption center="hello→" variant="hierarchy" />,
+      meaning: t('legend.flagEdgeValueFlow'),
+    },
+    {
+      sample: <LegendEdgeCaption center="←hello" variant="contain" />,
+      meaning: t('legend.flagEdgeValueFlow'),
+    },
+    {
+      sample: <LegendEdgeCaption center="bye→⮾" variant="contain" />,
+      meaning: t('legend.flagEdgeValueBlocked'),
+    },
+    { sample: <LegendDirectedEdge color="#a855f7" width={3} />, meaning: t('legend.flagContainArrow') },
     { sample: <LegendPlainEdge color="#ead9c8" width={1.5} dashed />, meaning: t('legend.flagDimIntersectEdge') },
     { sample: <LegendPlainEdge color="#ddd0e6" width={1.5} />, meaning: t('legend.flagDimContainEdge') },
   ];
@@ -197,12 +288,12 @@ export function LegendPanel({ onClose }: { onClose: () => void }) {
           <button type="button" onClick={onClose}>×</button>
         </header>
         <div className="modal-body">
-          <div className="legend-tabs" role="tablist" aria-label={t('legend.title')}>
+          <div className="notifications-tabs" role="tablist" aria-label={t('legend.title')}>
             <button
               type="button"
               role="tab"
               aria-selected={tab === 'scheme'}
-              className={tab === 'scheme' ? 'active' : undefined}
+              className={`notifications-tab${tab === 'scheme' ? ' active' : ''}`}
               onClick={() => setTab('scheme')}
             >
               {t('legend.tabScheme')}
@@ -211,7 +302,7 @@ export function LegendPanel({ onClose }: { onClose: () => void }) {
               type="button"
               role="tab"
               aria-selected={tab === 'flag'}
-              className={tab === 'flag' ? 'active' : undefined}
+              className={`notifications-tab${tab === 'flag' ? ' active' : ''}`}
               onClick={() => setTab('flag')}
             >
               {t('legend.tabFlagScheme')}
@@ -220,7 +311,7 @@ export function LegendPanel({ onClose }: { onClose: () => void }) {
               type="button"
               role="tab"
               aria-selected={tab === 'keys'}
-              className={tab === 'keys' ? 'active' : undefined}
+              className={`notifications-tab${tab === 'keys' ? ' active' : ''}`}
               onClick={() => setTab('keys')}
             >
               {t('legend.tabKeys')}

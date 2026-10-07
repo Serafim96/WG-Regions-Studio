@@ -22,6 +22,7 @@ type LayoutReq = { seq: number } | null;
  */
 export function useGraphCameraControl(opts: {
   cyRef: React.RefObject<Core | null>;
+  beginGestureRef: React.MutableRefObject<(cy: Core) => void>;
   focusRequest: FocusReq;
   centerRequest: CenterReq;
   fitRequest: FitReq;
@@ -33,6 +34,7 @@ export function useGraphCameraControl(opts: {
 }) {
   const {
     cyRef,
+    beginGestureRef,
     focusRequest,
     centerRequest,
     fitRequest,
@@ -123,6 +125,7 @@ export function useGraphCameraControl(opts: {
         zoomIn() {
           const cy = cyRef.current;
           if (!cy) return;
+          beginGestureRef.current(cy);
           const next = Math.min(cy.zoom() * BUTTON_ZOOM_FACTOR, cy.maxZoom());
           cy.zoom({
             level: next,
@@ -133,6 +136,7 @@ export function useGraphCameraControl(opts: {
         zoomOut() {
           const cy = cyRef.current;
           if (!cy) return;
+          beginGestureRef.current(cy);
           const next = Math.max(cy.zoom() / BUTTON_ZOOM_FACTOR, cy.minZoom());
           cy.zoom({
             level: next,

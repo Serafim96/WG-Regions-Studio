@@ -38,6 +38,8 @@ export interface AppNotification {
   relation?: 'intersects' | 'contains';
   /** External link (e.g. GitHub release) opened on click. */
   url?: string;
+  /** i18n key for extra explanation line under the body. */
+  detailKey?: TranslationKey;
   read: boolean;
 }
 
@@ -62,6 +64,7 @@ const TYPE_LABEL: Record<string, TranslationKey> = {
   'warning:update': 'notifications.type.update',
   'warning:info': 'notifications.type.info',
   'error:info': 'notifications.type.info',
+  'warning:crossFlag': 'notifications.type.crossFlag',
 };
 
 const ERROR_TYPE_KEYS = [
@@ -76,6 +79,7 @@ const WARNING_TYPE_KEYS = [
   'warning:overwrite',
   'warning:orphan',
   'warning:height',
+  'warning:crossFlag',
 ] as const;
 
 interface Props {
@@ -266,6 +270,9 @@ export function NotificationsBell({
                   >
                     <strong>{t(n.titleKey, n.params)}</strong>
                     <span>{t(n.bodyKey, n.params)}</span>
+                    {n.detailKey ? (
+                      <span className="notifications-item-detail">{t(n.detailKey, n.params)}</span>
+                    ) : null}
                     {n.detail ? (
                       <span className="notifications-item-detail">{n.detail}</span>
                     ) : null}

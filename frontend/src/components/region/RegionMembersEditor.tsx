@@ -1,13 +1,15 @@
+import { useMemo, useState } from 'react';
 import { useI18n } from '../../i18n/I18nContext';
 import type { RegionData } from '../../types';
+import { IconAdd, IconMinus, IconTrash } from '../GraphControlIcons';
 
 export type StringListEditorProps = {
   label: string;
   values: string[];
   disabled?: boolean;
   readOnly?: boolean;
-  addLabel: string;
   onChange: (next: string[]) => void;
+  onRequestClearAll: (onConfirm: () => void) => void;
 };
 
 /** Shared string-list editor used by owners/members (kept with members for reuse). */
@@ -16,77 +18,143 @@ export function StringListEditor({
   values,
   disabled,
   readOnly,
-  addLabel,
   onChange,
+  onRequestClearAll,
 }: StringListEditorProps) {
-  if (readOnly) {
-    const shown = values.map((v) => v.trim()).filter(Boolean);
-    return (
-      <div className="region-members-subtable">
-        <p className="region-members-sublabel">{label}</p>
-        {shown.length === 0 ? (
-          <p className="partners-empty">—</p>
-        ) : (
-          <div className="region-link-table">
-            <table>
-              <tbody>
-                {shown.map((value, index) => (
-                  <tr key={`${value}-${index}`}>
-                    <td>{value}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    );
-  }
+  const { t } = useI18n();
+  const [checked, setChecked] = useState<Set<number>>(() => new Set());
+  const editing = !readOnly;
+
+  const shown = useMemo(
+    () => (readOnly ? values.map((v) => v.trim()).filter(Boolean) : values),
+    [readOnly, values],
+  );
+
+  const toggleRow = (index: number) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+  const clearChecked = () => {
+    if (checked.size === 0) return;
+    const next = values.filter((_, i) => !checked.has(i));
+    onChange(next);
+    setChecked(new Set());
+  };
+
+  const requestClearAll = () => {
+    if (values.length === 0) return;
+    onRequestClearAll(() => {
+      onChange([]);
+      setChecked(new Set());
+    });
+  };
+
+  const requestRemoveCheckedOrAll = () => {
+    if (checked.size > 0) {
+      clearChecked();
+      return;
+    }
+    requestClearAll();
+  };
 
   return (
     <div className="region-members-subtable">
-      <p className="region-members-sublabel">{label}</p>
-      <div className="region-link-table">
-        <table>
+      <div className="region-members-subhead">
+        <p className="region-members-sublabel">{label}</p>
+        <div className={`region-members-toolbar${editing ? '' : ' region-flow-hidden'}`} aria-hidden={!editing}>
+          <button
+            type="button"
+            className="icon-btn"
+            disabled={disabled}
+            title={t('region.stringListAdd')}
+            aria-label={t('region.stringListAdd')}
+            onClick={() => onChange([...values, ''])}
+          >
+            <IconAdd size={20} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            disabled={disabled || values.length === 0}
+            title={t('region.stringListRemove')}
+            aria-label={t('region.stringListRemove')}
+            onClick={requestRemoveCheckedOrAll}
+          >
+            <IconMinus size={20} />
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            disabled={disabled || values.length === 0}
+            title={t('region.stringListClearAll')}
+            aria-label={t('region.stringListClearAll')}
+            onClick={requestClearAll}
+          >
+            <IconTrash size={20} />
+          </button>
+        </div>
+      </div>
+      <div className="region-link-table region-link-table--full">
+        <table className="flags-table region-effective-table region-members-table">
+          <thead>
+            <tr>
+              <th className="region-members-check-col" aria-hidden={!editing} />
+              <th>{label}</th>
+            </tr>
+          </thead>
           <tbody>
-            {values.map((value, index) => (
-              <tr key={`edit-${index}`}>
-                <td>
-                  <input
-                    className="search-input"
-                    type="text"
-                    value={value}
-                    disabled={disabled}
-                    onChange={(e) => {
-                      const next = [...values];
-                      next[index] = e.target.value;
-                      onChange(next);
-                    }}
-                  />
-                </td>
-                <td className="region-members-actions">
-                  <button
-                    type="button"
-                    className="flags-row-remove"
-                    disabled={disabled}
-                    onClick={() => onChange(values.filter((_, i) => i !== index))}
-                  >
-                    ×
-                  </button>
-                </td>
+            {shown.length === 0 && readOnly ? (
+              <tr>
+                <td className="region-members-check-col" />
+                <td>{t('region.tableEmpty')}</td>
               </tr>
-            ))}
+            ) : values.length === 0 && editing ? (
+              <tr>
+                <td className="region-members-check-col" />
+                <td>{t('region.tableEmpty')}</td>
+              </tr>
+            ) : readOnly ? (
+              shown.map((value, index) => (
+                <tr key={`${value}-${index}`}>
+                  <td className="region-members-check-col" />
+                  <td className="region-cell-readonly">{value}</td>
+                </tr>
+              ))
+            ) : (
+              values.map((value, index) => (
+                <tr key={`edit-${index}`}>
+                  <td className="region-members-check-col">
+                    <input
+                      type="checkbox"
+                      checked={checked.has(index)}
+                      disabled={disabled}
+                      onChange={() => toggleRow(index)}
+                      aria-label={t('region.stringListSelectRow')}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      className="search-input region-cell-input"
+                      type="text"
+                      value={value}
+                      disabled={disabled}
+                      onChange={(e) => {
+                        const next = [...values];
+                        next[index] = e.target.value;
+                        onChange(next);
+                      }}
+                    />
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
-      </div>
-      <div className="modal-actions">
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange([...values, ''])}
-        >
-          {addLabel}
-        </button>
       </div>
     </div>
   );
@@ -106,6 +174,7 @@ export type RegionMembersEditorProps = {
   onOwnersUniqueIdsChange: (next: string[]) => void;
   onMembersPlayersChange: (next: string[]) => void;
   onMembersUniqueIdsChange: (next: string[]) => void;
+  onRequestClearList: (onConfirm: () => void) => void;
 };
 
 export function RegionMembersEditor({
@@ -122,6 +191,7 @@ export function RegionMembersEditor({
   onOwnersUniqueIdsChange,
   onMembersPlayersChange,
   onMembersUniqueIdsChange,
+  onRequestClearList,
 }: RegionMembersEditorProps) {
   const { t } = useI18n();
 
@@ -135,16 +205,16 @@ export function RegionMembersEditor({
             values={ownersPlayers}
             disabled={!fieldsEditable}
             readOnly={fieldsLocked}
-            addLabel={`+ ${t('region.players')}`}
             onChange={onOwnersPlayersChange}
+            onRequestClearAll={onRequestClearList}
           />
           <StringListEditor
             label={t('region.uniqueIds')}
             values={ownersUniqueIds}
             disabled={!fieldsEditable}
             readOnly={fieldsLocked}
-            addLabel={`+ ${t('region.uniqueIds')}`}
             onChange={onOwnersUniqueIdsChange}
+            onRequestClearAll={onRequestClearList}
           />
         </>
       ) : (
@@ -159,16 +229,16 @@ export function RegionMembersEditor({
             values={membersPlayers}
             disabled={!fieldsEditable}
             readOnly={fieldsLocked}
-            addLabel={`+ ${t('region.players')}`}
             onChange={onMembersPlayersChange}
+            onRequestClearAll={onRequestClearList}
           />
           <StringListEditor
             label={t('region.uniqueIds')}
             values={membersUniqueIds}
             disabled={!fieldsEditable}
             readOnly={fieldsLocked}
-            addLabel={`+ ${t('region.uniqueIds')}`}
             onChange={onMembersUniqueIdsChange}
+            onRequestClearAll={onRequestClearList}
           />
           {membersError && <p className="flags-manager-error">{membersError}</p>}
         </>

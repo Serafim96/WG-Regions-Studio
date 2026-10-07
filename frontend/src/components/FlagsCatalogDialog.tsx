@@ -89,9 +89,9 @@ export function FlagsCatalogDialog({
         <div className="modal flags-catalog-modal" onClick={(event) => event.stopPropagation()}>
           <header><h2>{t('catalog.title')}</h2><button type="button" onClick={onClose}>×</button></header>
           <div className="modal-body">
-            <div className="legend-tabs">
-              <button type="button" className={tab === 'standard' ? 'active' : ''} onClick={() => setTab('standard')}>{t('catalog.standardTab')}</button>
-              <button type="button" className={tab === 'custom' ? 'active' : ''} onClick={() => setTab('custom')}>{t('catalog.customTab')}</button>
+            <div className="notifications-tabs">
+              <button type="button" className={`notifications-tab${tab === 'standard' ? ' active' : ''}`} onClick={() => setTab('standard')}>{t('catalog.standardTab')}</button>
+              <button type="button" className={`notifications-tab${tab === 'custom' ? ' active' : ''}`} onClick={() => setTab('custom')}>{t('catalog.customTab')}</button>
             </div>
             <label className="legend-flags-search"><span className="sr-only">{t('legend.flagsSearch')}</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('legend.flagsSearch')} /></label>
             {tab === 'custom' && (

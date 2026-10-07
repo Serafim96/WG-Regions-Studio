@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo } from '../types';
 import { compareNatural } from '../utils/naturalSort';
@@ -77,6 +77,7 @@ export function AddRegionDialog({
   const [flagsError, setFlagsError] = useState<string | null>(null);
   const [showParentSuggestions, setShowParentSuggestions] = useState(false);
   const [showUnsavedConfirm, setShowUnsavedConfirm] = useState(false);
+  const flagsTableWrapRef = useRef<HTMLDivElement>(null);
 
   const parentMatches = useMemo(() => {
     const q = parentQuery.trim().toLowerCase();
@@ -126,6 +127,10 @@ export function AddRegionDialog({
       ...prev,
       { key: `new-${Date.now()}-${prev.length}`, name: '', value: '' },
     ]);
+    requestAnimationFrame(() => {
+      const el = flagsTableWrapRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
   };
 
   const pickParent = (regionId: string) => {
@@ -223,7 +228,7 @@ export function AddRegionDialog({
           }} />
           {geometryError && <p className="flags-manager-error">{geometryError}</p>}
 
-          <div className="flags-table-wrap add-region-flags-wrap">
+          <div className="flags-table-wrap add-region-flags-wrap" ref={flagsTableWrapRef}>
             <p><strong>{t('addRegion.flags')}</strong></p>
             <table className="flags-table flags-edit-table">
               <thead>

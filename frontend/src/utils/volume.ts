@@ -161,3 +161,16 @@ export function formatOneDecimal(value: number): string {
   const rounded = Math.round(value * 10) / 10;
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
+
+/** Integer block counts with thousands grouped by dots (e.g. 1.234.567). */
+export function formatBlockCount(value: number): string {
+  if (!Number.isFinite(value)) return '—';
+  const neg = value < 0;
+  const digits = String(Math.trunc(Math.abs(value)));
+  const parts: string[] = [];
+  for (let i = digits.length; i > 0; i -= 3) {
+    parts.unshift(digits.slice(Math.max(0, i - 3), i));
+  }
+  const grouped = parts.join('.');
+  return neg ? `-${grouped}` : grouped;
+}

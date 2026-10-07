@@ -2,7 +2,9 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo } from '../types';
+import { suggestFlags } from '../utils/flagSuggestions';
 import { FlagHelpButton, FlagShowOnSchemeButton, findFlagInfo } from './FlagHelpButton';
+import { useFlagConflictNameSets } from './FlagConflictNameSetsContext';
 
 interface FlagNameComboboxProps {
   value: string;
@@ -10,10 +12,12 @@ interface FlagNameComboboxProps {
   onChange: (value: string) => void;
   placeholder?: string;
   id?: string;
+  variant?: 'edit' | 'filter';
   /** Opens flag highlight on the scheme (same as bottom-left flag control). */
   onShowOnScheme?: (flagName: string) => void;
   /** When true, the scheme button asks to save first instead of opening. */
   unsavedChanges?: boolean;
+  autoFocus?: boolean;
 }
 
 interface DropdownBox {
@@ -30,34 +34,35 @@ export function FlagNameCombobox({
   onChange,
   placeholder,
   id,
+  variant = 'edit',
   onShowOnScheme,
   unsavedChanges = false,
+  autoFocus = false,
 }: FlagNameComboboxProps) {
   const { t } = useI18n();
+  const { warningNames: conflictWarningNames, undefinedNames: conflictUndefinedNames } =
+    useFlagConflictNameSets();
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [box, setBox] = useState<DropdownBox | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const inputWrapRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
   const known = findFlagInfo(flagsCatalog, value);
 
-  const suggestions = useMemo(() => {
-    const q = value.trim().toLowerCase();
-    const list = !q
-      ? flagsCatalog
-      : flagsCatalog.filter(
-          (f) =>
-            f.name.toLowerCase().includes(q)
-            || f.type.toLowerCase().includes(q),
-        );
-    return list;
-  }, [flagsCatalog, value]);
+  const suggestions = useMemo(() => suggestFlags(flagsCatalog, value), [flagsCatalog, value]);
+  const isFilter = variant === 'filter';
 
   useEffect(() => {
     setActiveIndex(0);
   }, [value, open]);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    inputRef.current?.focus();
+  }, [autoFocus]);
 
   useLayoutEffect(() => {
     if (!open) {
@@ -129,7 +134,15 @@ export function FlagNameCombobox({
             maxHeight: box.maxHeight,
           }}
         >
-          {suggestions.map((f, index) => (
+          {suggestions.map((f, index) => {
+            const nameClass = [
+              'flag-suggestion-name',
+              conflictUndefinedNames?.has(f.name) ? 'flag-suggestion-name--undefined' : '',
+              !conflictUndefinedNames?.has(f.name) && conflictWarningNames?.has(f.name)
+                ? 'flag-suggestion-name--warning'
+                : '',
+            ].filter(Boolean).join(' ');
+            return (
             <li key={f.name}>
               <button
                 type="button"
@@ -139,14 +152,15 @@ export function FlagNameCombobox({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pick(f.name)}
               >
-                <span className="flag-suggestion-name">{f.name}</span>
+                <span className={nameClass}>{f.name}</span>
                 <span className="flag-suggestion-type">{f.type}</span>
                 {!f.builtin ? (
                   <span className="flag-suggestion-custom">{t('legend.flagsCustomBadge')}</span>
                 ) : null}
               </button>
             </li>
-          ))}
+            );
+          })}
         </ul>,
         document.body,
       )
@@ -165,17 +179,19 @@ export function FlagNameCombobox({
     : null;
 
   return (
-    <div className="flag-name-combobox" ref={rootRef}>
+    <div className={`flag-name-combobox${isFilter ? ' flag-name-combobox--filter' : ''}`} ref={rootRef}>
       <div className="flag-name-edit-cell" ref={inputWrapRef}>
         <input
+          ref={inputRef}
           id={id}
           type="text"
+          size={isFilter ? 1 : undefined}
           role="combobox"
           aria-expanded={open}
           aria-controls={listId}
           aria-autocomplete="list"
           value={value}
-          placeholder={placeholder ?? t('flagsManager.namePlaceholder')}
+          placeholder={placeholder ?? (isFilter ? t('region.columnFilter') : t('flagsManager.namePlaceholder'))}
           onChange={(e) => {
             onChange(e.target.value);
             setOpen(true);
@@ -201,7 +217,7 @@ export function FlagNameCombobox({
             }
           }}
         />
-        {known ? (
+        {!isFilter && known ? (
           <>
             <FlagHelpButton name={value} flagsCatalog={flagsCatalog} />
             {onShowOnScheme ? (

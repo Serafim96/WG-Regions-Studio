@@ -8,6 +8,26 @@ Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМ�
 
 ## [Unreleased]
 
+## [2.0.19] — 2026-10-07
+
+### Added
+
+- Dark-theme lists in region properties; flag-scheme **Warnings** / **Undefined** toggles; click-to-copy coordinates; double-tap a partial-coverage badge opens **Effective flags**.
+- Region properties: **Effective flags** table (territory %, value, via region, defined in, inherit type) using WorldGuard-style priority and geometry.
+- Region tables: filters, sortable columns, block counts; **copy intersection center** for overlap rows.
+- Flag scheme: coverage % or “partial” on nodes; effective values on intersection edges; parent, rival, and hierarchy captions on edges.
+- Opening the flag scheme from a conflict notification turns on all highlight layers (warnings and undefined).
+
+### Changed
+
+- Wider region properties panel for large tables.
+
+### Fixed
+
+- Rename dialog stacks above the region properties panel.
+- `passthrough` is no longer shown as spatially inherited; value labels use actual territory coverage (including intermediate-priority overrides).
+- Global region coverage uses `__global__` only (no double-counting).
+
 ## [2.0.18] — 2026-10-05
 
 ### Added

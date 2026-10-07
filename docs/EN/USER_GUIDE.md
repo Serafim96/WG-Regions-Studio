@@ -84,6 +84,7 @@ The **History** button in the sidebar (under Export YAML) opens a list of steps 
 
 - **Drag** — pan the graph.
 - **Mouse wheel** — zoom in/out (accelerated for large schemes).
+- While you scroll or drag the scheme, it is drawn at reduced sharpness; when you stop, edges and labels redraw sharply — nothing is hidden during navigation.
 - **Search** or links in the region panel — center the camera on a region and zoom in so it is easy to see (zoom is capped by a shared limit).
 - When fitting the camera to several nodes (conflict, overwrite, branch), the same zoom ceiling applies: if the selection already hit the limit, zoom stops even if empty margin remains around the edges.
 
@@ -92,7 +93,7 @@ The **History** button in the sidebar (under Export YAML) opens a list of steps 
 ## Nodes: colors, shapes, labels
 
 - **Color** — hierarchy depth (parent and child use different hues).
-- **Shape** — cuboid/poly2d regions are ovals; **global** and **manual** regions are white ovals (manual uses a dashed border).
+- **Shape** — cuboid/poly2d regions are ovals; **global** is a white cloud; **manual** is a white rectangle with a dashed border.
 - **Label** — region id, priority (`p:`), hierarchy level (`d:`).
 - **Collapsed children** — double orange border and `▸ N hidden` in the label when descendants are hidden.
 - **Selected** — blue border (single click).
@@ -114,11 +115,18 @@ In the region card:
 - **Name** — **Rename** opens the same dialog as the scheme context menu (Latin id only: letters, digits, `_`, `-`); parent/children links and spatial edges are kept.
 - **← / →** in the header — history of jumps to other regions (parent, children, overlaps, etc.); the starting point is the region you opened. Closing the card clears the history.
 - **Lock** (after copy-name) — fields are read-only by default; unlocked lock allows editing. Header right side has shared **Cancel** (confirms with “Are you sure?”) and **Save** for all changes at once.
-- **Parent**, **priority**, **nesting level** (read-only, same as `d:` on the scheme), **children** — when unlocked, parent has **Edit** (same style as **Rename**); click a name to open that region’s card and focus the camera (hidden nodes on the path are revealed if needed). Children and spatial links are shown as bordered tables.
+- **Parent**, **priority**, **nesting level** (read-only, same as `d:` on the scheme), **children** — when unlocked, parent has **Edit** (same style as **Rename**); click a name to open that region’s card and focus the camera (hidden nodes on the path are revealed if needed). **Children** and spatial links use tables with region-column filter, sort, and **Collapse/Expand** (like **Contains**).
 - **Partial overlaps** — table columns **region**, **affected blocks**, **percent** (share of this region’s volume; overlap volume is computed for cuboid and poly2d). Click the blocks or percent header to sort ascending/descending. Full-containment labels are **Inside** and **Contains**.
-- **Type and coordinates** — the **Global region** checkbox is available on both normal and already-global regions (uncheck to set cuboid/poly2d). For non-global regions (including from YAML) you can change cuboid/poly2d and coordinates (**Point 1** / **Point 2**); values are validated as integers and for completeness. If Y is below −64 or above 319, a warning appears next to the coordinates (and in the bell); export is not blocked. For poly2d, **Expand**/**Collapse** (same style as **Rename**) sits next to the points label; min-y/max-y are below. The expanded points table shows about 10 rows with scroll; **Clear** for poly2d coordinates is shown only while the table is expanded.
+- **Type and coordinates** — the **Global region** checkbox is available on both normal and already-global regions (uncheck to set cuboid/poly2d). For cuboid, **Point 1** / **Point 2** stay visible when locked; coordinates and the cuboid title are plain text with a **copy** icon on the right (title copies both corners as two lines). poly2d has no copy. Values are validated as integers and for completeness. If Y is below −64 or above 319, a warning appears next to the coordinates (and in the bell); export is not blocked. For poly2d, **Expand**/**Collapse** (same style as **Rename**) sits next to the points label; min-y/max-y are below. The expanded points table shows about 10 rows with scroll; **Clear** for poly2d coordinates is shown only while the table is expanded.
 - **Owners / Members** — editable `players` and `unique-ids` tables when unlocked.
 - **Flags** — WorldGuard flags table; **«?»** next to a name opens the catalog description. When unlocked, yellow **Clear flags** (yes/no confirm) removes all flag rows for the region (then **Save**).
+- **Owners and members** — players and unique-id lists with checkboxes and **+ / − / trash** (locked mode: table only).
+- Empty card tables show the header and **«no entries»**.
+- **Effective flags** — all flags in effect on this region. Equal-priority conflicts: **Undefined**, type **conflict** (click opens the scheme), red row; state with deny/allow winner: type **warning**, yellow row; cross-flag warnings: amber stripe. **Inherited from** and **Defined in** filters suggest only their column. Block volumes use dot thousands separators. **Center** — coordinates as text with a copy icon on the right. Flag name filter uses the same combobox as **Defined flags**.
+- **Defined flags** (formerly “Flags”) — column sort/filters; conflicting values are red with a **!** button to open the conflict on the scheme.
+- **Children** — **+** opens region search (like Ctrl+F) to add a child with validation and move confirmation.
+- Tables **Children**, **Partial overlap**, **Contains**, **Defined flags**, **Effective flags**: collapse/expand, sticky header with column filters (Excel-style headers, not bordered buttons), no global table search; wider region panel; toggling the lock does not shift column layout.
+- Flag scheme: **passthrough** inherited via parent; containment/intersection marks respect priority from coverage; intersection edge labels survive collapse/expand. Hierarchy `global` groups do not apply worldwide — only `__global__` does.
 - **Copy** icon next to the name — copy region id to the clipboard; a short **Copied** popup appears next to the button (not in the sidebar status line).
 - Closing with unsaved edits asks for confirmation.
 
@@ -141,7 +149,7 @@ Spatial edges of hidden nodes are remapped to the nearest visible ancestor.
 | Style | Meaning |
 |-------|---------|
 | **Thick black arrow** | Hierarchy parent → child |
-| **Thin dashed orange** | Partial overlap (`intersects`), no arrow |
+| **Thin dashed orange** | Partial overlap (`intersects`), no arrow; disconnected patches are separate lines |
 | **Thin purple arrow** | Full containment (`contains`): inner region → outer container |
 
 Open **Legend** (bottom-right on the scheme) for visual samples: tabs **Scheme**, **Flag scheme**, and **Shortcuts** (all hotkeys and mouse).
@@ -170,8 +178,8 @@ Bottom-right — legend, zoom, and fullscreen. Bottom-left — **edge display** 
 2. Left — tree of regions with flags (**green** text) and their parents. The left panel width is resizable.
 3. One toolbar row: **expand/collapse all**, **Only with flags** checkbox, a **filter by specific flag** dropdown (keeps only regions that set that flag plus their parents; the **flag value** is shown next to the name), **Inheritance** checkbox (with a flag filter — also regions where the flag is effective via parent, in a muted style), and **+** to add a region that is not in the current filter. Regions added via **+** during a filter session are not kept after you turn the filter off and on again — the tree is rebuilt from the flag alone.
 4. Right, above the table: **Catalog** and **Bulk operation** (separate dialog). Red **Delete all flags on the scheme** is at the bottom-right, away from **Save** (with its own confirmation: removes every flag from every region on the scheme). Unsaved edits are confirmed first, then the delete-all action itself.
-5. Flag table: names must exist in the catalog and values must be filled, or **Save** rejects the rows. Name suggestions use a dropdown list. Next to flag help (**?**) — a flag-icon button opens that **flag’s scheme** (same as the bottom-left scheme control). If there are unsaved edits, a short “Save changes first” flash appears. Yellow **Clear flags** (with confirmation) clears the selected region’s flags in the draft — then **Save**.
-6. Scheme highlight: the **flag icon** bottom-left opens a small dialog with flag search and **Display** only. Non-relevant nodes on the flag scheme are washed/muted (fully opaque, no transparency). While highlight is active, a button under the flag opens checkboxes (like the edge filter, but for highlight): **Intersections** (regions overlapping a flag carrier — orange border and ≈), **Containment** (fully inside without parent — ∈ plus container value, purple border), **Inheritance** (effective via parent; set vs inherited — thick green vs thin grey dashed), **Conflicts** (participants plus needed paths to defining ancestors). Defaults: all four on.
+5. Flag table: names must exist in the catalog and values must be filled, or **Save** rejects the rows. Name suggestions use a dropdown list; in any flag-name dropdown, **yellow** marks flags with a resolved spatial overlap on the scheme, **red** marks flags with no clear winner (each place keeps its own list contents). Next to flag help (**?**) — a flag-icon button opens that **flag’s scheme** (same as the bottom-left scheme control). If there are unsaved edits, a short “Save changes first” flash appears. Yellow **Clear flags** (with confirmation) clears the selected region’s flags in the draft — then **Save**.
+6. Scheme highlight: the **flag icon** bottom-left opens flag search (focused input) and **Display**. Checkboxes: **Intersections**, **Containment**, **Inheritance**, **Warnings** (yellow dashed winner **on intersections only**; containment stays purple), **Undefined** (red edges on intersections; on-line **undefined**). When several coverage groups apply, the node shows the **effective value** (e.g. **12% allow**). **Double-click** a highlighted node opens the region card on **Effective flags**, filtered to the scheme flag (including partial coverage on the node). On **hierarchy** and highlighted **containment** edges, labels show the value along the arrow (`hello→`, `←hello`); **⮾** means the value is blocked. On intersect edges: value in the center, **(percent)** at each end for that region’s share of the overlap.
 7. Changes apply to the current session and are kept when you save the scheme (`.mrv.json`); the source YAML on disk is not overwritten.
 
 ---
@@ -191,7 +199,7 @@ Clicking a notification (or the on-screen toast) shows the conflict **on the fla
 
 Bottom-left on the scheme — a warning-triangle button for problem-region highlight (dropdown: regions in errors / warnings). When active the button lights up and other nodes are dimmed, like flag-scheme mode. Turn it off with the same **clear special highlight** button used for flag/branch highlights.
 
-On spatial overlaps, higher `priority` wins, even when that value is `allow` and a lower priority has `deny`. At equal priority, a `state` flag resolves to `deny` if `deny` is among the values, otherwise `allow`. That is a warning, and YAML export is not blocked. For every other flag type, equal priority and different values are an error (no defined winner). The regular scheme does not paint these overlaps on its own. Yellow dashed styling appears only when that pair is opened on its own: a notification, **Show on scheme**, or flag highlight.
+On spatial overlaps, higher `priority` wins, even when that value is `allow` and a lower priority has `deny`. At equal priority, a `state` flag resolves to `deny` if `deny` is among the values, otherwise `allow`. That is a warning, and YAML export is not blocked. For every other flag type, equal priority and different values are an error (no defined winner). The regular scheme does not paint these overlaps on its own. Yellow dashed styling appears only when that pair is opened on its own: a notification, **Show on scheme**, or flag highlight; the yellow dashed warning border on the flag scheme is also only for intersections.
 ---
 
 ## Export YAML

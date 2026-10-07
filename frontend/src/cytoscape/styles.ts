@@ -32,6 +32,17 @@ function _buildStylesheetUncached(theme: Theme) {
   const orphanBorder = isDark ? '#ff6666' : '#cc0000';
   const orphanText = isDark ? '#ffb3b3' : '#900';
   const hierarchyColor = isDark ? '#d0d0d0' : '#222';
+  const cloudPolygonPoints =
+    '-0.62 -0.15, -0.45 -0.48, -0.12 -0.58, 0.18 -0.52, 0.42 -0.38, 0.58 -0.1, 0.62 0.22, 0.48 0.48, 0.18 0.58, -0.12 0.55, -0.38 0.42, -0.58 0.18';
+
+  const intersectIdxStyles = [0, 1, 2, 3, 4, 5, 6, 7].map((idx) => ({
+    selector: `edge.intersects.intersects-idx-${idx}`,
+    style: {
+      'curve-style': 'unbundled-bezier',
+      'control-point-distances': (idx % 2 === 0 ? 1 : -1) * 40 * (Math.floor(idx / 2) + 1),
+      'control-point-weights': 0.5,
+    },
+  }));
 
   return [
     {
@@ -66,6 +77,8 @@ function _buildStylesheetUncached(theme: Theme) {
     {
       selector: 'node[regionType = "global"]',
       style: {
+        shape: 'polygon',
+        'shape-polygon-points': cloudPolygonPoints,
         'background-color': globalBg,
         'border-color': globalBorder,
       },
@@ -123,12 +136,11 @@ function _buildStylesheetUncached(theme: Theme) {
       },
     },
     {
-      // Dim without transparency — washed / desaturated fill so edges never show through.
+      // Dim: keep region fill; mute border and caption only.
       selector: 'node.flag-dim',
       style: {
         opacity: 1,
         'background-opacity': 1,
-        'background-color': isDark ? '#3a3d42' : '#e4e4e8',
         'border-color': isDark ? '#5c6168' : '#c5c5cc',
         'border-width': 1,
         color: isDark ? '#8b9098' : '#9a9aa3',
@@ -334,9 +346,12 @@ function _buildStylesheetUncached(theme: Theme) {
         'line-color': '#e67e22',
         'line-style': 'dashed',
         opacity: 0.6,
-        'curve-style': 'bezier',
+        'curve-style': 'unbundled-bezier',
+        'control-point-distances': 40,
+        'control-point-weights': 0.5,
       },
     },
+    ...intersectIdxStyles,
     {
       selector: 'edge.contains',
       style: {
@@ -345,7 +360,9 @@ function _buildStylesheetUncached(theme: Theme) {
         'target-arrow-color': '#8e44ad',
         'target-arrow-shape': 'triangle',
         opacity: 0.85,
-        'curve-style': 'bezier',
+        'curve-style': 'unbundled-bezier',
+        'control-point-distances': 40,
+        'control-point-weights': 0.5,
       },
     },
     // Dim / path / conflict must come after base edge styles so overrides win.
@@ -376,9 +393,11 @@ function _buildStylesheetUncached(theme: Theme) {
         width: 1,
         'line-style': 'solid',
         'line-color': isDark ? '#4e4858' : '#ddd0e6',
-        'target-arrow-shape': 'none',
-        'curve-style': 'haystack',
-        'haystack-radius': 0,
+        'target-arrow-color': isDark ? '#4e4858' : '#ddd0e6',
+        'target-arrow-shape': 'triangle',
+        'curve-style': 'unbundled-bezier',
+        'control-point-distances': 40,
+        'control-point-weights': 0.5,
       },
     },
     {
@@ -401,7 +420,31 @@ function _buildStylesheetUncached(theme: Theme) {
       },
     },
     {
-      selector: 'edge.flag-conflict-resolved-edge',
+      selector: 'edge.flag-conflict-labeled-edge',
+      style: {
+        'curve-style': 'bezier',
+        label: 'data(intersectCenterLabel)',
+        'source-label': 'data(intersectSourceLabel)',
+        'target-label': 'data(intersectTargetLabel)',
+        'source-text-offset': 28,
+        'target-text-offset': 28,
+        'text-rotation': 'autorotate',
+        'source-text-rotation': 'autorotate',
+        'target-text-rotation': 'autorotate',
+        'text-margin-y': -14,
+        'font-size': 12,
+        'font-weight': 700,
+        color: '#ef4444',
+        'text-background-color': isDark ? '#2a1414' : '#fef2f2',
+        'text-background-opacity': 1,
+        'text-background-padding': 3,
+        'text-background-shape': 'roundrectangle',
+        'text-border-width': 1,
+        'text-border-color': '#ef4444',
+      },
+    },
+    {
+      selector: 'edge.flag-conflict-resolved-edge, edge.flag-conflict-resolved-labeled-edge',
       style: {
         opacity: 1,
         width: 6.3,
@@ -409,8 +452,14 @@ function _buildStylesheetUncached(theme: Theme) {
         'target-arrow-color': '#c9a227',
         'line-style': 'dashed',
         'curve-style': 'bezier',
-        label: 'data(winnerLabel)',
+        label: 'data(intersectCenterLabel)',
+        'source-label': 'data(intersectSourceLabel)',
+        'target-label': 'data(intersectTargetLabel)',
+        'source-text-offset': 28,
+        'target-text-offset': 28,
         'text-rotation': 'autorotate',
+        'source-text-rotation': 'autorotate',
+        'target-text-rotation': 'autorotate',
         'text-margin-y': -14,
         'font-size': 12,
         'font-weight': 700,
@@ -436,6 +485,14 @@ function _buildStylesheetUncached(theme: Theme) {
       },
     },
     {
+      selector: 'edge.contains.flag-no-inherit-edge',
+      style: {
+        'curve-style': 'unbundled-bezier',
+        'control-point-distances': 40,
+        'control-point-weights': 0.5,
+      },
+    },
+    {
       // Bright intersection highlight — solid haystack (no arrows on intersects).
       selector: 'edge.flag-intersect-edge',
       style: {
@@ -446,6 +503,84 @@ function _buildStylesheetUncached(theme: Theme) {
         'curve-style': 'haystack',
         'haystack-radius': 0,
         'target-arrow-shape': 'none',
+      },
+    },
+    {
+      selector: 'edge.contains.flag-contains-labeled-edge',
+      style: {
+        'curve-style': 'bezier',
+        label: 'data(intersectCenterLabel)',
+        'source-label': 'data(intersectSourceLabel)',
+        'target-label': 'data(intersectTargetLabel)',
+        'font-size': 11,
+        'font-weight': 700,
+        color: isDark ? '#e9d5ff' : '#6b21a8',
+        'text-background-color': isDark ? '#2a1a3d' : '#faf5ff',
+        'text-background-opacity': 1,
+        'text-background-padding': 2,
+        'text-background-shape': 'roundrectangle',
+        'source-text-offset': 28,
+        'target-text-offset': 28,
+        'text-rotation': 'autorotate',
+        'source-text-rotation': 'autorotate',
+        'target-text-rotation': 'autorotate',
+        'line-color': '#a855f7',
+        'target-arrow-color': '#a855f7',
+      },
+    },
+    {
+      selector: 'edge.hierarchy.flag-hierarchy-labeled-edge',
+      style: {
+        label: 'data(intersectCenterLabel)',
+        'source-label': 'data(intersectSourceLabel)',
+        'target-label': 'data(intersectTargetLabel)',
+        'font-size': 11,
+        'font-weight': 700,
+        color: isDark ? '#a7f3d0' : '#0f766e',
+        'text-background-color': isDark ? '#134e4a' : '#ecfdf5',
+        'text-background-opacity': 1,
+        'text-background-padding': 2,
+        'text-background-shape': 'roundrectangle',
+        'source-text-offset': 28,
+        'target-text-offset': 28,
+        'text-rotation': 'autorotate',
+        'source-text-rotation': 'autorotate',
+        'target-text-rotation': 'autorotate',
+        'line-color': '#1abc9c',
+        'target-arrow-color': '#1abc9c',
+      },
+    },
+    {
+      // Two classes so this beats haystack on edge.flag-intersect-edge.
+      // Endpoint labels show when one node is outside the viewport.
+      selector: 'edge.intersects.flag-intersect-labeled-edge',
+      style: {
+        'curve-style': 'bezier',
+        'text-opacity': 1,
+        'source-text-opacity': 1,
+        'target-text-opacity': 1,
+        opacity: 1,
+        label: 'data(intersectCenterLabel)',
+        'source-label': 'data(intersectSourceLabel)',
+        'target-label': 'data(intersectTargetLabel)',
+        'font-size': 11,
+        'font-weight': 700,
+        color: isDark ? '#fdba74' : '#c2410c',
+        'text-background-color': isDark ? '#2a1f14' : '#fff7ed',
+        'text-background-opacity': 1,
+        'text-background-padding': 2,
+        'text-background-shape': 'roundrectangle',
+        'source-text-offset': 28,
+        'target-text-offset': 28,
+        'text-rotation': 'autorotate',
+        'source-text-rotation': 'autorotate',
+        'target-text-rotation': 'autorotate',
+      },
+    },
+    {
+      selector: 'edge.intersects.flag-dim-edge.flag-intersect-labeled-edge',
+      style: {
+        opacity: 0.85,
       },
     },
   ];

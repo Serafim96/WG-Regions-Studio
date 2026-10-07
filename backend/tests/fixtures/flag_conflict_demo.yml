@@ -1,0 +1,144 @@
+# Demo regions for flag-scheme conflicts, warnings, and coverage labels.
+# Load via file picker in WG Regions Studio (not the workspace reference regions.yml).
+
+regions:
+  __global__:
+    type: global
+    priority: 0
+    flags: {}
+    owners: {}
+    members: {}
+
+  # Parent allow, child empty, intersect deny carrier — sleep warning
+  fc_parent_allow:
+    type: cuboid
+    priority: 0
+    flags:
+      sleep: deny
+    owners: {}
+    members: {}
+    min: {x: 0, y: 64, z: 0}
+    max: {x: 39, y: 83, z: 39}
+
+  fc_child_empty:
+    type: cuboid
+    parent: fc_parent_allow
+    priority: 0
+    flags: {}
+    owners: {}
+    members: {}
+    min: {x: 5, y: 64, z: 5}
+    max: {x: 25, y: 83, z: 25}
+
+  fc_deny_carrier:
+    type: cuboid
+    priority: 5
+    flags:
+      sleep: allow
+    owners: {}
+    members: {}
+    min: {x: 20, y: 64, z: 20}
+    max: {x: 45, y: 83, z: 45}
+
+  # Spacer without flag between two carriers that do not touch each other
+  fc_spacer:
+    type: cuboid
+    priority: 0
+    flags: {}
+    owners: {}
+    members: {}
+    min: {x: 80, y: 64, z: 10}
+    max: {x: 99, y: 83, z: 29}
+
+  fc_carrier_a:
+    type: cuboid
+    priority: 1
+    flags:
+      pvp: allow
+    owners: {}
+    members: {}
+    min: {x: 60, y: 64, z: 0}
+    max: {x: 79, y: 83, z: 19}
+
+  fc_carrier_b:
+    type: cuboid
+    priority: 2
+    flags:
+      pvp: deny
+    owners: {}
+    members: {}
+    min: {x: 100, y: 64, z: 0}
+    max: {x: 119, y: 83, z: 19}
+
+  # Three regions meet; only two carry sleep with different values
+  fc_tri_a:
+    type: cuboid
+    priority: 0
+    flags:
+      sleep: deny
+    owners: {}
+    members: {}
+    min: {x: 0, y: 64, z: 60}
+    max: {x: 19, y: 83, z: 79}
+
+  fc_tri_b:
+    type: cuboid
+    priority: 1
+    flags:
+      sleep: allow
+    owners: {}
+    members: {}
+    min: {x: 10, y: 64, z: 70}
+    max: {x: 29, y: 83, z: 89}
+
+  fc_tri_c:
+    type: cuboid
+    priority: 0
+    flags: {}
+    owners: {}
+    members: {}
+    min: {x: 10, y: 64, z: 60}
+    max: {x: 29, y: 83, z: 79}
+
+  # Chain parent → child → grandchild with greeting ambiguity vs sleep warning on one tree
+  fc_chain_root:
+    type: cuboid
+    priority: 0
+    flags:
+      sleep: deny
+      greeting: hello
+    owners: {}
+    members: {}
+    min: {x: 50, y: 64, z: 60}
+    max: {x: 89, y: 83, z: 99}
+
+  fc_chain_child:
+    type: cuboid
+    parent: fc_chain_root
+    priority: 0
+    flags: {}
+    owners: {}
+    members: {}
+    min: {x: 55, y: 64, z: 65}
+    max: {x: 70, y: 83, z: 80}
+
+  fc_chain_grand:
+    type: cuboid
+    parent: fc_chain_child
+    priority: 0
+    flags: {}
+    owners: {}
+    members: {}
+    min: {x: 58, y: 64, z: 68}
+    max: {x: 65, y: 83, z: 75}
+
+  fc_chain_rival:
+    type: cuboid
+    priority: 3
+    flags:
+      sleep: allow
+      greeting: bye
+    owners: {}
+    members: {}
+    min: {x: 62, y: 64, z: 68}
+    max: {x: 78, y: 83, z: 84}

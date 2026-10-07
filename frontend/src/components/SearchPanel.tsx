@@ -10,6 +10,7 @@ interface SearchPanelProps {
   onSelect: (regionId: string) => void;
   /** When provided, show ancestor path for the highlighted match. */
   parentMap?: Map<string, string | null>;
+  overlayClassName?: string;
 }
 
 function buildPath(regionId: string, parentMap: Map<string, string | null>): string[] {
@@ -24,7 +25,13 @@ function buildPath(regionId: string, parentMap: Map<string, string | null>): str
   return chain.reverse();
 }
 
-export function SearchPanel({ regionIds, onClose, onSelect, parentMap }: SearchPanelProps) {
+export function SearchPanel({
+  regionIds,
+  onClose,
+  onSelect,
+  parentMap,
+  overlayClassName = '',
+}: SearchPanelProps) {
   const { t } = useI18n();
   const [query, setQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(true);
@@ -62,7 +69,7 @@ export function SearchPanel({ regionIds, onClose, onSelect, parentMap }: SearchP
   };
 
   return (
-    <ModalOverlay onClose={onClose}>
+    <ModalOverlay onClose={onClose} className={overlayClassName}>
       <div className="modal search-modal" onClick={(e) => e.stopPropagation()}>
         <header>
           <h2>{t('search.title')}</h2>

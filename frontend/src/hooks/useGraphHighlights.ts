@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fetchFlagSchemeCoverage, type FlagSchemeCoverageResponse } from '../api';
 import type { AppNotification } from '../components/NotificationsBell';
 import type { HighlightBranchMode } from '../components/GraphView';
 import type { FlagInfo, Scheme } from '../types';
 import type { FlagConflictsResult, SpatialConflict } from '../utils/flagConflicts';
 import { formatFlagValueShort } from '../utils/flagRows';
 import {
+  ambiguousEdgeLabelsForFocusedPair,
   attachConflictInheritancePaths,
   attachFlagConflicts,
+  spatialConflictEdgeLabel,
   buildFlagHighlight,
   conflictHighlightFitIds,
   enrichHighlightWithFlagValues,
@@ -24,6 +27,7 @@ import {
 } from '../utils/graph';
 import type { TranslationKey } from '../i18n/translations';
 import { useI18n } from '../i18n/I18nContext';
+import { applyFlagSchemeCoverage } from '../utils/flagSchemeCoverage';
 
 type OverwriteView = {
   flagName: string;
@@ -56,10 +60,21 @@ export function useGraphHighlights(
   setShowFlagConflictsDialog: (v: boolean) => void,
   closeFlagsManager: () => void,
   focusRegion: (regionId: string) => void,
+  openRegionWithEffectiveFlag: (regionId: string, flagName: string) => void,
   setStatus: (msg: string) => void,
 ) {
   const { t } = useI18n();
+  const conflictEdgeLabel = useCallback(
+    (c: {
+      ambiguous: boolean;
+      winnerValue?: unknown;
+      aValue?: unknown;
+      bValue?: unknown;
+    }) => spatialConflictEdgeLabel(c, t),
+    [t],
+  );
   const [highlightFlag, setHighlightFlag] = useState<string | null>(null);
+  const [flagSchemeCoverage, setFlagSchemeCoverage] = useState<FlagSchemeCoverageResponse | null>(null);
   const [conflictSchemeView, setConflictSchemeView] = useState<SpatialConflict | null>(null);
   const [overwriteSchemeView, setOverwriteSchemeView] = useState<OverwriteView>(null);
   const [problemFilter, setProblemFilter] = useState<'error' | 'warning' | null>(null);
@@ -71,8 +86,25 @@ export function useGraphHighlights(
   const [flagHighlightShowContains, setFlagHighlightShowContains] = useState(false);
   const [flagHighlightShowInheritance, setFlagHighlightShowInheritance] = useState(false);
   const [flagHighlightShowConflicts, setFlagHighlightShowConflicts] = useState(false);
+  const [flagHighlightShowUndefined, setFlagHighlightShowUndefined] = useState(false);
   const [showFlagHighlightOptsMenu, setShowFlagHighlightOptsMenu] = useState(false);
   const [showEdgeModeMenu, setShowEdgeModeMenu] = useState(false);
+
+  const enableAllFlagHighlightLayers = useCallback(() => {
+    setFlagHighlightShowIntersects(true);
+    setFlagHighlightShowContains(true);
+    setFlagHighlightShowInheritance(true);
+    setFlagHighlightShowConflicts(true);
+    setFlagHighlightShowUndefined(true);
+  }, []);
+
+  const disableAllFlagHighlightLayers = useCallback(() => {
+    setFlagHighlightShowIntersects(false);
+    setFlagHighlightShowContains(false);
+    setFlagHighlightShowInheritance(false);
+    setFlagHighlightShowConflicts(false);
+    setFlagHighlightShowUndefined(false);
+  }, []);
 
   useEffect(() => {
     if (!showProblemsMenu) return;
@@ -98,6 +130,24 @@ export function useGraphHighlights(
   useEffect(() => {
     if (!highlightFlag) setShowFlagHighlightOptsMenu(false);
   }, [highlightFlag]);
+
+  useEffect(() => {
+    if (!highlightFlag || !scheme) {
+      setFlagSchemeCoverage(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchFlagSchemeCoverage(highlightFlag)
+      .then((data) => {
+        if (!cancelled) setFlagSchemeCoverage(data);
+      })
+      .catch(() => {
+        if (!cancelled) setFlagSchemeCoverage(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [highlightFlag, scheme?.sourceHash, scheme?.regions]);
 
   // Keep focused conflict in sync when priority/values change (amb → resolved).
   useEffect(() => {
@@ -185,37 +235,53 @@ export function useGraphHighlights(
       showInheritance: flagHighlightShowInheritance,
       showContains: flagHighlightShowContains,
       showIntersects: flagHighlightShowIntersects,
-      showConflicts: flagHighlightShowConflicts,
+      showConflicts: flagHighlightShowConflicts || flagHighlightShowUndefined,
     });
     let withConflict = base;
     if (conflictSchemeView && conflictSchemeView.flagName === highlightFlag) {
-      const pairIds = new Set([conflictSchemeView.aId, conflictSchemeView.bId]);
-      const pairEdgeKeys = new Set([
-        `${conflictSchemeView.relation}-${conflictSchemeView.aId}-${conflictSchemeView.bId}`,
-        `${conflictSchemeView.relation}-${conflictSchemeView.bId}-${conflictSchemeView.aId}`,
-      ]);
-      withConflict = {
-        ...attachConflictInheritancePaths(
-          base,
-          scheme,
-          conflictSchemeView.aId,
-          conflictSchemeView.bId,
-        ),
-        ...(conflictSchemeView.ambiguous
-          ? { conflictIds: pairIds, conflictEdgeKeys: pairEdgeKeys }
-          : {
-              resolvedConflictIds: pairIds,
-              resolvedConflictEdgeKeys: pairEdgeKeys,
-              ...(conflictSchemeView.winnerValue != null
-                ? {
-                    resolvedEdgeLabels: new Map([
-                      [`${conflictSchemeView.relation}-${conflictSchemeView.aId}-${conflictSchemeView.bId}`, formatFlagValueShort(conflictSchemeView.winnerValue)],
-                      [`${conflictSchemeView.relation}-${conflictSchemeView.bId}-${conflictSchemeView.aId}`, formatFlagValueShort(conflictSchemeView.winnerValue)],
-                    ]),
-                  }
-                : {}),
-            }),
-      };
+      withConflict = attachConflictInheritancePaths(
+        base,
+        scheme,
+        conflictSchemeView.aId,
+        conflictSchemeView.bId,
+      );
+      if (conflictSchemeView.relation !== 'contains') {
+        const pairIds = new Set([conflictSchemeView.aId, conflictSchemeView.bId]);
+        const pairEdgeKeys = new Set([
+          `${conflictSchemeView.relation}-${conflictSchemeView.aId}-${conflictSchemeView.bId}`,
+          `${conflictSchemeView.relation}-${conflictSchemeView.bId}-${conflictSchemeView.aId}`,
+        ]);
+        withConflict = {
+          ...withConflict,
+          ...(conflictSchemeView.ambiguous
+            ? {
+                conflictIds: pairIds,
+                conflictEdgeKeys: pairEdgeKeys,
+                ambiguousEdgeLabels: ambiguousEdgeLabelsForFocusedPair(
+                  conflictSchemeView.relation,
+                  conflictSchemeView.aId,
+                  conflictSchemeView.bId,
+                  conflictEdgeLabel({
+                    ambiguous: true,
+                    aValue: conflictSchemeView.aValue,
+                    bValue: conflictSchemeView.bValue,
+                  }),
+                ),
+              }
+            : {
+                resolvedConflictIds: pairIds,
+                resolvedConflictEdgeKeys: pairEdgeKeys,
+                ...(conflictSchemeView.winnerValue != null
+                  ? {
+                      resolvedEdgeLabels: new Map([
+                        [`${conflictSchemeView.relation}-${conflictSchemeView.aId}-${conflictSchemeView.bId}`, formatFlagValueShort(conflictSchemeView.winnerValue)],
+                        [`${conflictSchemeView.relation}-${conflictSchemeView.bId}-${conflictSchemeView.aId}`, formatFlagValueShort(conflictSchemeView.winnerValue)],
+                      ]),
+                    }
+                  : {}),
+              }),
+        };
+      }
     } else if (overwriteSchemeView && overwriteSchemeView.flagName === highlightFlag) {
       withConflict = {
         ...attachConflictInheritancePaths(
@@ -226,18 +292,27 @@ export function useGraphHighlights(
         ),
         conflictIds: new Set([overwriteSchemeView.parentId, overwriteSchemeView.childId]),
       };
-    } else if (flagHighlightShowConflicts && flagConflicts) {
+    } else if ((flagHighlightShowConflicts || flagHighlightShowUndefined) && flagConflicts) {
       withConflict = attachFlagConflicts(
         base,
         flagConflicts.spatialConflicts,
         highlightFlag,
+        {
+          showResolved: flagHighlightShowConflicts,
+          showAmbiguous: flagHighlightShowUndefined,
+          edgeLabel: conflictEdgeLabel,
+        },
       );
       const pairs = flagConflicts.spatialConflicts
         .filter((c) => c.flagName === highlightFlag)
         .map((c) => ({ aId: c.aId, bId: c.bId }));
       withConflict = mergeConflictInheritancePaths(withConflict, scheme, pairs);
     }
-    return enrichHighlightWithFlagValues(withConflict, scheme, highlightFlag, flagsCatalog);
+    const enriched = enrichHighlightWithFlagValues(withConflict, scheme, highlightFlag, flagsCatalog);
+    if (flagSchemeCoverage) {
+      return applyFlagSchemeCoverage(enriched, flagSchemeCoverage, scheme, t);
+    }
+    return enriched;
   }, [
     scheme,
     highlightFlag,
@@ -248,7 +323,11 @@ export function useGraphHighlights(
     flagHighlightShowContains,
     flagHighlightShowIntersects,
     flagHighlightShowConflicts,
+    flagHighlightShowUndefined,
     flagConflicts,
+    flagSchemeCoverage,
+    conflictEdgeLabel,
+    t,
   ]);
 
   const clearSubtreeOnly = useCallback(() => {
@@ -265,13 +344,10 @@ export function useGraphHighlights(
     setProblemFilter(null);
     setShowProblemsMenu(false);
     setFitRequest(null);
-    setFlagHighlightShowIntersects(false);
-    setFlagHighlightShowContains(false);
-    setFlagHighlightShowInheritance(false);
-    setFlagHighlightShowConflicts(false);
+    disableAllFlagHighlightLayers();
     setShowFlagHighlightOptsMenu(false);
     setStatus(t('status.specialHighlightCleared'));
-  }, [clearSubtreeOnly, setFitRequest, setStatus, t]);
+  }, [clearSubtreeOnly, disableAllFlagHighlightLayers, setFitRequest, setStatus, t]);
 
   const clearSubtreeHighlight = useCallback(() => {
     clearSubtreeOnly();
@@ -383,17 +459,11 @@ export function useGraphHighlights(
     if (!name) {
       setConflictSchemeView(null);
       setOverwriteSchemeView(null);
-      setFlagHighlightShowIntersects(false);
-      setFlagHighlightShowContains(false);
-      setFlagHighlightShowInheritance(false);
-      setFlagHighlightShowConflicts(false);
+      disableAllFlagHighlightLayers();
       setShowFlagHighlightOptsMenu(false);
       return;
     }
-    setFlagHighlightShowIntersects(true);
-    setFlagHighlightShowContains(true);
-    setFlagHighlightShowInheritance(true);
-    setFlagHighlightShowConflicts(true);
+    enableAllFlagHighlightLayers();
     if (!scheme) return;
     const hl = buildFlagHighlight(scheme, name, {
       showInheritance: true,
@@ -403,7 +473,9 @@ export function useGraphHighlights(
     });
     let fitHl = hl;
     if (flagConflicts) {
-      fitHl = attachFlagConflicts(hl, flagConflicts.spatialConflicts, name);
+      fitHl = attachFlagConflicts(hl, flagConflicts.spatialConflicts, name, {
+        edgeLabel: conflictEdgeLabel,
+      });
       const pairs = flagConflicts.spatialConflicts
         .filter((c) => c.flagName === name)
         .map((c) => ({ aId: c.aId, bId: c.bId }));
@@ -424,7 +496,15 @@ export function useGraphHighlights(
       });
       requestFitOnIds(ids);
     }
-  }, [scheme, requestFitOnIds, flagConflicts, clearSubtreeOnly, setHiddenNodes]);
+  }, [
+    scheme,
+    requestFitOnIds,
+    flagConflicts,
+    clearSubtreeOnly,
+    setHiddenNodes,
+    disableAllFlagHighlightLayers,
+    enableAllFlagHighlightLayers,
+  ]);
 
   /** Unified entry for showing a spatial conflict on the scheme (dialog / notification). */
   const showConflictOnScheme = useCallback((conflict: SpatialConflict) => {
@@ -436,6 +516,7 @@ export function useGraphHighlights(
     setOverwriteSchemeView(null);
     setConflictSchemeView(conflict);
     setHighlightFlag(conflict.flagName);
+    enableAllFlagHighlightLayers();
     const parentMap = buildParentMap(scheme.regions);
     setHiddenNodes((prev) => {
       let next = revealPathToNode(conflict.aId, prev, parentMap);
@@ -456,6 +537,7 @@ export function useGraphHighlights(
     setCollapseTarget,
     requestFitOnIds,
     setShowFlagConflictsDialog,
+    enableAllFlagHighlightLayers,
   ]);
 
   const showOverwriteOnScheme = useCallback((overwrite: {
@@ -475,6 +557,7 @@ export function useGraphHighlights(
       childId: overwrite.childId,
     });
     setHighlightFlag(overwrite.flagName);
+    enableAllFlagHighlightLayers();
     const parentMap = buildParentMap(scheme.regions);
     setHiddenNodes((prev) => {
       let next = revealPathToNode(overwrite.parentId, prev, parentMap);
@@ -500,6 +583,7 @@ export function useGraphHighlights(
     setCollapseTarget,
     requestFitOnIds,
     setShowFlagConflictsDialog,
+    enableAllFlagHighlightLayers,
   ]);
 
   const openNotificationOnScheme = useCallback((n: AppNotification) => {
@@ -530,7 +614,10 @@ export function useGraphHighlights(
       return;
     }
 
-    if (n.flagName) setHighlightFlag(n.flagName);
+    if (n.flagName) {
+      setHighlightFlag(n.flagName);
+      enableAllFlagHighlightLayers();
+    }
 
     if (n.kind === 'spatial' && n.aId && n.bId) {
       setOverwriteSchemeView(null);
@@ -576,6 +663,21 @@ export function useGraphHighlights(
       return;
     }
 
+    if (n.kind === 'crossFlag' && n.aId) {
+      setHighlightFlag(null);
+      setConflictSchemeView(null);
+      setOverwriteSchemeView(null);
+      const firstFlag = typeof n.params?.firstFlag === 'string' && n.params.firstFlag
+        ? n.params.firstFlag
+        : (typeof n.params?.flags === 'string' ? n.params.flags.split(',')[0]?.trim() : '');
+      if (firstFlag) {
+        openRegionWithEffectiveFlag(n.aId, firstFlag);
+      } else {
+        focusRegion(n.aId);
+      }
+      return;
+    }
+
     if (n.kind === 'overwrite' && n.aId && n.bId && n.flagName) {
       setConflictSchemeView(null);
       setOverwriteSchemeView({
@@ -604,6 +706,7 @@ export function useGraphHighlights(
     scheme,
     requestFitOnIds,
     focusRegion,
+    openRegionWithEffectiveFlag,
     markNotificationRead,
     setShowNotifications,
     setShowFlagConflictsDialog,
@@ -612,6 +715,7 @@ export function useGraphHighlights(
     setHiddenNodes,
     setSelectedId,
     setCollapseTarget,
+    enableAllFlagHighlightLayers,
   ]);
 
   const clearCameraSideHighlights = useCallback(() => {
@@ -627,13 +731,10 @@ export function useGraphHighlights(
     clearSubtreeOnly();
     setProblemFilter(null);
     setShowProblemsMenu(false);
-    setFlagHighlightShowIntersects(false);
-    setFlagHighlightShowContains(false);
-    setFlagHighlightShowInheritance(false);
-    setFlagHighlightShowConflicts(false);
+    disableAllFlagHighlightLayers();
     setShowFlagHighlightOptsMenu(false);
     setShowEdgeModeMenu(false);
-  }, [clearSubtreeOnly]);
+  }, [clearSubtreeOnly, disableAllFlagHighlightLayers]);
 
   return {
     highlightFlag,
@@ -654,6 +755,8 @@ export function useGraphHighlights(
     setFlagHighlightShowInheritance,
     flagHighlightShowConflicts,
     setFlagHighlightShowConflicts,
+    flagHighlightShowUndefined,
+    setFlagHighlightShowUndefined,
     showFlagHighlightOptsMenu,
     showEdgeModeMenu,
     toggleBottomLeftMenu,

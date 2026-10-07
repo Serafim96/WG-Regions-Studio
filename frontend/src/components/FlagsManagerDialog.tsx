@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { useI18n } from '../i18n/I18nContext';
 import type { FlagInfo, ForestNode, RegionData, Scheme } from '../types';
 import { computeEffectiveFlagsByRegion } from '../utils/flagConflicts';
@@ -261,6 +261,7 @@ export function FlagsManagerDialog({
   const [showAllRegions, setShowAllRegions] = useState(false);
   /** When non-empty, tree shows only regions that set this flag (+ parents / pins). */
   const [filterFlag, setFilterFlag] = useState(() => initialFilterFlag?.trim() ?? '');
+  const [filterInput, setFilterInput] = useState(() => initialFilterFlag?.trim() ?? '');
   /** With flag filter: also show regions that inherit the flag via parent. */
   const [showInheritance, setShowInheritance] = useState(false);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
@@ -311,7 +312,25 @@ export function FlagsManagerDialog({
     // Drop manual pins from a previous filter session (remarks_37).
     setPinnedIds(new Set());
     setFilterFlag(next);
+    setFilterInput(next);
     if (!next) setShowInheritance(false);
+  };
+
+  useEffect(() => {
+    const next = initialFilterFlag?.trim() ?? '';
+    setFilterFlag(next);
+    setFilterInput(next);
+  }, [initialFilterFlag]);
+
+  const applyFilterInput = (raw: string) => {
+    setFilterInput(raw);
+    const q = raw.trim();
+    if (!q) {
+      changeFilterFlag('');
+      return;
+    }
+    const match = usedFlagNames.find((name) => name.toLowerCase() === q.toLowerCase());
+    if (match) changeFilterFlag(match);
   };
 
   const definingIds = useMemo(() => {
@@ -439,12 +458,18 @@ export function FlagsManagerDialog({
     setDirty(true);
   };
 
+  const flagsTableWrapRef = useRef<HTMLDivElement>(null);
+
   const addRow = () => {
     setRows((prev) => [
       ...prev,
       { key: `new-${Date.now()}-${prev.length}`, name: '', value: '' },
     ]);
     setDirty(true);
+    requestAnimationFrame(() => {
+      const el = flagsTableWrapRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
   };
 
   const handleSave = async () => {
@@ -674,16 +699,13 @@ export function FlagsManagerDialog({
                 </label>
                 <label className="flags-filter-by-flag">
                   <span className="sr-only">{t('flagsManager.filterByFlag')}</span>
-                  <select
-                    value={filterFlag}
-                    onChange={(e) => changeFilterFlag(e.target.value)}
-                    title={t('flagsManager.filterByFlag')}
-                  >
-                    <option value="">{t('flagsManager.filterByFlagNone')}</option>
-                    {usedFlagNames.map((name) => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
+                  <FlagNameCombobox
+                    variant="filter"
+                    value={filterInput}
+                    flagsCatalog={flagsCatalog}
+                    onChange={applyFilterInput}
+                    placeholder={t('flagsManager.filterByFlagNone')}
+                  />
                 </label>
                 {filterFlag && (
                   <label className="flags-filter-toggle">
@@ -753,7 +775,7 @@ export function FlagsManagerDialog({
                 <p className="flags-manager-empty">{t('flagsManager.selectRegion')}</p>
               ) : (
                 <>
-                  <div className="flags-table-wrap">
+                  <div className="flags-table-wrap" ref={flagsTableWrapRef}>
                     <table className="flags-table flags-edit-table">
                       <thead>
                         <tr>

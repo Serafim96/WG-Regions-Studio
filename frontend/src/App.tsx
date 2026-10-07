@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchFlags, importScheme, buildScheme } from './api';
 import { AppDialogs } from './components/AppDialogs';
+import { FlagConflictNameSetsProvider } from './components/FlagConflictNameSetsContext';
 import { AppSidebar } from './components/AppSidebar';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import {
@@ -89,6 +90,8 @@ export default function App() {
 
   const [flagsCatalog, setFlagsCatalog] = useState<FlagInfo[]>([]);
   const [detailsNav, setDetailsNav] = useState<{ stack: string[]; index: number } | null>(null);
+  const [detailsEffectiveFlagFocus, setDetailsEffectiveFlagFocus] = useState<string | null>(null);
+  const [effectiveFlagsFocusSeq, setEffectiveFlagsFocusSeq] = useState(0);
   const detailsId = detailsNav?.stack[detailsNav.index] ?? null;
   const detailsCanGoBack = Boolean(detailsNav && detailsNav.index > 0);
   const detailsCanGoForward = Boolean(
@@ -286,6 +289,35 @@ export default function App() {
     collapse.setCollapseTarget(regionId);
   }, [camera, collapse]);
 
+  const closeRegionDetails = useCallback(() => {
+    setDetailsNav(null);
+    setDetailsEffectiveFlagFocus(null);
+  }, []);
+
+  const openRegionDetails = useCallback((
+    regionId: string,
+    opts?: { focusEffectiveFlag?: string | null },
+  ) => {
+    focusRegion(regionId);
+    if (opts && 'focusEffectiveFlag' in opts) {
+      setDetailsEffectiveFlagFocus(opts.focusEffectiveFlag ?? null);
+    } else {
+      setDetailsEffectiveFlagFocus(null);
+    }
+    setDetailsNav((prev) => {
+      if (!prev) return { stack: [regionId], index: 0 };
+      if (prev.stack[prev.index] === regionId) return prev;
+      const stack = [...prev.stack.slice(0, prev.index + 1), regionId];
+      return { stack, index: stack.length - 1 };
+    });
+  }, [focusRegion]);
+
+  const openRegionWithEffectiveFlag = useCallback((regionId: string, flagName: string) => {
+    setDetailsEffectiveFlagFocus(null);
+    setEffectiveFlagsFocusSeq((n) => n + 1);
+    openRegionDetails(regionId, { focusEffectiveFlag: flagName });
+  }, [openRegionDetails]);
+
   const highlights = useGraphHighlights(
     session.scheme,
     flagsCatalog,
@@ -304,6 +336,7 @@ export default function App() {
     setShowFlagConflictsDialog,
     closeFlagsManager,
     focusRegion,
+    openRegionWithEffectiveFlag,
     session.setStatus,
   );
 
@@ -487,20 +520,6 @@ export default function App() {
     () => { void handleRedo(); },
   );
 
-  const closeRegionDetails = useCallback(() => {
-    setDetailsNav(null);
-  }, []);
-
-  const openRegionDetails = useCallback((regionId: string) => {
-    focusRegion(regionId);
-    setDetailsNav((prev) => {
-      if (!prev) return { stack: [regionId], index: 0 };
-      if (prev.stack[prev.index] === regionId) return prev;
-      const stack = [...prev.stack.slice(0, prev.index + 1), regionId];
-      return { stack, index: stack.length - 1 };
-    });
-  }, [focusRegion]);
-
   const detailsNavRef = useRef(detailsNav);
   detailsNavRef.current = detailsNav;
 
@@ -591,6 +610,7 @@ export default function App() {
     setFlagHighlightShowContains: highlights.setFlagHighlightShowContains,
     setFlagHighlightShowInheritance: highlights.setFlagHighlightShowInheritance,
     setFlagHighlightShowConflicts: highlights.setFlagHighlightShowConflicts,
+    setFlagHighlightShowUndefined: highlights.setFlagHighlightShowUndefined,
     setEdgeDisplayFilters,
     setProblemsMode: highlights.setProblemsMode,
     openLegend: () => setShowLegend(true),
@@ -705,6 +725,7 @@ export default function App() {
         />
       )}
 
+      <FlagConflictNameSetsProvider spatialConflicts={flagConflicts?.spatialConflicts ?? []}>
       <AppDialogs
         scheme={session.scheme}
         flagsCatalog={flagsCatalog}
@@ -771,6 +792,8 @@ export default function App() {
               onExpandRecursive={onExpandRecursive}
               onHighlightSubtree={highlights.highlightSubtree}
               onClearSubtreeHighlight={highlights.clearSubtreeHighlight}
+              highlightFlagName={highlights.highlightFlag}
+              onOpenRegionEffectiveFlags={openRegionWithEffectiveFlag}
             />
             <GraphChromeControls
               graphRef={graphRef}
@@ -788,6 +811,7 @@ export default function App() {
               flagHighlightShowContains={highlights.flagHighlightShowContains}
               flagHighlightShowInheritance={highlights.flagHighlightShowInheritance}
               flagHighlightShowConflicts={highlights.flagHighlightShowConflicts}
+              flagHighlightShowUndefined={highlights.flagHighlightShowUndefined}
               showFlagHighlightOptsMenu={highlights.showFlagHighlightOptsMenu}
               showEdgeModeMenu={highlights.showEdgeModeMenu}
               showProblemsMenu={highlights.showProblemsMenu}
@@ -835,8 +859,17 @@ export default function App() {
             closeRegionDetails();
             highlights.applyHighlightFlag(flagName);
           }}
+          spatialConflicts={flagConflicts?.spatialConflicts ?? []}
+          crossFlagConflicts={flagConflicts?.crossFlagConflicts ?? []}
+          effectiveFlagsFocus={detailsEffectiveFlagFocus}
+          effectiveFlagsFocusSeq={effectiveFlagsFocusSeq}
+          onShowConflictOnScheme={(c) => {
+            closeRegionDetails();
+            highlights.showConflictOnScheme(c);
+          }}
         />
       )}
+      </FlagConflictNameSetsProvider>
 
       {session.busyMessage && (
         <div className="busy-overlay" role="alert" aria-busy="true">

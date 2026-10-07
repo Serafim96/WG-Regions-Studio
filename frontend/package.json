@@ -1,12 +1,13 @@
 {
   "name": "wg-regions-studio-frontend",
   "private": true,
-  "version": "2.0.18",
+  "version": "2.0.19",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "test:rules": "tsx --test src/utils/__tests__/crossFlagRules.test.ts",
+    "test": "tsx --test src/utils/__tests__/crossFlagRules.test.ts src/utils/__tests__/effectiveRowCategory.test.ts src/utils/__tests__/flagConflictLookup.test.ts src/utils/__tests__/flagSchemeCoverage.test.ts src/utils/__tests__/flagSchemeCoverageLabels.test.ts src/utils/__tests__/formatBlockCount.test.ts src/utils/__tests__/flagSpatialHighlight.test.ts src/utils/__tests__/flagSuggestions.test.ts src/utils/__tests__/graphRemap.test.ts src/utils/__tests__/regionHierarchy.test.ts src/utils/__tests__/tableSearch.test.ts src/components/graph/__tests__/viewportGesture.test.ts",
+    "test:rules": "tsx --test src/utils/__tests__/crossFlagRules.test.ts src/utils/__tests__/flagSpatialHighlight.test.ts src/utils/__tests__/flagSchemeCoverageLabels.test.ts",
     "preview": "vite preview"
   },
   "dependencies": {
