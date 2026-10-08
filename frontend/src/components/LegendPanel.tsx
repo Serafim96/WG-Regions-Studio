@@ -250,7 +250,7 @@ export function LegendPanel({ onClose }: { onClose: () => void }) {
       meaning: t('legend.flagEdgeValueFlow'),
     },
     {
-      sample: <LegendEdgeCaption center="bye→⮾" variant="contain" />,
+      sample: <LegendEdgeCaption center="hello→⮾" variant="contain" />,
       meaning: t('legend.flagEdgeValueBlocked'),
     },
     { sample: <LegendDirectedEdge color="#a855f7" width={3} />, meaning: t('legend.flagContainArrow') },

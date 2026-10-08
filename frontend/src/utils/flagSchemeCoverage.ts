@@ -243,7 +243,7 @@ function buildContainsEdgeLabel(
   const innerOwn = formatOwnFlagValue(innerId, coverage, scheme);
   const outerOwn = formatOwnFlagValue(outerId, coverage, scheme);
   if (innerOwn && outerOwn && innerOwn !== outerOwn) {
-    return `${innerOwn}→${VALUE_BLOCKED}`;
+    return `${outerOwn}→${VALUE_BLOCKED}`;
   }
 
   const inner = scheme.regions.find((r) => r.id === innerId);

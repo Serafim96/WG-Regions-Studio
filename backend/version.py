@@ -9,7 +9,7 @@ import httpx
 
 # Bump when cutting a GitHub release (tag vX.Y.Z).
 # Full checklist: docs/dev/RELEASE.md
-APP_VERSION = "2.0.20"
+APP_VERSION = "2.0.21"
 GITHUB_REPO = "Serafim96/WG-Regions-Studio"
 RELEASES_LATEST_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
@@ -18,12 +18,12 @@ RELEASES_PAGE_URL = f"https://github.com/{GITHUB_REPO}/releases"
 # The first-launch dialog reads the full release history from docs/*/CHANGELOG*.md.
 CURRENT_HIGHLIGHTS: dict[str, list[str]] = {
     "ru": [
-        "Исправлен расчёт пересечений в «Действующих флагах» на длинных регионах (тонкий срез соседа не теряется)",
-        "Схема флага: приглушённые узлы — однотонная серая заливка; легенда обновлена",
+        "Схема флага: на вхождении без parent подпись ⮾ показывает значение внешнего региона, которое не проходит",
+        "Легенда схемы флага: уточнены примеры и описания блокировки на рёбрах вхождения (RU/EN)",
     ],
     "en": [
-        "Effective flags: intersection coverage on long regions (thin neighbor slices no longer dropped)",
-        "Flag scheme: dimmed nodes use flat gray fill; legend updated",
+        "Flag scheme: on containment without parent, ⮾ labels show the outer value that fails to pass",
+        "Flag scheme legend: updated blocked-edge examples and descriptions (RU/EN)",
     ],
 }
 

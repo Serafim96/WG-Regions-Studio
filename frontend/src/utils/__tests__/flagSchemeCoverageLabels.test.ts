@@ -167,7 +167,7 @@ describe('applyFlagSchemeCoverage containment and hierarchy labels', () => {
     assert.equal(merged.containsEdgeLabels?.get('contains-inner-outer'), 'allow→');
   });
 
-  it('labels rival→root containment without parent as bye→⮾', () => {
+  it('labels rival→root containment without parent as hello→⮾', () => {
     const scheme = emptyScheme(
       [
         cuboid('root', { greeting: 'hello' }),
@@ -182,7 +182,7 @@ describe('applyFlagSchemeCoverage containment and hierarchy labels', () => {
       showConflicts: false,
     });
     const merged = applyFlagSchemeCoverage(base, emptyCoverage('greeting'), scheme, t);
-    assert.equal(merged.containsEdgeLabels?.get('contains-rival-root'), 'bye→⮾');
+    assert.equal(merged.containsEdgeLabels?.get('contains-rival-root'), 'hello→⮾');
   });
 
   it('labels hierarchy edge blocked when child sets its own value', () => {

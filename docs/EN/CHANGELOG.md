@@ -8,6 +8,12 @@ Russian version: [ЖУРНАЛ_ИЗМЕНЕНИЙ.md](../RU/ЖУРНАЛ_ИЗМ�
 
 ## [Unreleased]
 
+## [2.0.21] — 2026-10-08
+
+### Fixed
+
+- Flag scheme: on containment edges without a parent link, blocked-value captions (⮾) show the outer region’s value that fails to pass, not the inner region’s own value; legend samples and text updated (RU/EN).
+
 ## [2.0.20] — 2026-10-07
 
 ### Changed
